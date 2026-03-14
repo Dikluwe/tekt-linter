@@ -3,95 +3,162 @@
 **Camada**: L3 (Infra)
 **Padrão**: Filesystem Crawler
 **Criado em**: 2025-03-13
-**Revisado em**: 2025-03-13
+**Revisado em**: 2026-03-14 (ADR-0004)
+**Arquivos gerados**:
+  - 03_infra/walker.rs + test
+
+---
 
 ## Contexto
 
-O linter precisa descobrir quais arquivos analisar e entregar
-`SourceFile` limpo ao pipeline. Esta camada implementa a trait
-`FileProvider` declarada em `01_core/contracts/file_provider.rs`.
+O walker é o ponto de entrada de dados do linter. Descobre arquivos
+no disco, carrega-os para RAM como `SourceFile` — o dono (`owner`)
+do conteúdo — e resolve metadados básicos de camada e adjacência
+de testes.
 
-Além de descobrir arquivos, o walker é responsável por injetar
-em `SourceFile` o metadado `has_adjacent_test` — informação que
-só existe no nível de filesystem e que o parser sozinho não
-consegue derivar do source text.
+Implementa a trait `FileProvider` declarada em
+`01_core/contracts/file_provider.rs`.
+
+**Diretiva Fail-Fast (ADR-0004):** Arquivos ilegíveis não podem ser
+descartados silenciosamente. A ausência de violações deve garantir
+conformidade real — não que metade dos arquivos era ilegível. Erros
+de I/O são propagados como `SourceError::Unreadable` e convertidos
+em `V0 Fatal` pelo wiring em L4.
 
 ---
 
 ## Responsabilidades
 
-**Descoberta de arquivos:**
+### 1. Descoberta e filtro
+
 - Usar `walkdir` para varrer o diretório raiz configurado
-- Ignorar `target/`, `node_modules/`, entradas do `.gitignore`
+- Ignorar completamente: `target/`, `node_modules/`, `.git/`,
+  `.cargo/` — não emite `SourceError` para esses, simplesmente
+  não os visita
 - Filtrar por extensão baseado nas linguagens habilitadas em
   `crystalline.toml` (`.rs` na v1)
-- Determinar `Language` pelo mapeamento de extensão→grammar
+- O iterador é lazy — leitura para RAM ocorre à medida que L4
+  consome, não antecipadamente
 
-**Metadado de teste adjacente:**
-
-`SourceFile` recebe um campo adicional:
+### 2. Leitura segura com propagação de erro
 ```rust
-pub struct SourceFile {
-    pub path: PathBuf,
-    pub content: String,
-    pub language: Language,
-    pub has_adjacent_test: bool,
-    // true se existe foo_test.rs no mesmo diretório que foo.rs
-    // verificado pelo walker no momento da descoberta
+match std::fs::read_to_string(&path) {
+    Ok(content) => Some(Ok(SourceFile { path, content, .. })),
+    Err(e) => Some(Err(SourceError::Unreadable {
+        path,
+        reason: e.to_string(),
+    })),
 }
 ```
 
-O `RustParser` usa `SourceFile.has_adjacent_test` como fallback:
-se `#[cfg(test)]` não está no AST, `has_test_coverage` é derivado
-deste campo.
+`SourceFile` torna-se dono da `String` de conteúdo. Todo
+`ParsedFile<'a>` derivado vive dentro do lifetime dessa String.
 
-**Resolução de camada do arquivo:**
+### 3. Metadados de arquivo
 
-O walker determina `Layer` do arquivo pelo diretório pai,
-baseado no mapeamento de `crystalline.toml`:
+**`has_adjacent_test`** — verifica se existe `foo_test.rs` no
+mesmo diretório que `foo.rs` no momento da descoberta. Arquivos
+que já terminam em `_test.rs` recebem `false` — eles são o
+arquivo de teste, não o arquivo testado.
+
+**`layer`** — resolve comparando o primeiro componente do path
+relativo à raiz contra o mapeamento `[layers]` de
+`crystalline.toml`:
 ```rust
-fn resolve_file_layer(path: &Path, config: &CrystallineConfig) -> Layer {
-    // "01_core/..." → Layer::L1
-    // "02_shell/..." → Layer::L2
-    // etc.
+pub fn resolve_file_layer(path: &Path, root: &Path, config: &CrystallineConfig) -> Layer {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    let first = relative.components().next()
+        .and_then(|c| c.as_os_str().to_str())
+        .unwrap_or("");
+
+    for (layer_key, dir_name) in &config.layers {
+        if first == dir_name.as_str() {
+            return match layer_key.as_str() {
+                "L0" => Layer::L0, "L1" => Layer::L1,
+                "L2" => Layer::L2, "L3" => Layer::L3,
+                "L4" => Layer::L4, "lab" | "Lab" => Layer::Lab,
+                _ => Layer::Unknown,
+            };
+        }
+    }
+    Layer::Unknown
 }
 ```
 
-Esse valor é passado para `SourceFile` e depois para `ParsedFile.layer`.
+**`language`** — mapeamento de extensão:
+```rust
+fn language_for_path(path: &Path) -> Option<Language> {
+    match path.extension()?.to_str()? {
+        "rs" => Some(Language::Rust),
+        "ts" | "tsx" => Some(Language::TypeScript),
+        "py" => Some(Language::Python),
+        _ => None,
+    }
+}
+```
 
 ---
 
 ## Restrições
 
-- Implementa `FileProvider` — retorna `impl Iterator<Item = SourceFile>`
-- `std::io::Error` na leitura de arquivo é absorvido — arquivo
-  ilegível é silenciosamente ignorado com log de warning
+- Implementa `FileProvider` — retorna
+  `impl Iterator<Item = Result<SourceFile, SourceError>>`
+- Nunca suprime `io::Error` silenciosamente — sempre propaga
+  como `SourceError::Unreadable`
+- Ignora diretórios excluídos completamente — não emite erros
+  para eles, apenas não os visita
+- Não invoca tree-sitter
 - Não contém nenhuma regra de violação
-- Não invoca tree-sitter — apenas lê bytes e resolve metadados
+- `SourceFile` não implementa `Clone` — conteúdo carregado
+  uma única vez por arquivo
 
 ---
 
 ## Critérios de Verificação
 ```
 Dado diretório com foo.rs e foo_test.rs
-Quando files() for chamado
-Então SourceFile para foo.rs tem has_adjacent_test = true
+Quando files() for consumido
+Então Ok(SourceFile) para foo.rs tem has_adjacent_test = true
 
 Dado diretório com bar.rs sem bar_test.rs
-Quando files() for chamado
-Então SourceFile para bar.rs tem has_adjacent_test = false
+Quando files() for consumido
+Então Ok(SourceFile) para bar.rs tem has_adjacent_test = false
 
-Dado diretório com target/ contendo arquivos .rs
-Quando files() for chamado
-Então nenhum arquivo de target/ é retornado
+Dado arquivo foo_test.rs
+Quando files() for consumido
+Então Ok(SourceFile) para foo_test.rs tem has_adjacent_test = false
+— arquivo de teste não tem adjacent test, ele é o teste
 
-Dado arquivo em 02_shell/api/auth.rs
-Quando files() for chamado
-Então SourceFile.layer = Layer::L2 (via crystalline.toml)
+Dado arquivo ilegível por permissão do SO
+Quando files() for consumido
+Então retorna Err(SourceError::Unreadable { path, reason })
+E o iterator continua — não aborta nos arquivos seguintes
 
-Dado arquivo ilegível por permissão
-Quando files() for chamado
-Então arquivo é ignorado sem panic
+Dado diretório com target/debug/build.rs
+Quando files() for consumido
+Então target/debug/build.rs não aparece nem como Ok nem como Err
+— diretório excluído não é visitado
+
+Dado arquivo em 01_core/rules/forbidden_import.rs
+Quando files() for consumido
+Então SourceFile.layer = Layer::L1
+
+Dado arquivo em 02_shell/cli.rs
+Quando files() for consumido
+Então SourceFile.layer = Layer::L2
+
+Dado arquivo em 03_infra/walker.rs
+Quando files() for consumido
+Então SourceFile.layer = Layer::L3
+
+Dado arquivo com extensão desconhecida (.toml, .md)
+Quando files() for consumido
+Então arquivo não aparece no iterator
+— extensão não mapeada é filtrada silenciosamente
+
+Dado mock de FileProvider retornando SourceFiles fixos
+Quando usado em testes de L1
+Então nenhum acesso a disco ocorre
 ```
 
 ---
@@ -101,4 +168,5 @@ Então arquivo é ignorado sem panic
 | Data | Motivo | Arquivos afetados |
 |------|--------|-------------------|
 | 2025-03-13 | Criação inicial | walker.rs |
-| 2025-03-13 | Gap 4: adicionado has_adjacent_test em SourceFile, resolve_file_layer, delegação explícita ao RustParser | walker.rs |
+| 2025-03-13 | Gap 4: has_adjacent_test, resolve_file_layer, delegação ao RustParser | walker.rs |
+| 2026-03-14 | ADR-0004: files() retorna Result<SourceFile, SourceError>, propagação de io::Error, iterator lazy, SourceFile não-Clone | walker.rs |
