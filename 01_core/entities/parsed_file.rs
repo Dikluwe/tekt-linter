@@ -1,10 +1,12 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/violation-types.md
-//! @prompt-hash 9b91c41b
+//! @prompt-hash 028f6e75
 //! @layer L1
-//! @updated 2026-03-13
+//! @updated 2026-03-14
 
 use std::path::PathBuf;
+
+use serde::{Deserialize, Serialize};
 
 use crate::entities::layer::{Language, Layer};
 
@@ -43,6 +45,89 @@ pub struct Token {
     pub kind: TokenKind,
 }
 
+// ── PublicInterface (V6) ──────────────────────────────────────────────────────
+
+/// Interface pública extraída do AST — agnóstica de linguagem.
+/// Não inclui implementação, apenas contratos visíveis externamente.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicInterface {
+    pub functions: Vec<FunctionSignature>,
+    pub types: Vec<TypeSignature>,
+    pub reexports: Vec<String>,
+}
+
+impl PublicInterface {
+    pub fn empty() -> Self {
+        Self { functions: vec![], types: vec![], reexports: vec![] }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FunctionSignature {
+    pub name: String,
+    pub params: Vec<String>,
+    pub return_type: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TypeSignature {
+    pub name: String,
+    pub kind: TypeKind,
+    pub members: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TypeKind {
+    Struct,
+    Enum,
+    Trait,
+}
+
+// ── InterfaceDelta ─────────────────────────────────────────────────────────────
+
+pub struct InterfaceDelta {
+    pub added_functions: Vec<FunctionSignature>,
+    pub removed_functions: Vec<FunctionSignature>,
+    pub added_types: Vec<TypeSignature>,
+    pub removed_types: Vec<TypeSignature>,
+    pub added_reexports: Vec<String>,
+    pub removed_reexports: Vec<String>,
+}
+
+impl InterfaceDelta {
+    pub fn describe(&self) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        for f in &self.added_functions {
+            parts.push(format!("+fn {}", f.name));
+        }
+        for f in &self.removed_functions {
+            parts.push(format!("-fn {}", f.name));
+        }
+        for t in &self.added_types {
+            parts.push(format!("+type {}", t.name));
+        }
+        for t in &self.removed_types {
+            parts.push(format!("-type {}", t.name));
+        }
+        for r in &self.added_reexports {
+            parts.push(format!("+reexport {r}"));
+        }
+        for r in &self.removed_reexports {
+            parts.push(format!("-reexport {r}"));
+        }
+        if parts.is_empty() { "(no diff)".to_string() } else { parts.join(", ") }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.added_functions.is_empty()
+            && self.removed_functions.is_empty()
+            && self.added_types.is_empty()
+            && self.removed_types.is_empty()
+            && self.added_reexports.is_empty()
+            && self.removed_reexports.is_empty()
+    }
+}
+
 // ── PromptHeader ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,9 +142,68 @@ pub struct PromptHeader {
     pub updated: Option<String>,
 }
 
+// ── Trait Implementations for Rules (OCP) ───────────────────────────────────
+
+impl crate::rules::prompt_header::HasPromptFilesystem for ParsedFile {
+    fn prompt_header(&self) -> Option<&PromptHeader> {
+        self.prompt_header.as_ref()
+    }
+    fn prompt_file_exists(&self) -> bool {
+        self.prompt_file_exists
+    }
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl crate::rules::test_file::HasCoverage for ParsedFile {
+    fn layer(&self) -> &Layer {
+        &self.layer
+    }
+    fn has_test_coverage(&self) -> bool {
+        self.has_test_coverage
+    }
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl crate::rules::forbidden_import::HasImports for ParsedFile {
+    fn layer(&self) -> &Layer {
+        &self.layer
+    }
+    fn imports(&self) -> &[Import] {
+        &self.imports
+    }
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl crate::rules::impure_core::HasTokens for ParsedFile {
+    fn layer(&self) -> &Layer {
+        &self.layer
+    }
+    fn tokens(&self) -> &[Token] {
+        &self.tokens
+    }
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl crate::rules::prompt_drift::HasHashes for ParsedFile {
+    fn prompt_header(&self) -> Option<&PromptHeader> {
+        self.prompt_header.as_ref()
+    }
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
 // ── ParsedFile ────────────────────────────────────────────────────────────────
 
-/// Intermediate representation consumed by all V1–V5 rules.
+/// Intermediate representation consumed by all V1–V6 rules.
 /// All fields are populated by L3 before reaching L1.
 /// L1 rules only read — never derive.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,6 +227,15 @@ pub struct ParsedFile {
 
     /// For V4: call expressions and macro invocations extracted from AST.
     pub tokens: Vec<Token>,
+
+    /// For V6: snapshot of the public interface extracted from the AST.
+    /// Populated by L3 (RustParser).
+    pub public_interface: PublicInterface,
+
+    /// For V6: snapshot of the public interface registered in the origin prompt.
+    /// None if the prompt has no Interface Snapshot section yet.
+    /// Populated by L3 via PromptSnapshotReader.
+    pub prompt_snapshot: Option<PublicInterface>,
 }
 
 #[cfg(test)]
@@ -99,6 +252,8 @@ mod tests {
             has_test_coverage: false,
             imports: vec![],
             tokens: vec![],
+            public_interface: PublicInterface::empty(),
+            prompt_snapshot: None,
         }
     }
 

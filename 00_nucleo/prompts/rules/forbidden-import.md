@@ -13,15 +13,15 @@ acoplamento invertido — o defeito estrutural mais destrutivo em
 sistemas cristalinos.
 
 V3 detecta essas inversões comparando a camada do arquivo com a
-camada destino de cada import. Ambas já estão resolvidas em
-`ParsedFile` — L1 apenas compara, nunca deriva.
+camada destino de cada import. Ambas já estão resolvidas e expostas
+por uma abstração (via trait `HasImports`) — L1 apenas compara, nunca deriva.
 
 ---
 
 ## Especificação
 
-A regra recebe `ParsedFile` e varre `file.imports`.
-Para cada `Import`, compara `file.layer` com `import.target_layer`
+A regra recebe uma entidade (via trait `HasImports`) e varre a lista de imports exposta.
+Para cada `Import`, compara a camada declarada do arquivo com `import.target_layer`
 usando a matriz de permissões abaixo.
 
 `Import.target_layer` é populado por L3 (RustParser) no momento

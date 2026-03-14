@@ -9,8 +9,8 @@ Sob a restrição da Regra Simuntânea (Testes), toda materialização de núcle
 
 ## Especificação
 - A regra V2 acusa a ausência de cobertura de testes explícita num módulo em `L1` (`01_core/`).
-- Ela verifica, dado um `ParsedFile` no qual `ParsedFile.layer == Layer::L1`, se há a diretiva de teste interna (`#[cfg(test)]`) dentro do mesmo arquivo `foo.rs`, ou a existência adjacente/referenciada de um módulo `foo_test.rs`.
-- **Isenções**: Arquivos que apenas declaram e exportam `pub trait`, `pub struct` ou `pub enum` _sem possuírem implementações de lógica (blocos `impl` que contenham funções/métodos com corpo lógico)_ são isentos dessa regra. O linter deduz essa isenção inspecionando o AST (`ParsedFile.tokens`).
+- Ela verifica, dada uma entidade abstrata (via trait `HasCoverage`) cuja camada declarada seja `Layer::L1`, se há a cobertura de testes associada.
+- **Isenções**: Arquivos que apenas declaram e exportam `pub trait`, `pub struct` ou `pub enum` _sem possuírem implementações de lógica (blocos `impl` que contenham funções/métodos com corpo lógico)_ são isentos dessa regra. O construtor (L3) deduz essa isenção inspecionando o AST no momento do parse.
 
 ## Estrutura da Violação Gerada
 - Rule ID: `V2`
@@ -18,4 +18,4 @@ Sob a restrição da Regra Simuntânea (Testes), toda materialização de núcle
 - Contexto da Mensagem: "Módulo do núcleo carece de verificação simultânea (test file ou bloco cfg(test))".
 
 ## Restrições (L1 Pura)
-- O processamento em L1 não olhará em disco para o `foo_test.rs` — o L3 (`FileWalker`/`LanguageParser`) que constrói o `ParsedFile` injeta nesta entidade o metadado sobre se os testes existem anexos ou emparelhados, ou o próprio AST indica a `cfg(test)`.
+- O processamento em L1 não olhará em disco para o test_file — o L3 (`FileWalker`/`LanguageParser`) injeta o metadado sobre se a cobertura existe na instância final inspecionada pela Trait.

@@ -2,7 +2,7 @@
 //! @prompt 00_nucleo/prompts/rs-parser.md
 //! @prompt-hash c0d309ae
 //! @layer L3
-//! @updated 2026-03-13
+//! @updated 2026-03-14
 
 use tree_sitter::{Node, Parser as TsParser};
 
@@ -10,26 +10,29 @@ use crate::contracts::file_provider::SourceFile;
 use crate::contracts::language_parser::LanguageParser;
 use crate::contracts::parse_error::ParseError;
 use crate::contracts::prompt_reader::PromptReader;
+use crate::contracts::prompt_snapshot_reader::PromptSnapshotReader;
 use crate::entities::layer::{Language, Layer};
 use crate::entities::parsed_file::{
-    Import, ImportKind, ParsedFile, PromptHeader, Token, TokenKind,
+    FunctionSignature, Import, ImportKind, ParsedFile, PromptHeader, PublicInterface, Token,
+    TokenKind, TypeKind, TypeSignature,
 };
 use crate::infra::config::CrystallineConfig;
 
 // ── RustParser ────────────────────────────────────────────────────────────────
 
-pub struct RustParser<R: PromptReader> {
+pub struct RustParser<R: PromptReader, S: PromptSnapshotReader> {
     pub prompt_reader: R,
+    pub snapshot_reader: S,
     pub config: CrystallineConfig,
 }
 
-impl<R: PromptReader> RustParser<R> {
-    pub fn new(prompt_reader: R, config: CrystallineConfig) -> Self {
-        Self { prompt_reader, config }
+impl<R: PromptReader, S: PromptSnapshotReader> RustParser<R, S> {
+    pub fn new(prompt_reader: R, snapshot_reader: S, config: CrystallineConfig) -> Self {
+        Self { prompt_reader, snapshot_reader, config }
     }
 }
 
-impl<R: PromptReader> LanguageParser for RustParser<R> {
+impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, S> {
     fn parse(&self, file: SourceFile) -> Result<ParsedFile, ParseError> {
         if file.content.is_empty() {
             return Err(ParseError::EmptySource { path: file.path });
@@ -98,6 +101,12 @@ impl<R: PromptReader> LanguageParser for RustParser<R> {
         let is_decl_only = is_declaration_only(root, source);
         let has_test_coverage = has_cfg_test || file.has_adjacent_test || is_decl_only;
 
+        // ── PublicInterface (V6) ───────────────────────────────────────────────
+        let public_interface = extract_public_interface(root, source);
+        let prompt_snapshot = prompt_header
+            .as_ref()
+            .and_then(|h| self.snapshot_reader.read_snapshot(&h.prompt_path));
+
         Ok(ParsedFile {
             path: file.path,
             layer: file.layer,
@@ -107,6 +116,8 @@ impl<R: PromptReader> LanguageParser for RustParser<R> {
             has_test_coverage,
             imports,
             tokens,
+            public_interface,
+            prompt_snapshot,
         })
     }
 }
@@ -257,6 +268,148 @@ fn resolve_layer(path: &str, config: &CrystallineConfig) -> Layer {
     }
 }
 
+// ── PublicInterface extraction ────────────────────────────────────────────────
+
+/// Extract the public interface from the top-level items of the source file.
+fn extract_public_interface(root: Node, source: &[u8]) -> PublicInterface {
+    let mut functions = Vec::new();
+    let mut types = Vec::new();
+    let mut reexports = Vec::new();
+
+    for i in 0..root.child_count() {
+        if let Some(child) = root.child(i) {
+            if !is_pub_item(child, source) {
+                continue;
+            }
+            match child.kind() {
+                "function_item" => {
+                    if let Some(sig) = extract_fn_sig(child, source) {
+                        functions.push(sig);
+                    }
+                }
+                "struct_item" => {
+                    if let Some(sig) = extract_type_sig(child, source, TypeKind::Struct) {
+                        types.push(sig);
+                    }
+                }
+                "enum_item" => {
+                    if let Some(sig) = extract_type_sig(child, source, TypeKind::Enum) {
+                        types.push(sig);
+                    }
+                }
+                "trait_item" => {
+                    if let Some(sig) = extract_type_sig(child, source, TypeKind::Trait) {
+                        types.push(sig);
+                    }
+                }
+                "use_declaration" => {
+                    reexports.push(use_declaration_path(child, source));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    PublicInterface { functions, types, reexports }
+}
+
+fn is_pub_item(node: Node, source: &[u8]) -> bool {
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            if child.kind() == "visibility_modifier" {
+                let text = node_text(child, source);
+                if text.starts_with("pub") {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn extract_fn_sig(node: Node, source: &[u8]) -> Option<FunctionSignature> {
+    let name = node
+        .child_by_field_name("name")
+        .map(|n| node_text(n, source).to_string())?;
+
+    let params = node
+        .child_by_field_name("parameters")
+        .map(|p| extract_param_types(p, source))
+        .unwrap_or_default();
+
+    let return_type = node.child_by_field_name("return_type").map(|rt| {
+        let text = node_text(rt, source);
+        text.trim_start_matches("->").trim().to_string()
+    });
+
+    Some(FunctionSignature { name, params, return_type })
+}
+
+fn extract_param_types(params_node: Node, source: &[u8]) -> Vec<String> {
+    let mut result = Vec::new();
+    for i in 0..params_node.child_count() {
+        if let Some(child) = params_node.child(i) {
+            if child.kind() == "parameter" {
+                if let Some(ty) = child.child_by_field_name("type") {
+                    result.push(node_text(ty, source).to_string());
+                }
+            }
+        }
+    }
+    result
+}
+
+fn extract_type_sig(node: Node, source: &[u8], kind: TypeKind) -> Option<TypeSignature> {
+    let name = node
+        .child_by_field_name("name")
+        .map(|n| node_text(n, source).to_string())?;
+
+    let members = match &kind {
+        TypeKind::Struct => node
+            .child_by_field_name("body")
+            .map(|b| extract_named_children(b, source, "field_declaration"))
+            .unwrap_or_default(),
+        TypeKind::Enum => node
+            .child_by_field_name("body")
+            .map(|b| extract_named_children(b, source, "enum_variant"))
+            .unwrap_or_default(),
+        TypeKind::Trait => node
+            .child_by_field_name("body")
+            .map(|b| extract_trait_method_names(b, source))
+            .unwrap_or_default(),
+    };
+
+    Some(TypeSignature { name, kind, members })
+}
+
+fn extract_named_children(body: Node, source: &[u8], item_kind: &str) -> Vec<String> {
+    let mut result = Vec::new();
+    for i in 0..body.child_count() {
+        if let Some(child) = body.child(i) {
+            if child.kind() == item_kind {
+                if let Some(name_node) = child.child_by_field_name("name") {
+                    result.push(node_text(name_node, source).to_string());
+                }
+            }
+        }
+    }
+    result
+}
+
+fn extract_trait_method_names(body: Node, source: &[u8]) -> Vec<String> {
+    let mut result = Vec::new();
+    for i in 0..body.child_count() {
+        if let Some(child) = body.child(i) {
+            if matches!(child.kind(), "function_signature_item" | "function_item") {
+                if let Some(name_node) = child.child_by_field_name("name") {
+                    result.push(node_text(name_node, source).to_string());
+                }
+            }
+        }
+    }
+    result
+}
+
 // ── Token extraction ──────────────────────────────────────────────────────────
 
 fn extract_tokens(root: Node, source: &[u8]) -> Vec<Token> {
@@ -331,7 +484,7 @@ fn is_declaration_only(root: Node, source: &[u8]) -> bool {
     !has_impl_with_functions(root, source)
 }
 
-fn has_impl_with_functions(node: Node, source: &[u8]) -> bool {
+fn has_impl_with_functions(node: Node, _source: &[u8]) -> bool {
     if node.kind() == "impl_item" {
         for i in 0..node.child_count() {
             if let Some(child) = node.child(i) {
@@ -351,7 +504,7 @@ fn has_impl_with_functions(node: Node, source: &[u8]) -> bool {
     }
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
-            if has_impl_with_functions(child, source) {
+            if has_impl_with_functions(child, _source) {
                 return true;
             }
         }
@@ -397,6 +550,8 @@ fn find_first_error_pos(node: Node) -> (usize, usize) {
 mod tests {
     use super::*;
     use crate::contracts::prompt_reader::PromptReader;
+    use crate::contracts::prompt_snapshot_reader::PromptSnapshotReader;
+    use crate::entities::parsed_file::PublicInterface;
     use std::path::PathBuf;
 
     struct NullPromptReader;
@@ -405,8 +560,14 @@ mod tests {
         fn exists(&self, _: &str) -> bool { false }
     }
 
-    fn make_parser() -> RustParser<NullPromptReader> {
-        RustParser::new(NullPromptReader, CrystallineConfig::default())
+    struct NullSnapshotReader;
+    impl PromptSnapshotReader for NullSnapshotReader {
+        fn read_snapshot(&self, _: &str) -> Option<PublicInterface> { None }
+        fn serialize_snapshot(&self, _: &PublicInterface) -> String { String::new() }
+    }
+
+    fn make_parser() -> RustParser<NullPromptReader, NullSnapshotReader> {
+        RustParser::new(NullPromptReader, NullSnapshotReader, CrystallineConfig::default())
     }
 
     fn source_file(content: &str) -> SourceFile {
