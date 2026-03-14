@@ -43,6 +43,8 @@ mod tests {
             has_test_coverage: false,
             imports: vec![],
             tokens: vec![],
+            public_interface: crate::entities::parsed_file::PublicInterface::empty(),
+            prompt_snapshot: None,
         }
     }
 

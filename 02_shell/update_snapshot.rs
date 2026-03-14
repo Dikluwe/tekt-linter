@@ -4,7 +4,7 @@
 //! @layer L2
 //! @updated 2026-03-14
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use colored::Colorize;
 
@@ -295,5 +295,4 @@ mod tests {
         assert!(out.contains("0 stale warnings remaining"));
     }
 
-    fn _uses_path(_: &Path) {}
 }
