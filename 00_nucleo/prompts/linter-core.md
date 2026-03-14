@@ -59,24 +59,24 @@ grammar declarados em configuração, sem mudança no núcleo.
 ## Verificações da v1
 
 **V1 — Presença de @prompt header**
-`ParsedFile.prompt_header == None` ou
-`ParsedFile.prompt_file_exists == false`.
+Ausência de cabeçalho válido provido pela Trait construtura ou
+inexistência de arquivo associado.
 Erro bloqueante.
 
 **V2 — Test file correspondente**
-`ParsedFile.has_test_coverage == false` em arquivo L1.
+Ausência de cobertura (`has_test_coverage == false`) em arquivo L1 pela Trait respectiva.
 Arquivos sem blocos `impl` com corpo lógico são isentos
 — deduzido do AST por L3.
 Erro bloqueante.
 
 **V3 — Imports proibidos por camada**
 Comparação pura de `file.layer` com `import.target_layer`
-para cada `Import` em `ParsedFile.imports`.
+para cada `Import` extraído (Trait).
 `Layer::Unknown` não gera violação.
 Erro bloqueante.
 
 **V4 — I/O em L1**
-Presença de `Token` em `ParsedFile.tokens` cujo `symbol`
+Presença de `Token` extraído na AST cujo `symbol`
 resolve para símbolo proibido em arquivo L1.
 Detecção semântica via AST — não regex.
 Erro bloqueante.
