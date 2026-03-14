@@ -27,3 +27,4 @@ V2 = { level = "error" }
 V3 = { level = "error" }
 V4 = { level = "error" }
 V5 = { level = "warning" }
+V6 = { level = "warning" }

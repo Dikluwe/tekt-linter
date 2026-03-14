@@ -7,6 +7,8 @@
 pub mod config;
 pub mod hash_writer;
 pub mod prompt_reader;
+pub mod prompt_snapshot_reader;
 pub mod rs_parser;
+pub mod snapshot_writer;
 pub mod walker;
 

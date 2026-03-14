@@ -8,4 +8,5 @@ pub mod file_provider;
 pub mod language_parser;
 pub mod parse_error;
 pub mod prompt_reader;
+pub mod prompt_snapshot_reader;
 

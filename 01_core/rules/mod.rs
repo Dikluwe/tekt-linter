@@ -8,5 +8,6 @@ pub mod forbidden_import;
 pub mod impure_core;
 pub mod prompt_drift;
 pub mod prompt_header;
+pub mod prompt_stale;
 pub mod test_file;
 

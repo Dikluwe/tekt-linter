@@ -2,7 +2,7 @@
 //! @prompt 00_nucleo/prompts/sarif-formatter.md
 //! @prompt-hash 4384383f
 //! @layer L2
-//! @updated 2026-03-13
+//! @updated 2026-03-14
 
 use std::path::PathBuf;
 
@@ -29,13 +29,17 @@ pub struct Cli {
     #[arg(long, default_value = "error")]
     pub fail_on: FailLevel,
 
-    /// Comma-separated list of checks to run (e.g. v1,v2,v3,v4,v5)
-    #[arg(long, default_value = "v1,v2,v3,v4,v5")]
+    /// Comma-separated list of checks to run (e.g. v1,v2,v3,v4,v5,v6)
+    #[arg(long, default_value = "v1,v2,v3,v4,v5,v6")]
     pub checks: String,
 
     /// Disable V5 drift detection
     #[arg(long)]
     pub no_drift: bool,
+
+    /// Disable V6 stale detection
+    #[arg(long)]
+    pub no_stale: bool,
 
     /// Only emit exit code, no output
     #[arg(long)]
@@ -49,15 +53,22 @@ pub struct Cli {
     #[arg(long)]
     pub fix_hashes: bool,
 
-    /// Preview changes without rewriting any file (requires --fix-hashes)
+    /// Update Interface Snapshot in prompt files for all V6 violations
+    #[arg(long)]
+    pub update_snapshot: bool,
+
+    /// Preview changes without rewriting any file (requires --fix-hashes or --update-snapshot)
     #[arg(long)]
     pub dry_run: bool,
 }
 
 /// Returns Err with a user-facing message if the arg combination is invalid.
 pub fn validate_args(cli: &Cli) -> Result<(), String> {
-    if cli.dry_run && !cli.fix_hashes {
-        return Err("--dry-run requires --fix-hashes".to_string());
+    if cli.fix_hashes && cli.update_snapshot {
+        return Err("--fix-hashes and --update-snapshot cannot be used simultaneously".to_string());
+    }
+    if cli.dry_run && !cli.fix_hashes && !cli.update_snapshot {
+        return Err("--dry-run requires --fix-hashes or --update-snapshot".to_string());
     }
     Ok(())
 }
@@ -82,10 +93,11 @@ pub struct EnabledChecks {
     pub v3: bool,
     pub v4: bool,
     pub v5: bool,
+    pub v6: bool,
 }
 
 impl EnabledChecks {
-    pub fn from_cli(checks: &str, no_drift: bool) -> Self {
+    pub fn from_cli(checks: &str, no_drift: bool, no_stale: bool) -> Self {
         let lower = checks.to_lowercase();
         Self {
             v1: lower.contains("v1"),
@@ -93,6 +105,7 @@ impl EnabledChecks {
             v3: lower.contains("v3"),
             v4: lower.contains("v4"),
             v5: lower.contains("v5") && !no_drift,
+            v6: lower.contains("v6") && !no_stale,
         }
     }
 }
@@ -180,6 +193,7 @@ fn sarif_rules() -> Vec<serde_json::Value> {
         sarif_rule("V3", "ForbiddenImport", "Import violates layer dependency direction", "error"),
         sarif_rule("V4", "ImpureCore", "I/O operation detected in L1 core", "error"),
         sarif_rule("V5", "PromptDrift", "Prompt hash mismatch — implementation drifted", "warning"),
+        sarif_rule("V6", "PromptStale", "Public interface changed since last prompt snapshot", "warning"),
     ]
 }
 
@@ -272,66 +286,73 @@ mod tests {
 
     #[test]
     fn enabled_checks_no_drift_disables_v5() {
-        let checks = EnabledChecks::from_cli("v1,v2,v3,v4,v5", true);
+        let checks = EnabledChecks::from_cli("v1,v2,v3,v4,v5,v6", true, false);
         assert!(!checks.v5);
         assert!(checks.v1);
+        assert!(checks.v6);
+    }
+
+    fn base_cli() -> Cli {
+        Cli {
+            path: PathBuf::from("."),
+            format: OutputFormat::Text,
+            fail_on: FailLevel::Error,
+            checks: "v1,v2,v3,v4,v5,v6".to_string(),
+            no_drift: false,
+            no_stale: false,
+            quiet: false,
+            config: PathBuf::from("crystalline.toml"),
+            fix_hashes: false,
+            update_snapshot: false,
+            dry_run: false,
+        }
     }
 
     #[test]
     fn dry_run_without_fix_hashes_is_error() {
-        let cli = Cli {
-            path: PathBuf::from("."),
-            format: OutputFormat::Text,
-            fail_on: FailLevel::Error,
-            checks: "v1,v2,v3,v4,v5".to_string(),
-            no_drift: false,
-            quiet: false,
-            config: PathBuf::from("crystalline.toml"),
-            fix_hashes: false,
-            dry_run: true,
-        };
+        let cli = Cli { dry_run: true, ..base_cli() };
         assert!(validate_args(&cli).is_err());
     }
 
     #[test]
     fn dry_run_with_fix_hashes_is_ok() {
-        let cli = Cli {
-            path: PathBuf::from("."),
-            format: OutputFormat::Text,
-            fail_on: FailLevel::Error,
-            checks: "v1,v2,v3,v4,v5".to_string(),
-            no_drift: false,
-            quiet: false,
-            config: PathBuf::from("crystalline.toml"),
-            fix_hashes: true,
-            dry_run: true,
-        };
+        let cli = Cli { fix_hashes: true, dry_run: true, ..base_cli() };
+        assert!(validate_args(&cli).is_ok());
+    }
+
+    #[test]
+    fn dry_run_with_update_snapshot_is_ok() {
+        let cli = Cli { update_snapshot: true, dry_run: true, ..base_cli() };
         assert!(validate_args(&cli).is_ok());
     }
 
     #[test]
     fn fix_hashes_alone_is_ok() {
-        let cli = Cli {
-            path: PathBuf::from("."),
-            format: OutputFormat::Text,
-            fail_on: FailLevel::Error,
-            checks: "v1,v2,v3,v4,v5".to_string(),
-            no_drift: false,
-            quiet: false,
-            config: PathBuf::from("crystalline.toml"),
-            fix_hashes: true,
-            dry_run: false,
-        };
+        let cli = Cli { fix_hashes: true, ..base_cli() };
         assert!(validate_args(&cli).is_ok());
     }
 
     #[test]
+    fn fix_hashes_and_update_snapshot_is_error() {
+        let cli = Cli { fix_hashes: true, update_snapshot: true, ..base_cli() };
+        assert!(validate_args(&cli).is_err());
+    }
+
+    #[test]
     fn enabled_checks_subset() {
-        let checks = EnabledChecks::from_cli("v1,v3", false);
+        let checks = EnabledChecks::from_cli("v1,v3", false, false);
         assert!(checks.v1);
         assert!(!checks.v2);
         assert!(checks.v3);
         assert!(!checks.v4);
         assert!(!checks.v5);
+        assert!(!checks.v6);
+    }
+
+    #[test]
+    fn no_stale_disables_v6() {
+        let checks = EnabledChecks::from_cli("v1,v2,v3,v4,v5,v6", false, true);
+        assert!(!checks.v6);
+        assert!(checks.v5);
     }
 }

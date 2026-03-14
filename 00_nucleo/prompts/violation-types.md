@@ -8,12 +8,13 @@
 
 Este módulo define as entidades fundamentais do linter: `ParsedFile`,
 `Violation`, `Layer` e tipos auxiliares. Formam a Representação
-Intermediária (IR) sobre a qual todas as regras V1–V5 operam de forma
+Intermediária (IR) sobre a qual todas as regras V1–V6 operam de forma
 pura e agnóstica a linguagem e filesystem.
 
 L3 é responsável por popular todos os campos — incluindo os booleanos
-derivados de filesystem e os `target_layer` de cada import. L1 nunca
-deriva esses valores por conta própria.
+derivados de filesystem, os `target_layer` de cada import, e os
+snapshots de interface pública para V6. L1 nunca deriva esses valores
+por conta própria.
 
 ---
 
@@ -29,114 +30,136 @@ pub struct ParsedFile {
     // Para V1
     pub prompt_header: Option<PromptHeader>,
     pub prompt_file_exists: bool,
-    // true se prompt_header.prompt_path existe em 00_nucleo/
-    // false se header ausente ou arquivo não encontrado
-    // populado por L3 via PromptReader
 
     // Para V2
     pub has_test_coverage: bool,
-    // true se arquivo contém #[cfg(test)] no AST
-    // ou se arquivo _test.rs adjacente existe em disco
-    // populado por L3 (FileWalker + LanguageParser)
 
     // Para V3
     pub imports: Vec<Import>,
 
     // Para V4
     pub tokens: Vec<Token>,
+
+    // Para V6
+    pub public_interface: PublicInterface,
+    // Interface pública extraída do AST pelo RustParser (L3)
+
+    pub prompt_snapshot: Option<PublicInterface>,
+    // Snapshot da interface registrada no prompt em L0
+    // None se o prompt não contém seção ## Interface Snapshot
+    // Populado por L3 via PromptSnapshotReader
 }
 ```
 
-### `PromptHeader`
+### `PublicInterface` (novo — para V6)
 ```rust
-pub struct PromptHeader {
-    pub prompt_path: String,
-    pub prompt_hash: Option<String>,  // hash declarado no header
-    pub current_hash: Option<String>, // hash real do arquivo em disco
-    // populado por L3 via PromptReader::read_hash()
-    // None se arquivo não existe
-    pub layer: Layer,
-    pub updated: Option<String>,
+/// Interface pública extraída do AST — agnóstica de linguagem.
+/// Não inclui implementação, apenas contratos visíveis externamente.
+/// Dois ParsedFiles com PublicInterface idênticas são estruturalmente
+/// equivalentes do ponto de vista do contrato.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublicInterface {
+    pub functions: Vec<FunctionSignature>,
+    pub types: Vec<TypeSignature>,
+    pub reexports: Vec<String>,
+}
+
+impl PublicInterface {
+    pub fn is_empty(&self) -> bool {
+        self.functions.is_empty()
+            && self.types.is_empty()
+            && self.reexports.is_empty()
+    }
 }
 ```
 
-`current_hash` resolve o Gap 4 parcialmente — V5 compara
-`prompt_hash` com `current_hash` sem nenhum acesso a disco.
-
-### `Import`
+### `FunctionSignature` (novo — para V6)
 ```rust
-pub struct Import {
-    pub path: String,
-    pub line: usize,
-    pub kind: ImportKind,
-    pub target_layer: Layer,
-    // Layer::Unknown se o path não mapeia para nenhuma camada cristalina
-    // populado por L3 baseado no prefix do path e crystalline.toml
-}
-
-pub enum ImportKind {
-    Use,
-    ExternCrate,
-    ModDecl,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionSignature {
+    pub name: String,
+    /// Tipos dos parâmetros como strings normalizadas
+    pub params: Vec<String>,
+    /// None para funções que retornam ()
+    pub return_type: Option<String>,
 }
 ```
 
-### `Token`
+### `TypeSignature` (novo — para V6)
 ```rust
-pub struct Token {
-    pub symbol: String,   // ex: "std::fs::read"
-    pub line: usize,
-    pub column: usize,
-    pub kind: TokenKind,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeSignature {
+    pub name: String,
+    pub kind: TypeKind,
+    /// Campos de struct, variantes de enum, métodos de trait
+    pub members: Vec<String>,
 }
 
-pub enum TokenKind {
-    CallExpression,
-    MacroInvocation,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypeKind {
+    Struct,
+    Enum,
+    Trait,
 }
 ```
 
-### `Violation`
+### `InterfaceDelta` (novo — para V6)
 ```rust
-pub struct Violation {
-    pub rule_id: String,      // "V1" | "V2" | "V3" | "V4" | "V5"
-    pub level: ViolationLevel,
-    pub message: String,
-    pub location: Location,
+/// Diferença entre interface atual e snapshot do prompt.
+/// Produzida por compute_delta() em L1 — função pura.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InterfaceDelta {
+    pub added_functions: Vec<FunctionSignature>,
+    pub removed_functions: Vec<FunctionSignature>,
+    pub added_types: Vec<TypeSignature>,
+    pub removed_types: Vec<TypeSignature>,
+    pub added_reexports: Vec<String>,
+    pub removed_reexports: Vec<String>,
 }
 
-pub struct Location {
-    pub path: PathBuf,
-    pub line: usize,
-    pub column: usize,
+impl InterfaceDelta {
+    pub fn is_empty(&self) -> bool {
+        self.added_functions.is_empty()
+            && self.removed_functions.is_empty()
+            && self.added_types.is_empty()
+            && self.removed_types.is_empty()
+            && self.added_reexports.is_empty()
+            && self.removed_reexports.is_empty()
+    }
+
+    pub fn describe(&self) -> String {
+        // Produz string legível para mensagem de violação.
+        // Exemplo: "+fn check, -fn validate, +struct Delta"
+        // Ordem: adições antes de remoções, funções antes de tipos.
+    }
 }
 
-pub enum ViolationLevel {
-    Error,
-    Warning,
-}
-```
-
-### `Layer`
-```rust
-pub enum Layer {
-    L0,
-    L1,
-    L2,
-    L3,
-    L4,
-    Lab,
-    Unknown,
-}
-```
-
-### `Language`
-```rust
-pub enum Language {
-    Rust,
-    TypeScript,
-    Python,
-    Unknown,
+/// Computa o delta entre interface atual e snapshot.
+/// Função pura — zero I/O, zero tree-sitter.
+pub fn compute_delta(
+    current: &PublicInterface,
+    snapshot: &PublicInterface,
+) -> InterfaceDelta {
+    InterfaceDelta {
+        added_functions: current.functions.iter()
+            .filter(|f| !snapshot.functions.contains(f))
+            .cloned().collect(),
+        removed_functions: snapshot.functions.iter()
+            .filter(|f| !current.functions.contains(f))
+            .cloned().collect(),
+        added_types: current.types.iter()
+            .filter(|t| !snapshot.types.contains(t))
+            .cloned().collect(),
+        removed_types: snapshot.types.iter()
+            .filter(|t| !current.types.contains(t))
+            .cloned().collect(),
+        added_reexports: current.reexports.iter()
+            .filter(|r| !snapshot.reexports.contains(r))
+            .cloned().collect(),
+        removed_reexports: snapshot.reexports.iter()
+            .filter(|r| !current.reexports.contains(r))
+            .cloned().collect(),
+    }
 }
 ```
 
@@ -150,6 +173,8 @@ pub enum Language {
 | `has_test_coverage` | `FileWalker` + `RustParser` | adjacência em disco + nó `#[cfg(test)]` no AST |
 | `Import.target_layer` | `RustParser` | prefix matching do path contra `crystalline.toml` |
 | `PromptHeader.current_hash` | `FsPromptReader` | `PromptReader::read_hash()` |
+| `public_interface` | `RustParser` | extração de nós públicos do AST via tree-sitter |
+| `prompt_snapshot` | `PromptSnapshotReader` | leitura e desserialização da seção `## Interface Snapshot` do prompt |
 
 ---
 
@@ -157,32 +182,27 @@ pub enum Language {
 
 - Zero I/O — todas as structs são dados puros
 - `ParsedFile` é construído inteiramente por L3 antes de chegar a L1
+- `compute_delta` é função pura sobre dois `PublicInterface`
 - Regras em L1 apenas leem os campos — nunca os derivam
 
 ---
 
 ## Critérios de Verificação
 ```
-Dado ParsedFile com prompt_file_exists = false
-Quando V1::check() for chamado
-Então retorna Violation com rule_id "V1"
+[critérios existentes de V1–V5 preservados]
 
-Dado ParsedFile com has_test_coverage = false e layer = L1
-Quando V2::check() for chamado
-Então retorna Violation com rule_id "V2"
+Dado PublicInterface com função "check" adicionada
+E snapshot sem essa função
+Quando compute_delta() for chamado
+Então InterfaceDelta.added_functions contém "check"
 
-Dado Import com target_layer = L3 em arquivo com layer = L2
-Quando V3::check() for chamado
-Então retorna Violation com rule_id "V3"
+Dado PublicInterface idêntica ao snapshot
+Quando compute_delta() for chamado
+Então InterfaceDelta.is_empty() == true
 
-Dado PromptHeader com prompt_hash = "a3f8c2d1"
-e current_hash = Some("b9e4f7a2")
-Quando V5::check() for chamado
-Então retorna Violation com rule_id "V5" e level Warning
-
-Dado ParsedFile construído com todos os campos populados
-Quando qualquer regra for chamada
-Então nenhuma regra acessa disco ou faz I/O
+Dado InterfaceDelta com +fn check e -fn validate
+Quando describe() for chamado
+Então retorna string contendo "+fn check" e "-fn validate"
 ```
 
 ---
@@ -193,3 +213,4 @@ Então nenhuma regra acessa disco ou faz I/O
 |------|--------|-------------------|
 | 2025-03-13 | Criação inicial | parsed_file.rs, violation.rs, layer.rs |
 | 2025-03-13 | Gap 2: adicionado prompt_file_exists, has_test_coverage, Import.target_layer, PromptHeader.current_hash | parsed_file.rs |
+| 2025-03-13 | V6: adicionado PublicInterface, FunctionSignature, TypeSignature, InterfaceDelta, compute_delta | parsed_file.rs |
