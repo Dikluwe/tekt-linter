@@ -66,11 +66,11 @@ pub fn compute_delta(current: &PublicInterface, snapshot: &PublicInterface) -> I
 }
 
 fn added_fns(a: &[FunctionSignature], b: &[FunctionSignature]) -> Vec<FunctionSignature> {
-    a.iter().filter(|f| !b.iter().any(|g| g.name == f.name)).cloned().collect()
+    a.iter().filter(|f| !b.contains(f)).cloned().collect()
 }
 
 fn added_types(a: &[TypeSignature], b: &[TypeSignature]) -> Vec<TypeSignature> {
-    a.iter().filter(|t| !b.iter().any(|u| u.name == t.name)).cloned().collect()
+    a.iter().filter(|t| !b.contains(t)).cloned().collect()
 }
 
 fn added_strs(a: &[String], b: &[String]) -> Vec<String> {
@@ -208,6 +208,34 @@ mod tests {
         let desc = delta.describe();
         assert!(desc.contains("+fn new_fn"));
         assert!(desc.contains("-type OldType"));
+    }
+
+    #[test]
+    fn signature_change_generates_v6_with_both_entries() {
+        // foo(a: String) -> bool  →  foo(a: Vec<String>) -> bool
+        // Same name but different params — full PartialEq detects the change.
+        // Delta must contain -fn foo (removed) AND +fn foo (added).
+        let old_sig = FunctionSignature {
+            name: "foo".to_string(),
+            params: vec!["a: String".to_string()],
+            return_type: Some("bool".to_string()),
+        };
+        let new_sig = FunctionSignature {
+            name: "foo".to_string(),
+            params: vec!["a: Vec<String>".to_string()],
+            return_type: Some("bool".to_string()),
+        };
+        let mut file = base_file();
+        file.public_interface =
+            PublicInterface { functions: vec![new_sig], types: vec![], reexports: vec![] };
+        file.prompt_snapshot =
+            Some(PublicInterface { functions: vec![old_sig], types: vec![], reexports: vec![] });
+        let violations = check(&file);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, "V6");
+        let msg = &violations[0].message;
+        assert!(msg.contains("+fn foo"), "delta deve conter +fn foo, got: {msg}");
+        assert!(msg.contains("-fn foo"), "delta deve conter -fn foo, got: {msg}");
     }
 
     #[test]
