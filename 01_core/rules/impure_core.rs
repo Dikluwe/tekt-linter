@@ -2,11 +2,18 @@
 //! @prompt 00_nucleo/prompts/rules/impure-core.md
 //! @prompt-hash 3f1c25cf
 //! @layer L1
-//! @updated 2026-03-13
+//! @updated 2026-03-14
 
 use crate::entities::layer::Layer;
-use crate::entities::parsed_file::{ParsedFile, Token};
+use crate::entities::parsed_file::Token;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
+use std::path::Path;
+
+pub trait HasTokens {
+    fn layer(&self) -> &Layer;
+    fn tokens(&self) -> &[Token];
+    fn path(&self) -> &Path;
+}
 
 /// V4 — Impure core: forbidden I/O symbol detected in L1.
 /// Operates semantically on ParsedFile.tokens (pre-extracted from AST by L3).
@@ -26,12 +33,12 @@ const FORBIDDEN_SYMBOLS: &[&str] = &[
     "rand::random",
 ];
 
-pub fn check(file: &ParsedFile) -> Vec<Violation> {
-    if file.layer != Layer::L1 {
+pub fn check<T: HasTokens>(file: &T) -> Vec<Violation> {
+    if *file.layer() != Layer::L1 {
         return vec![];
     }
 
-    file.tokens
+    file.tokens()
         .iter()
         .filter(|token| is_forbidden_symbol(&token.symbol))
         .map(|token| make_violation(file, token))
@@ -44,7 +51,7 @@ fn is_forbidden_symbol(symbol: &str) -> bool {
         .any(|&forbidden| symbol == forbidden || symbol.starts_with(&format!("{}::", forbidden)))
 }
 
-fn make_violation(file: &ParsedFile, token: &Token) -> Violation {
+fn make_violation<T: HasTokens>(file: &T, token: &Token) -> Violation {
     Violation {
         rule_id: "V4".to_string(),
         level: ViolationLevel::Error,
@@ -53,7 +60,7 @@ fn make_violation(file: &ParsedFile, token: &Token) -> Violation {
             token.symbol
         ),
         location: Location {
-            path: file.path.clone(),
+            path: file.path().to_path_buf(),
             line: token.line,
             column: token.column,
         },
@@ -63,20 +70,33 @@ fn make_violation(file: &ParsedFile, token: &Token) -> Violation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::layer::{Language, Layer};
-    use crate::entities::parsed_file::{ParsedFile, Token, TokenKind};
-    use std::path::PathBuf;
+    use crate::entities::layer::Layer;
+    use crate::entities::parsed_file::{Token, TokenKind};
+    use std::path::{Path, PathBuf};
 
-    fn base_file(layer: Layer) -> ParsedFile {
-        ParsedFile {
-            path: PathBuf::from("01_core/foo.rs"),
+    struct MockFile {
+        layer: Layer,
+        tokens: Vec<Token>,
+        path: PathBuf,
+    }
+
+    impl HasTokens for MockFile {
+        fn layer(&self) -> &Layer {
+            &self.layer
+        }
+        fn tokens(&self) -> &[Token] {
+            &self.tokens
+        }
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    fn base_file(layer: Layer) -> MockFile {
+        MockFile {
             layer,
-            language: Language::Rust,
-            prompt_header: None,
-            prompt_file_exists: false,
-            has_test_coverage: true,
-            imports: vec![],
             tokens: vec![],
+            path: PathBuf::from("01_core/foo.rs"),
         }
     }
 

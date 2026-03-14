@@ -331,7 +331,7 @@ fn is_declaration_only(root: Node, source: &[u8]) -> bool {
     !has_impl_with_functions(root, source)
 }
 
-fn has_impl_with_functions(node: Node, source: &[u8]) -> bool {
+fn has_impl_with_functions(node: Node, _source: &[u8]) -> bool {
     if node.kind() == "impl_item" {
         for i in 0..node.child_count() {
             if let Some(child) = node.child(i) {
@@ -351,7 +351,7 @@ fn has_impl_with_functions(node: Node, source: &[u8]) -> bool {
     }
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
-            if has_impl_with_functions(child, source) {
+            if has_impl_with_functions(child, _source) {
                 return true;
             }
         }

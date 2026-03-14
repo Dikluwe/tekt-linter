@@ -26,24 +26,17 @@ pub struct ParsedFile {
     pub layer: Layer,
     pub language: Language,
 
-    // Para V1
+    // Base IR (AST Features)
     pub prompt_header: Option<PromptHeader>,
-    pub prompt_file_exists: bool,
-    // true se prompt_header.prompt_path existe em 00_nucleo/
-    // false se header ausente ou arquivo não encontrado
-    // populado por L3 via PromptReader
-
-    // Para V2
-    pub has_test_coverage: bool,
-    // true se arquivo contém #[cfg(test)] no AST
-    // ou se arquivo _test.rs adjacente existe em disco
-    // populado por L3 (FileWalker + LanguageParser)
-
-    // Para V3
     pub imports: Vec<Import>,
-
-    // Para V4
     pub tokens: Vec<Token>,
+
+    // Dynamic Metadata Map (Decoupled Rule Injection)
+    pub extensions: Extensions,
+}
+
+pub struct Extensions {
+    // typemap internal implementation
 }
 ```
 
@@ -144,10 +137,17 @@ pub enum Language {
 
 ## Responsabilidades de População (L3)
 
-| Campo | Quem popula | Como |
-|-------|-------------|------|
-| `prompt_file_exists` | `FsPromptReader` | `PromptReader::exists()` |
-| `has_test_coverage` | `FileWalker` + `RustParser` | adjacência em disco + nó `#[cfg(test)]` no AST |
+L3 processa e injeta metadados sob a `Extensions` map, que as regras (L1) consultam a posteriori tipando através de structs customizadas vinculadas às regras:
+
+| Extension Struct | Quem popula (L3) | Regra Destino | Como |
+|------------------|------------------|---------------|------|
+| `FileExistsMeta(bool)` | `FsPromptReader` | V1 | O L3 checa no disco e insere na extensão em L1. |
+| `CoverageMeta(bool)` | `FileWalker` + `RustParser` | V2 | Injeta ao ver adjacência em disco ou nó `#[cfg(test)]`. |
+
+*Nota: V3/V4/V5 dependem unicamente da IR bruta.*
+
+| Campo Base IR | Quem popula | Como |
+|---------------|-------------|------|
 | `Import.target_layer` | `RustParser` | prefix matching do path contra `crystalline.toml` |
 | `PromptHeader.current_hash` | `FsPromptReader` | `PromptReader::read_hash()` |
 

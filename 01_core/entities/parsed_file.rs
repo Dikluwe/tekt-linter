@@ -57,6 +57,65 @@ pub struct PromptHeader {
     pub updated: Option<String>,
 }
 
+// ── Trait Implementations for Rules (OCP) ───────────────────────────────────
+
+impl crate::rules::prompt_header::HasPromptFilesystem for ParsedFile {
+    fn prompt_header(&self) -> Option<&PromptHeader> {
+        self.prompt_header.as_ref()
+    }
+    fn prompt_file_exists(&self) -> bool {
+        self.prompt_file_exists
+    }
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl crate::rules::test_file::HasCoverage for ParsedFile {
+    fn layer(&self) -> &Layer {
+        &self.layer
+    }
+    fn has_test_coverage(&self) -> bool {
+        self.has_test_coverage
+    }
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl crate::rules::forbidden_import::HasImports for ParsedFile {
+    fn layer(&self) -> &Layer {
+        &self.layer
+    }
+    fn imports(&self) -> &[Import] {
+        &self.imports
+    }
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl crate::rules::impure_core::HasTokens for ParsedFile {
+    fn layer(&self) -> &Layer {
+        &self.layer
+    }
+    fn tokens(&self) -> &[Token] {
+        &self.tokens
+    }
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl crate::rules::prompt_drift::HasHashes for ParsedFile {
+    fn prompt_header(&self) -> Option<&PromptHeader> {
+        self.prompt_header.as_ref()
+    }
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
 // ── ParsedFile ────────────────────────────────────────────────────────────────
 
 /// Intermediate representation consumed by all V1–V5 rules.
