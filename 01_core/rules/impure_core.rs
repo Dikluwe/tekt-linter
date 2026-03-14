@@ -9,15 +9,17 @@ use crate::entities::parsed_file::Token;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 use std::path::Path;
 
-pub trait HasTokens {
+pub trait HasTokens<'a> {
     fn layer(&self) -> &Layer;
-    fn tokens(&self) -> &[Token];
-    fn path(&self) -> &Path;
+    fn tokens(&self) -> &[Token<'a>];
+    fn path(&self) -> &'a Path;
 }
 
 /// V4 — Impure core: forbidden I/O symbol detected in L1.
 /// Operates semantically on ParsedFile.tokens (pre-extracted from AST by L3).
 /// Never uses regex or string contains — only symbol comparison.
+/// Token.symbol is Cow<'a, str> — V4 accesses via Deref as &str,
+/// transparent to the Borrowed/Owned distinction.
 const FORBIDDEN_SYMBOLS: &[&str] = &[
     "std::fs",
     "std::io",
@@ -33,7 +35,7 @@ const FORBIDDEN_SYMBOLS: &[&str] = &[
     "rand::random",
 ];
 
-pub fn check<T: HasTokens>(file: &T) -> Vec<Violation> {
+pub fn check<'a, T: HasTokens<'a>>(file: &T) -> Vec<Violation<'a>> {
     if *file.layer() != Layer::L1 {
         return vec![];
     }
@@ -51,7 +53,7 @@ fn is_forbidden_symbol(symbol: &str) -> bool {
         .any(|&forbidden| symbol == forbidden || symbol.starts_with(&format!("{}::", forbidden)))
 }
 
-fn make_violation<T: HasTokens>(file: &T, token: &Token) -> Violation {
+fn make_violation<'a, T: HasTokens<'a>>(file: &T, token: &Token<'a>) -> Violation<'a> {
     Violation {
         rule_id: "V4".to_string(),
         level: ViolationLevel::Error,
@@ -59,11 +61,7 @@ fn make_violation<T: HasTokens>(file: &T, token: &Token) -> Violation {
             "Núcleo Impuro: operação proibida '{}' detectada em L1",
             token.symbol
         ),
-        location: Location {
-            path: file.path().to_path_buf(),
-            line: token.line,
-            column: token.column,
-        },
+        location: Location { path: file.path(), line: token.line, column: token.column },
     }
 }
 
@@ -72,23 +70,24 @@ mod tests {
     use super::*;
     use crate::entities::layer::Layer;
     use crate::entities::parsed_file::{Token, TokenKind};
-    use std::path::{Path, PathBuf};
+    use std::borrow::Cow;
+    use std::path::Path;
 
     struct MockFile {
         layer: Layer,
-        tokens: Vec<Token>,
-        path: PathBuf,
+        tokens: Vec<Token<'static>>,
+        path: &'static Path,
     }
 
-    impl HasTokens for MockFile {
+    impl HasTokens<'static> for MockFile {
         fn layer(&self) -> &Layer {
             &self.layer
         }
-        fn tokens(&self) -> &[Token] {
+        fn tokens(&self) -> &[Token<'static>] {
             &self.tokens
         }
-        fn path(&self) -> &Path {
-            &self.path
+        fn path(&self) -> &'static Path {
+            self.path
         }
     }
 
@@ -96,13 +95,13 @@ mod tests {
         MockFile {
             layer,
             tokens: vec![],
-            path: PathBuf::from("01_core/foo.rs"),
+            path: Path::new("01_core/foo.rs"),
         }
     }
 
-    fn call_token(symbol: &str, line: usize, column: usize) -> Token {
+    fn call_token(symbol: &'static str, line: usize, column: usize) -> Token<'static> {
         Token {
-            symbol: symbol.to_string(),
+            symbol: Cow::Borrowed(symbol),
             line,
             column,
             kind: TokenKind::CallExpression,
@@ -152,7 +151,6 @@ mod tests {
 
     #[test]
     fn forbidden_symbol_in_l3_is_not_violation() {
-        // V4 only fires for L1
         let mut file = base_file(Layer::L3);
         file.tokens.push(call_token("std::fs::read", 10, 0));
         assert!(check(&file).is_empty());

@@ -8,10 +8,10 @@ use crate::entities::layer::Layer;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 use std::path::Path;
 
-pub trait HasCoverage {
+pub trait HasCoverage<'a> {
     fn layer(&self) -> &Layer;
     fn has_test_coverage(&self) -> bool;
-    fn path(&self) -> &Path;
+    fn path(&self) -> &'a Path;
 }
 
 /// V2 — Missing test coverage for L1 modules.
@@ -20,7 +20,7 @@ pub trait HasCoverage {
 /// Exemption: files that only declare traits/structs/enums without impl
 /// bodies are exempt. L3 (RustParser) encodes this exemption by setting
 /// has_test_coverage = true for such files — L1 never re-derives it.
-pub fn check<T: HasCoverage>(file: &T) -> Vec<Violation> {
+pub fn check<'a, T: HasCoverage<'a>>(file: &T) -> Vec<Violation<'a>> {
     if *file.layer() != Layer::L1 {
         return vec![];
     }
@@ -34,11 +34,7 @@ pub fn check<T: HasCoverage>(file: &T) -> Vec<Violation> {
         level: ViolationLevel::Error,
         message: "Módulo do núcleo carece de verificação simultânea (test file ou bloco cfg(test))"
             .to_string(),
-        location: Location {
-            path: file.path().to_path_buf(),
-            line: 1,
-            column: 0,
-        },
+        location: Location { path: file.path(), line: 1, column: 0 },
     }]
 }
 
@@ -46,23 +42,23 @@ pub fn check<T: HasCoverage>(file: &T) -> Vec<Violation> {
 mod tests {
     use super::*;
     use crate::entities::layer::Layer;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     struct MockFile {
         layer: Layer,
         has_coverage: bool,
-        path: PathBuf,
+        path: &'static Path,
     }
 
-    impl HasCoverage for MockFile {
+    impl HasCoverage<'static> for MockFile {
         fn layer(&self) -> &Layer {
             &self.layer
         }
         fn has_test_coverage(&self) -> bool {
             self.has_coverage
         }
-        fn path(&self) -> &Path {
-            &self.path
+        fn path(&self) -> &'static Path {
+            self.path
         }
     }
 
@@ -70,7 +66,7 @@ mod tests {
         MockFile {
             layer,
             has_coverage: has_test_coverage,
-            path: PathBuf::from("01_core/foo.rs"),
+            path: Path::new("01_core/foo.rs"),
         }
     }
 

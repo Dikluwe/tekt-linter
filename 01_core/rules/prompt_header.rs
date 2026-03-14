@@ -8,16 +8,16 @@ use crate::entities::parsed_file::PromptHeader;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 use std::path::Path;
 
-pub trait HasPromptFilesystem {
-    fn prompt_header(&self) -> Option<&PromptHeader>;
+pub trait HasPromptFilesystem<'a> {
+    fn prompt_header(&self) -> Option<&PromptHeader<'a>>;
     fn prompt_file_exists(&self) -> bool;
-    fn path(&self) -> &Path;
+    fn path(&self) -> &'a Path;
 }
 
 /// V1 — Missing or unresolvable @prompt header.
 /// Fires when prompt_header is absent OR when the referenced prompt file
 /// does not exist in 00_nucleo/ (prompt_file_exists == false).
-pub fn check<T: HasPromptFilesystem>(file: &T) -> Vec<Violation> {
+pub fn check<'a, T: HasPromptFilesystem<'a>>(file: &T) -> Vec<Violation<'a>> {
     let has_valid_header = file.prompt_header().is_some() && file.prompt_file_exists();
 
     if has_valid_header {
@@ -28,11 +28,7 @@ pub fn check<T: HasPromptFilesystem>(file: &T) -> Vec<Violation> {
         rule_id: "V1".to_string(),
         level: ViolationLevel::Error,
         message: "Arquivo Cristalino sem linhagem causal @prompt encontrada".to_string(),
-        location: Location {
-            path: file.path().to_path_buf(),
-            line: 1,
-            column: 0,
-        },
+        location: Location { path: file.path(), line: 1, column: 0 },
     }]
 }
 
@@ -41,23 +37,23 @@ mod tests {
     use super::*;
     use crate::entities::layer::Layer;
     use crate::entities::parsed_file::PromptHeader;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     struct MockFile {
-        header: Option<PromptHeader>,
+        header: Option<PromptHeader<'static>>,
         exists: bool,
-        path: PathBuf,
+        path: &'static Path,
     }
 
-    impl HasPromptFilesystem for MockFile {
-        fn prompt_header(&self) -> Option<&PromptHeader> {
+    impl HasPromptFilesystem<'static> for MockFile {
+        fn prompt_header(&self) -> Option<&PromptHeader<'static>> {
             self.header.as_ref()
         }
         fn prompt_file_exists(&self) -> bool {
             self.exists
         }
-        fn path(&self) -> &Path {
-            &self.path
+        fn path(&self) -> &'static Path {
+            self.path
         }
     }
 
@@ -65,17 +61,17 @@ mod tests {
         MockFile {
             header: None,
             exists: false,
-            path: PathBuf::from("01_core/foo.rs"),
+            path: Path::new("01_core/foo.rs"),
         }
     }
 
-    fn valid_header() -> PromptHeader {
+    fn valid_header() -> PromptHeader<'static> {
         PromptHeader {
-            prompt_path: "00_nucleo/prompts/linter-core.md".to_string(),
-            prompt_hash: Some("a3f8c2d1".to_string()),
+            prompt_path: "00_nucleo/prompts/linter-core.md",
+            prompt_hash: Some("a3f8c2d1"),
             current_hash: Some("a3f8c2d1".to_string()),
             layer: Layer::L1,
-            updated: Some("2026-03-13".to_string()),
+            updated: Some("2026-03-13"),
         }
     }
 
@@ -89,7 +85,7 @@ mod tests {
 
     #[test]
     fn violation_when_header_absent() {
-        let file = base_file(); // prompt_header: None
+        let file = base_file();
         let violations = check(&file);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "V1");
@@ -100,7 +96,7 @@ mod tests {
     fn violation_when_header_present_but_file_missing() {
         let mut file = base_file();
         file.header = Some(valid_header());
-        file.exists = false; // prompt file not found in 00_nucleo/
+        file.exists = false;
         let violations = check(&file);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "V1");

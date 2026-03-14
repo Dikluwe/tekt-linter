@@ -10,10 +10,10 @@ use crate::entities::parsed_file::ParsedFile;
 
 /// Boundary between L3 (tree-sitter grammar) and L1 (rules).
 /// L3 implements, L1 consumes.
-/// Receives the full SourceFile — not just &str — because the parser
-/// needs path to determine Layer and Language before invoking the grammar.
+/// Receives a reference to SourceFile so ParsedFile<'a> can borrow
+/// from the source buffer — zero-copy per ADR-0004.
 pub trait LanguageParser {
-    fn parse(&self, file: SourceFile) -> Result<ParsedFile, ParseError>;
+    fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError>;
 }
 
 #[cfg(test)]
@@ -21,21 +21,21 @@ mod tests {
     use super::*;
     use crate::entities::layer::{Language, Layer};
     use crate::entities::parsed_file::ParsedFile;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     struct MockParser {
-        result: Result<ParsedFile, ParseError>,
+        result: Result<ParsedFile<'static>, ParseError>,
     }
 
     impl LanguageParser for MockParser {
-        fn parse(&self, _file: SourceFile) -> Result<ParsedFile, ParseError> {
+        fn parse<'a>(&self, _file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
             self.result.clone()
         }
     }
 
-    fn valid_parsed_file(path: &str) -> ParsedFile {
+    fn valid_parsed_file() -> ParsedFile<'static> {
         ParsedFile {
-            path: PathBuf::from(path),
+            path: Path::new("01_core/foo.rs"),
             layer: Layer::L1,
             language: Language::Rust,
             prompt_header: None,
@@ -61,10 +61,10 @@ mod tests {
     #[test]
     fn mock_parser_returns_ok_for_valid_source() {
         let parser = MockParser {
-            result: Ok(valid_parsed_file("01_core/foo.rs")),
+            result: Ok(valid_parsed_file()),
         };
         let file = make_source_file("01_core/foo.rs");
-        let result = parser.parse(file);
+        let result = parser.parse(&file);
         assert!(result.is_ok());
     }
 
@@ -79,7 +79,7 @@ mod tests {
             }),
         };
         let file = make_source_file("01_core/bad.rs");
-        let result = parser.parse(file);
+        let result = parser.parse(&file);
         assert!(result.is_err());
     }
 }

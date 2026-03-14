@@ -17,7 +17,7 @@ use crate::entities::violation::Violation;
 /// L3 provides the concrete I/O. L4 creates the adapter.
 pub trait SnapshotRewriter {
     /// Serialize a PublicInterface to the canonical snapshot section format.
-    fn serialize_snapshot(&self, interface: &PublicInterface) -> String;
+    fn serialize_snapshot(&self, interface: &PublicInterface<'_>) -> String;
 
     /// Atomically write the snapshot section to the prompt file.
     fn write_snapshot(&self, prompt_path: &str, snapshot: &str) -> Result<(), String>;
@@ -41,9 +41,9 @@ pub struct SnapshotResult {
 // ── Core functions ────────────────────────────────────────────────────────────
 
 /// Build snapshot entries from V6 violations + the corresponding ParsedFiles.
-pub fn plan(
-    violations: &[Violation],
-    parsed_files: &[ParsedFile],
+pub fn plan<'a>(
+    violations: &[Violation<'a>],
+    parsed_files: &[ParsedFile<'a>],
     rewriter: &dyn SnapshotRewriter,
 ) -> Vec<SnapshotEntry> {
     violations
@@ -54,8 +54,8 @@ pub fn plan(
             let header = parsed.prompt_header.as_ref()?;
             let new_snapshot = rewriter.serialize_snapshot(&parsed.public_interface);
             Some(SnapshotEntry {
-                source_path: v.location.path.clone(),
-                prompt_path: header.prompt_path.clone(),
+                source_path: v.location.path.to_path_buf(),
+                prompt_path: header.prompt_path.to_string(),
                 new_snapshot,
             })
         })
@@ -175,6 +175,7 @@ mod tests {
     use crate::entities::parsed_file::{PromptHeader, PublicInterface};
     use crate::entities::violation::{Location, ViolationLevel};
     use std::cell::RefCell;
+    use std::path::{Path, PathBuf};
 
     struct MockRewriter {
         write_calls: RefCell<Vec<(String, String)>>,
@@ -188,7 +189,7 @@ mod tests {
     }
 
     impl SnapshotRewriter for MockRewriter {
-        fn serialize_snapshot(&self, _: &PublicInterface) -> String {
+        fn serialize_snapshot(&self, _: &PublicInterface<'_>) -> String {
             "## Interface Snapshot\n<!-- crystalline-snapshot: {} -->".to_string()
         }
         fn write_snapshot(&self, prompt_path: &str, snapshot: &str) -> Result<(), String> {
@@ -199,22 +200,22 @@ mod tests {
         }
     }
 
-    fn v6_violation(path: &str) -> Violation {
+    fn v6_violation(path: &'static str) -> Violation<'static> {
         Violation {
             rule_id: "V6".to_string(),
             level: ViolationLevel::Warning,
             message: "stale".to_string(),
-            location: Location { path: PathBuf::from(path), line: 1, column: 0 },
+            location: Location { path: Path::new(path), line: 1, column: 0 },
         }
     }
 
-    fn parsed_file_for(path: &str) -> ParsedFile {
+    fn parsed_file_for(path: &'static str) -> ParsedFile<'static> {
         ParsedFile {
-            path: PathBuf::from(path),
+            path: Path::new(path),
             layer: Layer::L1,
             language: Language::Rust,
             prompt_header: Some(PromptHeader {
-                prompt_path: "00_nucleo/prompts/foo.md".to_string(),
+                prompt_path: "00_nucleo/prompts/foo.md",
                 prompt_hash: None,
                 current_hash: None,
                 layer: Layer::L1,
@@ -246,7 +247,7 @@ mod tests {
             rule_id: "V1".to_string(),
             level: ViolationLevel::Error,
             message: "missing header".to_string(),
-            location: Location { path: PathBuf::from("foo.rs"), line: 1, column: 0 },
+            location: Location { path: Path::new("foo.rs"), line: 1, column: 0 },
         }];
         let files = vec![parsed_file_for("foo.rs")];
         let entries = plan(&violations, &files, &rewriter);

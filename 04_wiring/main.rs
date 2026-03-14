@@ -53,15 +53,15 @@ fn main() {
     let nucleo_root = PathBuf::from(".");
     let enabled = EnabledChecks::from_cli(&cli.checks, cli.no_drift, cli.no_stale);
 
-    let (all_violations, all_parsed) = {
-        let parser = RustParser::new(
-            FsPromptReader { nucleo_root: nucleo_root.clone() },
-            FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
-            config.clone(),
-        );
-        let walker = FileWalker::new(cli.path.clone(), config.clone());
-        run_pipeline(&walker, &parser, &enabled)
-    };
+    let parser = RustParser::new(
+        FsPromptReader { nucleo_root: nucleo_root.clone() },
+        FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+        config.clone(),
+    );
+    let walker = FileWalker::new(cli.path.clone(), config.clone());
+    // Collect source files first so ParsedFile<'a> can borrow from them (ADR-0004 zero-copy).
+    let source_files: Vec<_> = walker.files().collect();
+    let (all_violations, all_parsed) = run_pipeline(&source_files, &parser, &enabled);
 
     // ── --fix-hashes branch ───────────────────────────────────────────────────
     if cli.fix_hashes {
@@ -86,10 +86,11 @@ fn main() {
                 config.clone(),
             );
             let rewalker = FileWalker::new(cli.path.clone(), config);
+            let re_files: Vec<_> = rewalker.files().collect();
             let v5_only = EnabledChecks {
                 v1: false, v2: false, v3: false, v4: false, v5: true, v6: false,
             };
-            let (violations, _) = run_pipeline(&rewalker, &reparser, &v5_only);
+            let (violations, _) = run_pipeline(&re_files, &reparser, &v5_only);
             violations.iter().filter(|v| v.rule_id == "V5").count()
         };
 
@@ -125,10 +126,11 @@ fn main() {
                 config.clone(),
             );
             let rewalker = FileWalker::new(cli.path.clone(), config);
+            let re_files: Vec<_> = rewalker.files().collect();
             let v6_only = EnabledChecks {
                 v1: false, v2: false, v3: false, v4: false, v5: false, v6: true,
             };
-            let (violations, _) = run_pipeline(&rewalker, &reparser, &v6_only);
+            let (violations, _) = run_pipeline(&re_files, &reparser, &v6_only);
             violations.iter().filter(|v| v.rule_id == "V6").count()
         };
 
@@ -184,7 +186,7 @@ struct L3SnapshotWriter {
 }
 
 impl SnapshotRewriter for L3SnapshotWriter {
-    fn serialize_snapshot(&self, interface: &PublicInterface) -> String {
+    fn serialize_snapshot(&self, interface: &PublicInterface<'_>) -> String {
         FsPromptSnapshotReader { nucleo_root: self.nucleo_root.clone() }
             .serialize_snapshot(interface)
     }
@@ -197,14 +199,16 @@ impl SnapshotRewriter for L3SnapshotWriter {
 
 // ── Pipeline helper ───────────────────────────────────────────────────────────
 
-fn run_pipeline(
-    walker: &FileWalker,
+/// Parses all source files and runs checks. `source_files` must outlive the
+/// returned vecs since `ParsedFile<'a>` and `Violation<'a>` borrow from them.
+fn run_pipeline<'a>(
+    source_files: &'a [crystalline_lint::contracts::file_provider::SourceFile],
     parser: &RustParser<FsPromptReader, FsPromptSnapshotReader>,
     enabled: &EnabledChecks,
-) -> (Vec<Violation>, Vec<ParsedFile>) {
-    let mut violations = Vec::new();
+) -> (Vec<Violation<'a>>, Vec<ParsedFile<'a>>) {
+    let mut violations: Vec<Violation<'a>> = Vec::new();
     let mut parsed_files = Vec::new();
-    for source_file in walker.files() {
+    for source_file in source_files {
         match parser.parse(source_file) {
             Ok(parsed) => {
                 violations.extend(run_checks(&parsed, enabled));
@@ -218,7 +222,7 @@ fn run_pipeline(
 
 // ── Rule dispatcher ───────────────────────────────────────────────────────────
 
-fn run_checks(file: &ParsedFile, enabled: &EnabledChecks) -> Vec<Violation> {
+fn run_checks<'a>(file: &ParsedFile<'a>, enabled: &EnabledChecks) -> Vec<Violation<'a>> {
     let mut violations = Vec::new();
     if enabled.v1 { violations.extend(prompt_header::check(file)); }
     if enabled.v2 { violations.extend(test_file::check(file)); }
@@ -231,25 +235,29 @@ fn run_checks(file: &ParsedFile, enabled: &EnabledChecks) -> Vec<Violation> {
 
 // ── ParseError → Violation ────────────────────────────────────────────────────
 
-fn parse_error_to_violation(err: ParseError) -> Violation {
+/// Converts a parse error into a `Violation<'static>`.
+/// Uses `Box::leak` to produce `&'static Path` from the owned `PathBuf` in
+/// `ParseError`. Parse errors are rare infrastructure failures (V0 level);
+/// the leaked memory is acceptable for a CLI process (ADR-0005 pattern).
+fn parse_error_to_violation(err: ParseError) -> Violation<'static> {
     match err {
         ParseError::SyntaxError { path, line, column, message } => Violation {
             rule_id: "PARSE".to_string(),
             level: ViolationLevel::Error,
             message: format!("Syntax error: {message}"),
-            location: Location { path, line, column },
+            location: Location { path: Box::leak(path.into_boxed_path()), line, column },
         },
         ParseError::UnsupportedLanguage { path, language } => Violation {
             rule_id: "PARSE".to_string(),
             level: ViolationLevel::Warning,
             message: format!("Unsupported language: {language:?}"),
-            location: Location { path, line: 0, column: 0 },
+            location: Location { path: Box::leak(path.into_boxed_path()), line: 0, column: 0 },
         },
         ParseError::EmptySource { path } => Violation {
             rule_id: "PARSE".to_string(),
             level: ViolationLevel::Warning,
             message: "Empty source file skipped".to_string(),
-            location: Location { path, line: 0, column: 0 },
+            location: Location { path: Box::leak(path.into_boxed_path()), line: 0, column: 0 },
         },
     }
 }

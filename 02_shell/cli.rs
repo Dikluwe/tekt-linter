@@ -112,7 +112,7 @@ impl EnabledChecks {
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 
-pub fn format_text(violations: &[Violation]) -> String {
+pub fn format_text(violations: &[Violation<'_>]) -> String {
     if violations.is_empty() {
         return format!("{}\n", "✓ No violations found".green().bold());
     }
@@ -120,6 +120,7 @@ pub fn format_text(violations: &[Violation]) -> String {
     let mut out = String::new();
     for v in violations {
         let level_str = match v.level {
+            ViolationLevel::Fatal => "fatal".red().bold().to_string(),
             ViolationLevel::Error => "error".red().bold().to_string(),
             ViolationLevel::Warning => "warning".yellow().bold().to_string(),
         };
@@ -135,7 +136,7 @@ pub fn format_text(violations: &[Violation]) -> String {
     out
 }
 
-pub fn format_sarif(violations: &[Violation]) -> String {
+pub fn format_sarif(violations: &[Violation<'_>]) -> String {
     let rules = sarif_rules();
 
     let results: Vec<serde_json::Value> = violations
@@ -181,6 +182,7 @@ pub fn format_sarif(violations: &[Violation]) -> String {
 
 fn sarif_level(level: &ViolationLevel) -> &'static str {
     match level {
+        ViolationLevel::Fatal => "error",
         ViolationLevel::Error => "error",
         ViolationLevel::Warning => "warning",
     }
@@ -213,10 +215,15 @@ fn sarif_rule(
 
 // ── Exit code logic ───────────────────────────────────────────────────────────
 
-pub fn should_fail(violations: &[Violation], fail_on: &FailLevel) -> bool {
-    violations.iter().any(|v| match fail_on {
-        FailLevel::Error => v.level == ViolationLevel::Error,
-        FailLevel::Warning => true,
+pub fn should_fail(violations: &[Violation<'_>], fail_on: &FailLevel) -> bool {
+    violations.iter().any(|v| {
+        if v.level == ViolationLevel::Fatal {
+            return true; // Fatal always fails — cannot be suppressed by --fail-on
+        }
+        match fail_on {
+            FailLevel::Error => v.level == ViolationLevel::Error,
+            FailLevel::Warning => true,
+        }
     })
 }
 
@@ -224,14 +231,14 @@ pub fn should_fail(violations: &[Violation], fail_on: &FailLevel) -> bool {
 mod tests {
     use super::*;
     use crate::entities::violation::Location;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
-    fn make_violation(rule_id: &str, level: ViolationLevel) -> Violation {
+    fn make_violation(rule_id: &str, level: ViolationLevel) -> Violation<'static> {
         Violation {
             rule_id: rule_id.to_string(),
             level,
             message: "test message".to_string(),
-            location: Location { path: PathBuf::from("01_core/foo.rs"), line: 5, column: 0 },
+            location: Location { path: Path::new("01_core/foo.rs"), line: 5, column: 0 },
         }
     }
 

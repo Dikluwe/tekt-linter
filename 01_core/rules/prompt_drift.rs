@@ -8,22 +8,22 @@ use crate::entities::parsed_file::PromptHeader;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 use std::path::Path;
 
-pub trait HasHashes {
-    fn prompt_header(&self) -> Option<&PromptHeader>;
-    fn path(&self) -> &Path;
+pub trait HasHashes<'a> {
+    fn prompt_header(&self) -> Option<&PromptHeader<'a>>;
+    fn path(&self) -> &'a Path;
 }
 
 /// V5 — Prompt drift detection.
 /// Fires when prompt_hash (declared in header) diverges from
 /// current_hash (real hash of the L0 prompt file, populated by L3).
 /// Warning level — does not block CI by default.
-pub fn check<T: HasHashes>(file: &T) -> Vec<Violation> {
+pub fn check<'a, T: HasHashes<'a>>(file: &T) -> Vec<Violation<'a>> {
     let header = match file.prompt_header() {
         Some(h) => h,
         None => return vec![], // V1 already handles absent headers
     };
 
-    let declared = match &header.prompt_hash {
+    let declared = match header.prompt_hash {
         Some(h) => h,
         None => return vec![], // no hash declared — not a drift violation
     };
@@ -33,7 +33,7 @@ pub fn check<T: HasHashes>(file: &T) -> Vec<Violation> {
         None => return vec![], // prompt file missing — V1 handles this
     };
 
-    if declared == current {
+    if declared == current.as_str() {
         return vec![];
     }
 
@@ -45,11 +45,7 @@ pub fn check<T: HasHashes>(file: &T) -> Vec<Violation> {
              condizente da implementação. Hash L0: {}, Código: {}",
             current, declared
         ),
-        location: Location {
-            path: file.path().to_path_buf(),
-            line: 1,
-            column: 0,
-        },
+        location: Location { path: file.path(), line: 1, column: 0 },
     }]
 }
 
@@ -58,32 +54,32 @@ mod tests {
     use super::*;
     use crate::entities::layer::Layer;
     use crate::entities::parsed_file::PromptHeader;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     struct MockFile {
-        header: Option<PromptHeader>,
-        path: PathBuf,
+        header: Option<PromptHeader<'static>>,
+        path: &'static Path,
     }
 
-    impl HasHashes for MockFile {
-        fn prompt_header(&self) -> Option<&PromptHeader> {
+    impl HasHashes<'static> for MockFile {
+        fn prompt_header(&self) -> Option<&PromptHeader<'static>> {
             self.header.as_ref()
         }
-        fn path(&self) -> &Path {
-            &self.path
+        fn path(&self) -> &'static Path {
+            self.path
         }
     }
 
-    fn file_with_hashes(declared: Option<&str>, current: Option<&str>) -> MockFile {
+    fn file_with_hashes(declared: Option<&'static str>, current: Option<&str>) -> MockFile {
         MockFile {
             header: Some(PromptHeader {
-                prompt_path: "00_nucleo/prompts/linter-core.md".to_string(),
-                prompt_hash: declared.map(str::to_string),
+                prompt_path: "00_nucleo/prompts/linter-core.md",
+                prompt_hash: declared,
                 current_hash: current.map(str::to_string),
                 layer: Layer::L1,
                 updated: None,
             }),
-            path: PathBuf::from("01_core/foo.rs"),
+            path: Path::new("01_core/foo.rs"),
         }
     }
 
@@ -105,8 +101,8 @@ mod tests {
     #[test]
     fn no_violation_when_prompt_header_absent() {
         let file = MockFile {
-            header: None, // V1 handles this
-            path: PathBuf::from("01_core/foo.rs"),
+            header: None,
+            path: Path::new("01_core/foo.rs"),
         };
         assert!(check(&file).is_empty());
     }
@@ -119,7 +115,6 @@ mod tests {
 
     #[test]
     fn no_violation_when_current_hash_absent() {
-        // prompt file missing — V1 covers this, V5 stays silent
         let file = file_with_hashes(Some("a3f8c2d1"), None);
         assert!(check(&file).is_empty());
     }

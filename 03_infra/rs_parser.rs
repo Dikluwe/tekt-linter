@@ -4,6 +4,8 @@
 //! @layer L3
 //! @updated 2026-03-14
 
+use std::borrow::Cow;
+
 use tree_sitter::{Node, Parser as TsParser};
 
 use crate::contracts::file_provider::SourceFile;
@@ -33,15 +35,15 @@ impl<R: PromptReader, S: PromptSnapshotReader> RustParser<R, S> {
 }
 
 impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, S> {
-    fn parse(&self, file: SourceFile) -> Result<ParsedFile, ParseError> {
+    fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
         if file.content.is_empty() {
-            return Err(ParseError::EmptySource { path: file.path });
+            return Err(ParseError::EmptySource { path: file.path.clone() });
         }
 
         if file.language != Language::Rust {
             return Err(ParseError::UnsupportedLanguage {
-                path: file.path,
-                language: file.language,
+                path: file.path.clone(),
+                language: file.language.clone(),
             });
         }
 
@@ -69,7 +71,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
         if root.has_error() {
             let (line, column) = find_first_error_pos(root);
             return Err(ParseError::SyntaxError {
-                path: file.path,
+                path: file.path.clone(),
                 line,
                 column,
                 message: "Syntax error detected in AST".to_string(),
@@ -83,11 +85,11 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
 
         let prompt_file_exists = prompt_header
             .as_ref()
-            .map(|h| self.prompt_reader.exists(&h.prompt_path))
+            .map(|h| self.prompt_reader.exists(h.prompt_path))
             .unwrap_or(false);
 
         if let Some(ref mut header) = prompt_header {
-            header.current_hash = self.prompt_reader.read_hash(&header.prompt_path);
+            header.current_hash = self.prompt_reader.read_hash(header.prompt_path);
         }
 
         // ── Imports ───────────────────────────────────────────────────────────
@@ -105,12 +107,12 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
         let public_interface = extract_public_interface(root, source);
         let prompt_snapshot = prompt_header
             .as_ref()
-            .and_then(|h| self.snapshot_reader.read_snapshot(&h.prompt_path));
+            .and_then(|h| self.snapshot_reader.read_snapshot(h.prompt_path));
 
         Ok(ParsedFile {
-            path: file.path,
-            layer: file.layer,
-            language: file.language,
+            path: file.path.as_path(),
+            layer: file.layer.clone(),
+            language: file.language.clone(),
             prompt_header,
             prompt_file_exists,
             has_test_coverage,
@@ -124,11 +126,11 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
 
 // ── Header extraction ─────────────────────────────────────────────────────────
 
-fn extract_header(source: &str) -> Option<PromptHeader> {
-    let mut prompt_path: Option<String> = None;
-    let mut prompt_hash: Option<String> = None;
+fn extract_header<'a>(source: &'a str) -> Option<PromptHeader<'a>> {
+    let mut prompt_path: Option<&'a str> = None;
+    let mut prompt_hash: Option<&'a str> = None;
     let mut layer: Option<Layer> = None;
-    let mut updated: Option<String> = None;
+    let mut updated: Option<&'a str> = None;
 
     for line in source.lines() {
         let trimmed = line.trim();
@@ -138,13 +140,13 @@ fn extract_header(source: &str) -> Option<PromptHeader> {
         let content = trimmed.trim_start_matches("//!").trim();
 
         if let Some(val) = content.strip_prefix("@prompt-hash ") {
-            prompt_hash = Some(val.trim().to_string());
+            prompt_hash = Some(val.trim());
         } else if let Some(val) = content.strip_prefix("@prompt ") {
-            prompt_path = Some(val.trim().to_string());
+            prompt_path = Some(val.trim());
         } else if let Some(val) = content.strip_prefix("@layer ") {
             layer = Some(parse_layer_tag(val.trim()));
         } else if let Some(val) = content.strip_prefix("@updated ") {
-            updated = Some(val.trim().to_string());
+            updated = Some(val.trim());
         }
     }
 
@@ -171,24 +173,27 @@ fn parse_layer_tag(tag: &str) -> Layer {
 
 // ── Import extraction ─────────────────────────────────────────────────────────
 
-fn extract_imports(root: Node, source: &[u8], config: &CrystallineConfig) -> Vec<Import> {
+fn extract_imports<'a>(
+    root: Node,
+    source: &'a [u8],
+    config: &CrystallineConfig,
+) -> Vec<Import<'a>> {
     let mut imports = Vec::new();
     collect_imports(root, source, config, &mut imports);
     imports
 }
 
-fn collect_imports(
+fn collect_imports<'a>(
     node: Node,
-    source: &[u8],
+    source: &'a [u8],
     config: &CrystallineConfig,
-    imports: &mut Vec<Import>,
+    imports: &mut Vec<Import<'a>>,
 ) {
     match node.kind() {
         "use_declaration" => {
             let line = node.start_position().row + 1;
-            // Extract the path text from the argument child
             let path = use_declaration_path(node, source);
-            let target_layer = resolve_layer(&path, config);
+            let target_layer = resolve_layer(path, config);
             imports.push(Import { path, line, kind: ImportKind::Use, target_layer });
         }
         "extern_crate_declaration" => {
@@ -197,9 +202,8 @@ fn collect_imports(
             let path = text
                 .trim_start_matches("extern crate ")
                 .trim_end_matches(';')
-                .trim()
-                .to_string();
-            let target_layer = resolve_layer(&path, config);
+                .trim();
+            let target_layer = resolve_layer(path, config);
             imports.push(Import { path, line, kind: ImportKind::ExternCrate, target_layer });
         }
         "mod_item" => {
@@ -211,8 +215,7 @@ fn collect_imports(
                     .trim_start_matches("pub ")
                     .trim_start_matches("mod ")
                     .trim_end_matches(';')
-                    .trim()
-                    .to_string();
+                    .trim();
                 imports.push(Import {
                     path,
                     line,
@@ -232,13 +235,13 @@ fn collect_imports(
 }
 
 /// Extract the path string from a `use_declaration` node.
-fn use_declaration_path(node: Node, source: &[u8]) -> String {
+fn use_declaration_path<'a>(node: Node, source: &'a [u8]) -> &'a str {
     // The argument is typically the second child after "use" keyword
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
             let kind = child.kind();
             if kind != "use" && kind != ";" && kind != "pub" && kind != "visibility_modifier" {
-                return node_text(child, source).to_string();
+                return node_text(child, source);
             }
         }
     }
@@ -246,7 +249,6 @@ fn use_declaration_path(node: Node, source: &[u8]) -> String {
         .trim_start_matches("use ")
         .trim_end_matches(';')
         .trim()
-        .to_string()
 }
 
 /// Resolve the import layer from its path string.
@@ -271,7 +273,7 @@ fn resolve_layer(path: &str, config: &CrystallineConfig) -> Layer {
 // ── PublicInterface extraction ────────────────────────────────────────────────
 
 /// Extract the public interface from the top-level items of the source file.
-fn extract_public_interface(root: Node, source: &[u8]) -> PublicInterface {
+fn extract_public_interface<'a>(root: Node, source: &'a [u8]) -> PublicInterface<'a> {
     let mut functions = Vec::new();
     let mut types = Vec::new();
     let mut reexports = Vec::new();
@@ -327,31 +329,28 @@ fn is_pub_item(node: Node, source: &[u8]) -> bool {
     false
 }
 
-fn extract_fn_sig(node: Node, source: &[u8]) -> Option<FunctionSignature> {
-    let name = node
-        .child_by_field_name("name")
-        .map(|n| node_text(n, source).to_string())?;
+fn extract_fn_sig<'a>(node: Node, source: &'a [u8]) -> Option<FunctionSignature<'a>> {
+    let name = node.child_by_field_name("name").map(|n| node_text(n, source))?;
 
     let params = node
         .child_by_field_name("parameters")
         .map(|p| extract_param_types(p, source))
         .unwrap_or_default();
 
-    let return_type = node.child_by_field_name("return_type").map(|rt| {
-        let text = node_text(rt, source);
-        text.trim_start_matches("->").trim().to_string()
-    });
+    let return_type = node
+        .child_by_field_name("return_type")
+        .map(|rt| node_text(rt, source).trim_start_matches("->").trim());
 
     Some(FunctionSignature { name, params, return_type })
 }
 
-fn extract_param_types(params_node: Node, source: &[u8]) -> Vec<String> {
+fn extract_param_types<'a>(params_node: Node, source: &'a [u8]) -> Vec<&'a str> {
     let mut result = Vec::new();
     for i in 0..params_node.child_count() {
         if let Some(child) = params_node.child(i) {
             if child.kind() == "parameter" {
                 if let Some(ty) = child.child_by_field_name("type") {
-                    result.push(node_text(ty, source).to_string());
+                    result.push(node_text(ty, source));
                 }
             }
         }
@@ -359,10 +358,12 @@ fn extract_param_types(params_node: Node, source: &[u8]) -> Vec<String> {
     result
 }
 
-fn extract_type_sig(node: Node, source: &[u8], kind: TypeKind) -> Option<TypeSignature> {
-    let name = node
-        .child_by_field_name("name")
-        .map(|n| node_text(n, source).to_string())?;
+fn extract_type_sig<'a>(
+    node: Node,
+    source: &'a [u8],
+    kind: TypeKind,
+) -> Option<TypeSignature<'a>> {
+    let name = node.child_by_field_name("name").map(|n| node_text(n, source))?;
 
     let members = match &kind {
         TypeKind::Struct => node
@@ -382,13 +383,13 @@ fn extract_type_sig(node: Node, source: &[u8], kind: TypeKind) -> Option<TypeSig
     Some(TypeSignature { name, kind, members })
 }
 
-fn extract_named_children(body: Node, source: &[u8], item_kind: &str) -> Vec<String> {
+fn extract_named_children<'a>(body: Node, source: &'a [u8], item_kind: &str) -> Vec<&'a str> {
     let mut result = Vec::new();
     for i in 0..body.child_count() {
         if let Some(child) = body.child(i) {
             if child.kind() == item_kind {
                 if let Some(name_node) = child.child_by_field_name("name") {
-                    result.push(node_text(name_node, source).to_string());
+                    result.push(node_text(name_node, source));
                 }
             }
         }
@@ -396,13 +397,13 @@ fn extract_named_children(body: Node, source: &[u8], item_kind: &str) -> Vec<Str
     result
 }
 
-fn extract_trait_method_names(body: Node, source: &[u8]) -> Vec<String> {
+fn extract_trait_method_names<'a>(body: Node, source: &'a [u8]) -> Vec<&'a str> {
     let mut result = Vec::new();
     for i in 0..body.child_count() {
         if let Some(child) = body.child(i) {
             if matches!(child.kind(), "function_signature_item" | "function_item") {
                 if let Some(name_node) = child.child_by_field_name("name") {
-                    result.push(node_text(name_node, source).to_string());
+                    result.push(node_text(name_node, source));
                 }
             }
         }
@@ -412,17 +413,17 @@ fn extract_trait_method_names(body: Node, source: &[u8]) -> Vec<String> {
 
 // ── Token extraction ──────────────────────────────────────────────────────────
 
-fn extract_tokens(root: Node, source: &[u8]) -> Vec<Token> {
+fn extract_tokens<'a>(root: Node, source: &'a [u8]) -> Vec<Token<'a>> {
     let mut tokens = Vec::new();
     collect_tokens(root, source, &mut tokens);
     tokens
 }
 
-fn collect_tokens(node: Node, source: &[u8], tokens: &mut Vec<Token>) {
+fn collect_tokens<'a>(node: Node, source: &'a [u8], tokens: &mut Vec<Token<'a>>) {
     match node.kind() {
         "call_expression" => {
             if let Some(func_node) = node.child(0) {
-                let symbol = node_text(func_node, source).to_string();
+                let symbol = Cow::Borrowed(node_text(func_node, source));
                 let pos = node.start_position();
                 tokens.push(Token {
                     symbol,
@@ -435,7 +436,7 @@ fn collect_tokens(node: Node, source: &[u8], tokens: &mut Vec<Token>) {
         "macro_invocation" => {
             // First child is the macro path/name
             if let Some(name_node) = node.child(0) {
-                let symbol = node_text(name_node, source).to_string();
+                let symbol = Cow::Borrowed(node_text(name_node, source));
                 let pos = node.start_position();
                 tokens.push(Token {
                     symbol,
@@ -562,8 +563,8 @@ mod tests {
 
     struct NullSnapshotReader;
     impl PromptSnapshotReader for NullSnapshotReader {
-        fn read_snapshot(&self, _: &str) -> Option<PublicInterface> { None }
-        fn serialize_snapshot(&self, _: &PublicInterface) -> String { String::new() }
+        fn read_snapshot(&self, _: &str) -> Option<PublicInterface<'static>> { None }
+        fn serialize_snapshot(&self, _: &PublicInterface<'_>) -> String { String::new() }
     }
 
     fn make_parser() -> RustParser<NullPromptReader, NullSnapshotReader> {
@@ -584,14 +585,14 @@ mod tests {
     fn parses_valid_rust_source() {
         let parser = make_parser();
         let file = source_file("fn main() {}");
-        assert!(parser.parse(file).is_ok());
+        assert!(parser.parse(&file).is_ok());
     }
 
     #[test]
     fn returns_empty_source_error() {
         let parser = make_parser();
         let file = source_file("");
-        assert!(matches!(parser.parse(file), Err(ParseError::EmptySource { .. })));
+        assert!(matches!(parser.parse(&file), Err(ParseError::EmptySource { .. })));
     }
 
     #[test]
@@ -599,7 +600,7 @@ mod tests {
         let parser = make_parser();
         let mut file = source_file("fn main() {}");
         file.language = Language::TypeScript;
-        assert!(matches!(parser.parse(file), Err(ParseError::UnsupportedLanguage { .. })));
+        assert!(matches!(parser.parse(&file), Err(ParseError::UnsupportedLanguage { .. })));
     }
 
     #[test]
@@ -613,10 +614,10 @@ mod tests {
 //! @updated 2026-03-13\n\
 fn main() {}",
         );
-        let parsed = parser.parse(file).unwrap();
+        let parsed = parser.parse(&file).unwrap();
         let header = parsed.prompt_header.unwrap();
         assert_eq!(header.prompt_path, "00_nucleo/prompts/linter-core.md");
-        assert_eq!(header.prompt_hash, Some("c0d309ae".to_string()));
+        assert_eq!(header.prompt_hash, Some("c0d309ae"));
         assert_eq!(header.layer, Layer::L1);
     }
 
@@ -628,7 +629,7 @@ fn main() {}",
              #[cfg(test)]\n\
              mod tests { #[test] fn t() { assert!(true); } }",
         );
-        let parsed = parser.parse(file).unwrap();
+        let parsed = parser.parse(&file).unwrap();
         assert!(parsed.has_test_coverage);
     }
 
@@ -636,7 +637,7 @@ fn main() {}",
     fn trait_only_file_is_declaration_only() {
         let parser = make_parser();
         let file = source_file("pub trait Foo { fn bar(&self); }");
-        let parsed = parser.parse(file).unwrap();
+        let parsed = parser.parse(&file).unwrap();
         assert!(parsed.has_test_coverage); // exempt via is_declaration_only
     }
 
@@ -660,7 +661,7 @@ fn main() {}",
         let parser = make_parser();
         let mut file = source_file("fn foo() -> u32 { 42 }");
         file.has_adjacent_test = true;
-        let parsed = parser.parse(file).unwrap();
+        let parsed = parser.parse(&file).unwrap();
         assert!(parsed.has_test_coverage);
     }
 }

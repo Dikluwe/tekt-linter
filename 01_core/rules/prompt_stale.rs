@@ -13,7 +13,7 @@ use crate::entities::violation::{Location, Violation, ViolationLevel};
 ///
 /// Detects when the public interface of a source file has changed since the
 /// last snapshot registered in the origin prompt. Pure L1 function — zero I/O.
-pub fn check(file: &ParsedFile) -> Vec<Violation> {
+pub fn check<'a>(file: &ParsedFile<'a>) -> Vec<Violation<'a>> {
     // V6 only applies to files that have a prompt header
     let header = match &file.prompt_header {
         Some(h) => h,
@@ -45,16 +45,18 @@ pub fn check(file: &ParsedFile) -> Vec<Violation> {
             header.prompt_path,
             delta.describe()
         ),
-        location: Location {
-            path: file.path.clone(),
-            line: 1,
-            column: 0,
-        },
+        location: Location { path: file.path, line: 1, column: 0 },
     }]
 }
 
-/// Compute a structural diff between the current interface and the snapshot.
-pub fn compute_delta(current: &PublicInterface, snapshot: &PublicInterface) -> InterfaceDelta {
+/// Computa diferença entre interface atual e snapshot do prompt.
+/// Usa PartialEq completo sobre FunctionSignature e TypeSignature —
+/// name + params + return_type devem ser todos iguais.
+/// Mudança de assinatura aparece como remoção + adição.
+pub fn compute_delta<'a>(
+    current: &PublicInterface<'a>,
+    snapshot: &PublicInterface<'a>,
+) -> InterfaceDelta<'a> {
     InterfaceDelta {
         added_functions: added_fns(&current.functions, &snapshot.functions),
         removed_functions: added_fns(&snapshot.functions, &current.functions),
@@ -65,16 +67,22 @@ pub fn compute_delta(current: &PublicInterface, snapshot: &PublicInterface) -> I
     }
 }
 
-fn added_fns(a: &[FunctionSignature], b: &[FunctionSignature]) -> Vec<FunctionSignature> {
+fn added_fns<'a>(
+    a: &[FunctionSignature<'a>],
+    b: &[FunctionSignature<'a>],
+) -> Vec<FunctionSignature<'a>> {
     a.iter().filter(|f| !b.contains(f)).cloned().collect()
 }
 
-fn added_types(a: &[TypeSignature], b: &[TypeSignature]) -> Vec<TypeSignature> {
+fn added_types<'a>(
+    a: &[TypeSignature<'a>],
+    b: &[TypeSignature<'a>],
+) -> Vec<TypeSignature<'a>> {
     a.iter().filter(|t| !b.contains(t)).cloned().collect()
 }
 
-fn added_strs(a: &[String], b: &[String]) -> Vec<String> {
-    a.iter().filter(|s| !b.contains(s)).cloned().collect()
+fn added_strs<'a>(a: &[&'a str], b: &[&'a str]) -> Vec<&'a str> {
+    a.iter().filter(|s| !b.contains(s)).copied().collect()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -86,15 +94,15 @@ mod tests {
     use crate::entities::parsed_file::{
         FunctionSignature, PromptHeader, PublicInterface, TypeKind, TypeSignature,
     };
-    use std::path::PathBuf;
+    use std::path::Path;
 
-    fn base_file() -> ParsedFile {
+    fn base_file() -> ParsedFile<'static> {
         ParsedFile {
-            path: PathBuf::from("01_core/foo.rs"),
+            path: Path::new("01_core/foo.rs"),
             layer: Layer::L1,
             language: Language::Rust,
             prompt_header: Some(PromptHeader {
-                prompt_path: "00_nucleo/prompts/foo.md".to_string(),
+                prompt_path: "00_nucleo/prompts/foo.md",
                 prompt_hash: None,
                 current_hash: None,
                 layer: Layer::L1,
@@ -109,12 +117,12 @@ mod tests {
         }
     }
 
-    fn fn_sig(name: &str) -> FunctionSignature {
-        FunctionSignature { name: name.to_string(), params: vec![], return_type: None }
+    fn fn_sig(name: &'static str) -> FunctionSignature<'static> {
+        FunctionSignature { name, params: vec![], return_type: None }
     }
 
-    fn type_sig(name: &str) -> TypeSignature {
-        TypeSignature { name: name.to_string(), kind: TypeKind::Struct, members: vec![] }
+    fn type_sig(name: &'static str) -> TypeSignature<'static> {
+        TypeSignature { name, kind: TypeKind::Struct, members: vec![] }
     }
 
     #[test]
@@ -196,34 +204,19 @@ mod tests {
     }
 
     #[test]
-    fn delta_describe_formats_correctly() {
-        let delta = InterfaceDelta {
-            added_functions: vec![fn_sig("new_fn")],
-            removed_functions: vec![],
-            added_types: vec![],
-            removed_types: vec![type_sig("OldType")],
-            added_reexports: vec![],
-            removed_reexports: vec![],
-        };
-        let desc = delta.describe();
-        assert!(desc.contains("+fn new_fn"));
-        assert!(desc.contains("-type OldType"));
-    }
-
-    #[test]
     fn signature_change_generates_v6_with_both_entries() {
         // foo(a: String) -> bool  →  foo(a: Vec<String>) -> bool
         // Same name but different params — full PartialEq detects the change.
         // Delta must contain -fn foo (removed) AND +fn foo (added).
         let old_sig = FunctionSignature {
-            name: "foo".to_string(),
-            params: vec!["a: String".to_string()],
-            return_type: Some("bool".to_string()),
+            name: "foo",
+            params: vec!["a: String"],
+            return_type: Some("bool"),
         };
         let new_sig = FunctionSignature {
-            name: "foo".to_string(),
-            params: vec!["a: Vec<String>".to_string()],
-            return_type: Some("bool".to_string()),
+            name: "foo",
+            params: vec!["a: Vec<String>"],
+            return_type: Some("bool"),
         };
         let mut file = base_file();
         file.public_interface =
@@ -236,6 +229,21 @@ mod tests {
         let msg = &violations[0].message;
         assert!(msg.contains("+fn foo"), "delta deve conter +fn foo, got: {msg}");
         assert!(msg.contains("-fn foo"), "delta deve conter -fn foo, got: {msg}");
+    }
+
+    #[test]
+    fn delta_describe_formats_correctly() {
+        let delta = InterfaceDelta {
+            added_functions: vec![fn_sig("new_fn")],
+            removed_functions: vec![],
+            added_types: vec![],
+            removed_types: vec![type_sig("OldType")],
+            added_reexports: vec![],
+            removed_reexports: vec![],
+        };
+        let desc = delta.describe();
+        assert!(desc.contains("+fn new_fn"));
+        assert!(desc.contains("-type OldType"));
     }
 
     #[test]

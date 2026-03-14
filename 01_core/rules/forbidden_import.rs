@@ -9,10 +9,10 @@ use crate::entities::parsed_file::Import;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 use std::path::Path;
 
-pub trait HasImports {
+pub trait HasImports<'a> {
     fn layer(&self) -> &Layer;
-    fn imports(&self) -> &[Import];
-    fn path(&self) -> &Path;
+    fn imports(&self) -> &[Import<'a>];
+    fn path(&self) -> &'a Path;
 }
 
 /// V3 — Forbidden import (gravity inversion).
@@ -26,7 +26,7 @@ pub trait HasImports {
 /// L3 → L2, L4, Lab
 /// L4 → Lab
 /// L0, Lab → no restrictions
-pub fn check<T: HasImports>(file: &T) -> Vec<Violation> {
+pub fn check<'a, T: HasImports<'a>>(file: &T) -> Vec<Violation<'a>> {
     file.imports()
         .iter()
         .filter(|import| is_forbidden(file.layer(), &import.target_layer))
@@ -47,7 +47,7 @@ fn is_forbidden(source: &Layer, target: &Layer) -> bool {
     }
 }
 
-fn make_violation<T: HasImports>(file: &T, import: &Import) -> Violation {
+fn make_violation<'a, T: HasImports<'a>>(file: &T, import: &Import<'a>) -> Violation<'a> {
     Violation {
         rule_id: "V3".to_string(),
         level: ViolationLevel::Error,
@@ -55,11 +55,7 @@ fn make_violation<T: HasImports>(file: &T, import: &Import) -> Violation {
             "Inversão de gravidade: {:?} não pode importar de {:?} ('{}')",
             file.layer(), import.target_layer, import.path
         ),
-        location: Location {
-            path: file.path().to_path_buf(),
-            line: import.line,
-            column: 0,
-        },
+        location: Location { path: file.path(), line: import.line, column: 0 },
     }
 }
 
@@ -68,23 +64,23 @@ mod tests {
     use super::*;
     use crate::entities::layer::Layer;
     use crate::entities::parsed_file::{Import, ImportKind};
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     struct MockFile {
         layer: Layer,
-        imports: Vec<Import>,
-        path: PathBuf,
+        imports: Vec<Import<'static>>,
+        path: &'static Path,
     }
 
-    impl HasImports for MockFile {
+    impl HasImports<'static> for MockFile {
         fn layer(&self) -> &Layer {
             &self.layer
         }
-        fn imports(&self) -> &[Import] {
+        fn imports(&self) -> &[Import<'static>] {
             &self.imports
         }
-        fn path(&self) -> &Path {
-            &self.path
+        fn path(&self) -> &'static Path {
+            self.path
         }
     }
 
@@ -92,17 +88,12 @@ mod tests {
         MockFile {
             layer,
             imports: vec![],
-            path: PathBuf::from("src/foo.rs"),
+            path: Path::new("src/foo.rs"),
         }
     }
 
-    fn import(path: &str, line: usize, target_layer: Layer) -> Import {
-        Import {
-            path: path.to_string(),
-            line,
-            kind: ImportKind::Use,
-            target_layer,
-        }
+    fn import(path: &'static str, line: usize, target_layer: Layer) -> Import<'static> {
+        Import { path, line, kind: ImportKind::Use, target_layer }
     }
 
     #[test]

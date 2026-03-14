@@ -6,8 +6,108 @@
 
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
+
 use crate::contracts::prompt_snapshot_reader::PromptSnapshotReader;
-use crate::entities::parsed_file::PublicInterface;
+use crate::entities::parsed_file::{
+    FunctionSignature, PublicInterface, TypeKind, TypeSignature,
+};
+
+// ── Owned intermediates for serde ─────────────────────────────────────────────
+//
+// PublicInterface<'a> uses &'a str — cannot derive Deserialize.
+// L3 deserializes into owned types, then converts to PublicInterface<'static>
+// via Box::leak (ADR-0004 + ADR-0005: snapshot data lives for the duration
+// of the process; Box::leak is the documented pattern for prompt snapshots).
+
+#[derive(Debug, Serialize, Deserialize)]
+struct OwnedFunctionSignature {
+    name: String,
+    params: Vec<String>,
+    return_type: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum OwnedTypeKind {
+    Struct,
+    Enum,
+    Trait,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct OwnedTypeSignature {
+    name: String,
+    kind: OwnedTypeKind,
+    members: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct OwnedPublicInterface {
+    functions: Vec<OwnedFunctionSignature>,
+    types: Vec<OwnedTypeSignature>,
+    reexports: Vec<String>,
+}
+
+fn leak_str(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
+}
+
+fn owned_to_static(owned: OwnedPublicInterface) -> PublicInterface<'static> {
+    PublicInterface {
+        functions: owned
+            .functions
+            .into_iter()
+            .map(|f| FunctionSignature {
+                name: leak_str(f.name),
+                params: f.params.into_iter().map(leak_str).collect(),
+                return_type: f.return_type.map(leak_str),
+            })
+            .collect(),
+        types: owned
+            .types
+            .into_iter()
+            .map(|t| TypeSignature {
+                name: leak_str(t.name),
+                kind: match t.kind {
+                    OwnedTypeKind::Struct => TypeKind::Struct,
+                    OwnedTypeKind::Enum => TypeKind::Enum,
+                    OwnedTypeKind::Trait => TypeKind::Trait,
+                },
+                members: t.members.into_iter().map(leak_str).collect(),
+            })
+            .collect(),
+        reexports: owned.reexports.into_iter().map(leak_str).collect(),
+    }
+}
+
+fn interface_to_owned(iface: &PublicInterface<'_>) -> OwnedPublicInterface {
+    OwnedPublicInterface {
+        functions: iface
+            .functions
+            .iter()
+            .map(|f| OwnedFunctionSignature {
+                name: f.name.to_string(),
+                params: f.params.iter().map(|p| p.to_string()).collect(),
+                return_type: f.return_type.map(|r| r.to_string()),
+            })
+            .collect(),
+        types: iface
+            .types
+            .iter()
+            .map(|t| OwnedTypeSignature {
+                name: t.name.to_string(),
+                kind: match t.kind {
+                    TypeKind::Struct => OwnedTypeKind::Struct,
+                    TypeKind::Enum => OwnedTypeKind::Enum,
+                    TypeKind::Trait => OwnedTypeKind::Trait,
+                },
+                members: t.members.iter().map(|m| m.to_string()).collect(),
+            })
+            .collect(),
+        reexports: iface.reexports.iter().map(|r| r.to_string()).collect(),
+    }
+}
 
 // ── FsPromptSnapshotReader ────────────────────────────────────────────────────
 
@@ -16,15 +116,17 @@ pub struct FsPromptSnapshotReader {
 }
 
 impl PromptSnapshotReader for FsPromptSnapshotReader {
-    fn read_snapshot(&self, prompt_path: &str) -> Option<PublicInterface> {
+    fn read_snapshot(&self, prompt_path: &str) -> Option<PublicInterface<'static>> {
         let full_path = self.nucleo_root.join(prompt_path);
         let content = std::fs::read_to_string(&full_path).ok()?;
-        extract_snapshot_json(&content)
-            .and_then(|json| serde_json::from_str(&json).ok())
+        let json = extract_snapshot_json(&content)?;
+        let owned: OwnedPublicInterface = serde_json::from_str(&json).ok()?;
+        Some(owned_to_static(owned))
     }
 
-    fn serialize_snapshot(&self, interface: &PublicInterface) -> String {
-        let json = serde_json::to_string(interface).unwrap_or_default();
+    fn serialize_snapshot(&self, interface: &PublicInterface<'_>) -> String {
+        let owned = interface_to_owned(interface);
+        let json = serde_json::to_string(&owned).unwrap_or_default();
         format!(
             "## Interface Snapshot\n\
              <!-- GENERATED — não edite manualmente -->\n\
@@ -103,11 +205,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let reader = make_reader(&dir);
         let iface = PublicInterface {
-            functions: vec![FunctionSignature {
-                name: "check".to_string(),
-                params: vec![],
-                return_type: None,
-            }],
+            functions: vec![FunctionSignature { name: "check", params: vec![], return_type: None }],
             types: vec![],
             reexports: vec![],
         };

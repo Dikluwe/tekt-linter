@@ -50,14 +50,14 @@ pub struct FixResult {
 
 /// Build fix entries from V5 violations.
 /// Each entry captures the old hash and the real hash (if the prompt exists).
-pub fn plan(violations: &[Violation], rewriter: &dyn HashRewriter) -> Vec<FixEntry> {
+pub fn plan(violations: &[Violation<'_>], rewriter: &dyn HashRewriter) -> Vec<FixEntry> {
     violations
         .iter()
         .filter(|v| v.rule_id == "V5")
         .filter_map(|v| {
-            let (prompt_path, old_hash) = rewriter.read_header(&v.location.path)?;
+            let (prompt_path, old_hash) = rewriter.read_header(v.location.path)?;
             let new_hash = rewriter.compute_hash(&prompt_path);
-            Some(FixEntry { source_path: v.location.path.clone(), old_hash, new_hash })
+            Some(FixEntry { source_path: v.location.path.to_path_buf(), old_hash, new_hash })
         })
         .collect()
 }
@@ -210,7 +210,7 @@ mod tests {
     use super::*;
     use crate::entities::violation::{Location, ViolationLevel};
     use std::cell::RefCell;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     // ── Mock ──────────────────────────────────────────────────────────────────
 
@@ -249,12 +249,12 @@ mod tests {
         }
     }
 
-    fn v5_violation(path: &str) -> Violation {
+    fn v5_violation(path: &'static str) -> Violation<'static> {
         Violation {
             rule_id: "V5".to_string(),
             level: ViolationLevel::Warning,
             message: "drift".to_string(),
-            location: Location { path: PathBuf::from(path), line: 1, column: 0 },
+            location: Location { path: Path::new(path), line: 1, column: 0 },
         }
     }
 
@@ -282,7 +282,7 @@ mod tests {
                 rule_id: "V1".to_string(),
                 level: ViolationLevel::Error,
                 message: "header missing".to_string(),
-                location: Location { path: PathBuf::from("foo.rs"), line: 1, column: 0 },
+                location: Location { path: Path::new("foo.rs"), line: 1, column: 0 },
             },
         ];
         let entries = plan(&violations, &rewriter);
