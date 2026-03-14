@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/forbidden-import.md
-//! @prompt-hash b68f26f1
+//! @prompt-hash 16b76c53
 //! @layer L1
 //! @updated 2026-03-14
 
