@@ -1,12 +1,19 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/forbidden-import.md
-//! @prompt-hash b68f26f1
+//! @prompt-hash 16b76c53
 //! @layer L1
-//! @updated 2026-03-13
+//! @updated 2026-03-14
 
 use crate::entities::layer::Layer;
-use crate::entities::parsed_file::{Import, ParsedFile};
+use crate::entities::parsed_file::Import;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
+use std::path::Path;
+
+pub trait HasImports {
+    fn layer(&self) -> &Layer;
+    fn imports(&self) -> &[Import];
+    fn path(&self) -> &Path;
+}
 
 /// V3 — Forbidden import (gravity inversion).
 /// Compares file.layer with import.target_layer using the permission matrix.
@@ -19,10 +26,10 @@ use crate::entities::violation::{Location, Violation, ViolationLevel};
 /// L3 → L2, L4, Lab
 /// L4 → Lab
 /// L0, Lab → no restrictions
-pub fn check(file: &ParsedFile) -> Vec<Violation> {
-    file.imports
+pub fn check<T: HasImports>(file: &T) -> Vec<Violation> {
+    file.imports()
         .iter()
-        .filter(|import| is_forbidden(&file.layer, &import.target_layer))
+        .filter(|import| is_forbidden(file.layer(), &import.target_layer))
         .map(|import| make_violation(file, import))
         .collect()
 }
@@ -40,16 +47,16 @@ fn is_forbidden(source: &Layer, target: &Layer) -> bool {
     }
 }
 
-fn make_violation(file: &ParsedFile, import: &Import) -> Violation {
+fn make_violation<T: HasImports>(file: &T, import: &Import) -> Violation {
     Violation {
         rule_id: "V3".to_string(),
         level: ViolationLevel::Error,
         message: format!(
             "Inversão de gravidade: {:?} não pode importar de {:?} ('{}')",
-            file.layer, import.target_layer, import.path
+            file.layer(), import.target_layer, import.path
         ),
         location: Location {
-            path: file.path.clone(),
+            path: file.path().to_path_buf(),
             line: import.line,
             column: 0,
         },
@@ -59,20 +66,33 @@ fn make_violation(file: &ParsedFile, import: &Import) -> Violation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::layer::{Language, Layer};
-    use crate::entities::parsed_file::{Import, ImportKind, ParsedFile};
-    use std::path::PathBuf;
+    use crate::entities::layer::Layer;
+    use crate::entities::parsed_file::{Import, ImportKind};
+    use std::path::{Path, PathBuf};
 
-    fn base_file(layer: Layer) -> ParsedFile {
-        ParsedFile {
-            path: PathBuf::from("src/foo.rs"),
+    struct MockFile {
+        layer: Layer,
+        imports: Vec<Import>,
+        path: PathBuf,
+    }
+
+    impl HasImports for MockFile {
+        fn layer(&self) -> &Layer {
+            &self.layer
+        }
+        fn imports(&self) -> &[Import] {
+            &self.imports
+        }
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    fn base_file(layer: Layer) -> MockFile {
+        MockFile {
             layer,
-            language: Language::Rust,
-            prompt_header: None,
-            prompt_file_exists: false,
-            has_test_coverage: true,
             imports: vec![],
-            tokens: vec![],
+            path: PathBuf::from("src/foo.rs"),
         }
     }
 

@@ -8,8 +8,8 @@
 A essência do estrato `L1` (`01_core/`) é ser matematicamente funcional e previsível: entradas resultam deterministicamente num resultado sem interferência de I/O de rede terrestre, leituras de CPU-clock ou bytes do disco. V4 age como guardião destas chaves.
 
 ## Especificação
-A regra assinala a infração se encontrar call expressions diretas de funções atreladas à impureza num arquivo cuja `ParsedFile.layer == Layer::L1`. 
-Os nós do AST abstraídos em `ParsedFile.tokens` que indicam *call expressions* ou declarações de rotas cujos caminhos globais resolvem para os seguintes símbolos proibidos acionam a V4:
+A regra assinala a infração se encontrar call expressions diretas de funções atreladas à impureza num arquivo cuja camada informada seja `Layer::L1`. 
+Os nós do AST abstraídos pela entidade (via trait `HasTokens`) que indicam *call expressions* ou declarações de rotas cujos caminhos globais resolvem para os seguintes símbolos proibidos acionam a V4:
 - Sistema/Mundo exterior: `std::fs`, `std::io`, `std::net`, `std::process`, `tokio::fs`, `tokio::io`, `tokio::process`.
 - Banco de Dados/Rede externa: `reqwest`, `sqlx`, `diesel`.
 - Estado não-determinístico: `std::time::SystemTime::now()`, `rand::random()`.
@@ -22,4 +22,4 @@ A detecção é feita semanticamente baseada na árvore (AST), não é um simple
 - Contexto da Mensagem: "Núcleo Impuro: operação proibida <símbolo_proibido> detectada em AST location X".
 
 ## Restrições (L1 Pura)
-A extração dos _tokens_ do AST como nós semânticos tipados já fora parseada pela grammar do Tree-sitter instanciada no L3 e alimentada em `ParsedFile.tokens` para que as regras de L1 analisem determinísticamente os símbolos importados ou instanciados na linha, devolvendo as coordenadas perfeitamente traçadas na violação em SARIF.
+A extração dos _tokens_ do AST como nós semânticos tipados já fora parseada pela grammar do Tree-sitter instanciada no L3 e repassada via Trait para que as regras de L1 analisem determinísticamente os símbolos importados ou instanciados na linha, devolvendo as coordenadas perfeitamente traçadas na violação em SARIF.

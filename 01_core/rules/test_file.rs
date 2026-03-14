@@ -1,12 +1,18 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/test-file.md
-//! @prompt-hash ce046580
+//! @prompt-hash aca044dd
 //! @layer L1
-//! @updated 2026-03-13
+//! @updated 2026-03-14
 
 use crate::entities::layer::Layer;
-use crate::entities::parsed_file::ParsedFile;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
+use std::path::Path;
+
+pub trait HasCoverage {
+    fn layer(&self) -> &Layer;
+    fn has_test_coverage(&self) -> bool;
+    fn path(&self) -> &Path;
+}
 
 /// V2 — Missing test coverage for L1 modules.
 /// Fires when layer == L1 AND has_test_coverage == false.
@@ -14,12 +20,12 @@ use crate::entities::violation::{Location, Violation, ViolationLevel};
 /// Exemption: files that only declare traits/structs/enums without impl
 /// bodies are exempt. L3 (RustParser) encodes this exemption by setting
 /// has_test_coverage = true for such files — L1 never re-derives it.
-pub fn check(file: &ParsedFile) -> Vec<Violation> {
-    if file.layer != Layer::L1 {
+pub fn check<T: HasCoverage>(file: &T) -> Vec<Violation> {
+    if *file.layer() != Layer::L1 {
         return vec![];
     }
 
-    if file.has_test_coverage {
+    if file.has_test_coverage() {
         return vec![];
     }
 
@@ -29,7 +35,7 @@ pub fn check(file: &ParsedFile) -> Vec<Violation> {
         message: "Módulo do núcleo carece de verificação simultânea (test file ou bloco cfg(test))"
             .to_string(),
         location: Location {
-            path: file.path.clone(),
+            path: file.path().to_path_buf(),
             line: 1,
             column: 0,
         },
@@ -39,20 +45,32 @@ pub fn check(file: &ParsedFile) -> Vec<Violation> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::layer::{Language, Layer};
-    use crate::entities::parsed_file::ParsedFile;
-    use std::path::PathBuf;
+    use crate::entities::layer::Layer;
+    use std::path::{Path, PathBuf};
 
-    fn base_file(layer: Layer, has_test_coverage: bool) -> ParsedFile {
-        ParsedFile {
-            path: PathBuf::from("01_core/foo.rs"),
+    struct MockFile {
+        layer: Layer,
+        has_coverage: bool,
+        path: PathBuf,
+    }
+
+    impl HasCoverage for MockFile {
+        fn layer(&self) -> &Layer {
+            &self.layer
+        }
+        fn has_test_coverage(&self) -> bool {
+            self.has_coverage
+        }
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    fn base_file(layer: Layer, has_test_coverage: bool) -> MockFile {
+        MockFile {
             layer,
-            language: Language::Rust,
-            prompt_header: None,
-            prompt_file_exists: false,
-            has_test_coverage,
-            imports: vec![],
-            tokens: vec![],
+            has_coverage: has_test_coverage,
+            path: PathBuf::from("01_core/foo.rs"),
         }
     }
 
@@ -74,8 +92,12 @@ mod tests {
     #[test]
     fn no_violation_for_non_l1_layers() {
         for layer in [Layer::L2, Layer::L3, Layer::L4, Layer::Lab, Layer::L0] {
-            let file = base_file(layer, false);
-            assert!(check(&file).is_empty(), "expected no V2 for layer {:?}", file.layer);
+            let file = base_file(layer.clone(), false);
+            assert!(
+                check(&file).is_empty(),
+                "expected no V2 for layer {:?}",
+                file.layer()
+            );
         }
     }
 

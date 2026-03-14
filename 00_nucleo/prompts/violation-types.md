@@ -27,7 +27,7 @@ pub struct ParsedFile {
     pub layer: Layer,
     pub language: Language,
 
-    // Para V1
+    // Base IR (AST Features)
     pub prompt_header: Option<PromptHeader>,
     pub prompt_file_exists: bool,
 
@@ -36,7 +36,7 @@ pub struct ParsedFile {
 
     // Para V3
     pub imports: Vec<Import>,
-
+    
     // Para V4
     pub tokens: Vec<Token>,
 
@@ -167,10 +167,18 @@ pub fn compute_delta(
 
 ## Responsabilidades de População (L3)
 
-| Campo | Quem popula | Como |
-|-------|-------------|------|
-| `prompt_file_exists` | `FsPromptReader` | `PromptReader::exists()` |
-| `has_test_coverage` | `FileWalker` + `RustParser` | adjacência em disco + nó `#[cfg(test)]` no AST |
+L3 processa e popula os campos abstratos de `ParsedFile`. As regras (L1) não consomem `ParsedFile` de forma acoplada, mas sim através de abstrações (Traits como `HasPromptFilesystem`, `HasCoverage`, etc).
+
+| Informação Abstrata | Quem popula em ParsedFile (L3) | Regra Destino | Como |
+|------------------|------------------|---------------|------|
+| `prompt_file_exists` | `FsPromptReader` | V1 | O L3 checa no disco e popula o booleano diretamente. L1 consome via `HasPromptFilesystem`. |
+| `has_test_coverage` | `FileWalker` + `RustParser` | V2 | Injeta ao ver adjacência em disco ou nó `#[cfg(test)]`. L1 consome via `HasCoverage`. |
+| `imports` | `RustParser` | V3 | Extração de _use_ e _extern crate_. L1 consome via `HasImports`. |
+| `tokens` | `RustParser` | V4 | Extração de call expressions. L1 consome via `HasTokens`. |
+| `PromptHeader` | `FsPromptReader` e `RustParser` | V5 e V1 | Extração do header e injeção do hash atual do disco. V5 consome via `HasHashes`. |
+
+| Campo Base IR | Quem popula | Como |
+|---------------|-------------|------|
 | `Import.target_layer` | `RustParser` | prefix matching do path contra `crystalline.toml` |
 | `PromptHeader.current_hash` | `FsPromptReader` | `PromptReader::read_hash()` |
 | `public_interface` | `RustParser` | extração de nós públicos do AST via tree-sitter |

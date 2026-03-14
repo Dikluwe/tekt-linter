@@ -1,18 +1,24 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/prompt-drift.md
-//! @prompt-hash 86feeae2
+//! @prompt-hash 9e9f8641
 //! @layer L1
-//! @updated 2026-03-13
+//! @updated 2026-03-14
 
-use crate::entities::parsed_file::ParsedFile;
+use crate::entities::parsed_file::PromptHeader;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
+use std::path::Path;
+
+pub trait HasHashes {
+    fn prompt_header(&self) -> Option<&PromptHeader>;
+    fn path(&self) -> &Path;
+}
 
 /// V5 — Prompt drift detection.
 /// Fires when prompt_hash (declared in header) diverges from
 /// current_hash (real hash of the L0 prompt file, populated by L3).
 /// Warning level — does not block CI by default.
-pub fn check(file: &ParsedFile) -> Vec<Violation> {
-    let header = match &file.prompt_header {
+pub fn check<T: HasHashes>(file: &T) -> Vec<Violation> {
+    let header = match file.prompt_header() {
         Some(h) => h,
         None => return vec![], // V1 already handles absent headers
     };
@@ -40,7 +46,7 @@ pub fn check(file: &ParsedFile) -> Vec<Violation> {
             current, declared
         ),
         location: Location {
-            path: file.path.clone(),
+            path: file.path().to_path_buf(),
             line: 1,
             column: 0,
         },
@@ -50,26 +56,34 @@ pub fn check(file: &ParsedFile) -> Vec<Violation> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::layer::{Language, Layer};
-    use crate::entities::parsed_file::{ParsedFile, PromptHeader};
-    use std::path::PathBuf;
+    use crate::entities::layer::Layer;
+    use crate::entities::parsed_file::PromptHeader;
+    use std::path::{Path, PathBuf};
 
-    fn file_with_hashes(declared: Option<&str>, current: Option<&str>) -> ParsedFile {
-        ParsedFile {
-            path: PathBuf::from("01_core/foo.rs"),
-            layer: Layer::L1,
-            language: Language::Rust,
-            prompt_header: Some(PromptHeader {
+    struct MockFile {
+        header: Option<PromptHeader>,
+        path: PathBuf,
+    }
+
+    impl HasHashes for MockFile {
+        fn prompt_header(&self) -> Option<&PromptHeader> {
+            self.header.as_ref()
+        }
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    fn file_with_hashes(declared: Option<&str>, current: Option<&str>) -> MockFile {
+        MockFile {
+            header: Some(PromptHeader {
                 prompt_path: "00_nucleo/prompts/linter-core.md".to_string(),
                 prompt_hash: declared.map(str::to_string),
                 current_hash: current.map(str::to_string),
                 layer: Layer::L1,
                 updated: None,
             }),
-            prompt_file_exists: true,
-            has_test_coverage: true,
-            imports: vec![],
-            tokens: vec![],
+            path: PathBuf::from("01_core/foo.rs"),
         }
     }
 
@@ -90,15 +104,9 @@ mod tests {
 
     #[test]
     fn no_violation_when_prompt_header_absent() {
-        let file = ParsedFile {
+        let file = MockFile {
+            header: None, // V1 handles this
             path: PathBuf::from("01_core/foo.rs"),
-            layer: Layer::L1,
-            language: Language::Rust,
-            prompt_header: None, // V1 handles this
-            prompt_file_exists: false,
-            has_test_coverage: true,
-            imports: vec![],
-            tokens: vec![],
         };
         assert!(check(&file).is_empty());
     }
