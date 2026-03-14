@@ -1,0 +1,10 @@
+//! Crystalline Lineage
+//! @prompt 00_nucleo/prompts/violation-types.md
+//! @prompt-hash 9b91c41b
+//! @layer L1
+//! @updated 2025-03-13
+
+pub mod layer;
+pub mod parsed_file;
+pub mod violation;
+

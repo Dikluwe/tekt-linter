@@ -1,0 +1,29 @@
+[project]
+root = "."
+
+[languages]
+rust = { grammar = "tree-sitter-rust", enabled = true }
+# typescript = { grammar = "tree-sitter-typescript", enabled = false }
+
+[layers]
+L0  = "00_nucleo"
+L1  = "01_core"
+L2  = "02_shell"
+L3  = "03_infra"
+L4  = "04_wiring"
+lab = "lab"
+
+# Rust module name → layer (used by LayerResolver for crate:: imports)
+[module_layers]
+entities  = "L1"
+contracts = "L1"
+rules     = "L1"
+shell     = "L2"
+infra     = "L3"
+
+[rules]
+V1 = { level = "error" }
+V2 = { level = "error" }
+V3 = { level = "error" }
+V4 = { level = "error" }
+V5 = { level = "warning" }
