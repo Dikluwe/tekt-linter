@@ -4,6 +4,8 @@
 //! @layer L1
 //! @updated 2026-03-14
 
+use std::borrow::Cow;
+
 use crate::entities::parsed_file::{
     FunctionSignature, InterfaceDelta, ParsedFile, PublicInterface, TypeSignature,
 };
@@ -45,7 +47,7 @@ pub fn check<'a>(file: &ParsedFile<'a>) -> Vec<Violation<'a>> {
             header.prompt_path,
             delta.describe()
         ),
-        location: Location { path: file.path, line: 1, column: 0 },
+        location: Location { path: Cow::Borrowed(file.path), line: 1, column: 0 },
     }]
 }
 

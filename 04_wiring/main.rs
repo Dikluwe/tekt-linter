@@ -4,6 +4,7 @@
 //! @layer L4
 //! @updated 2026-03-14
 
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::process;
 
@@ -236,28 +237,27 @@ fn run_checks<'a>(file: &ParsedFile<'a>, enabled: &EnabledChecks) -> Vec<Violati
 // ── ParseError → Violation ────────────────────────────────────────────────────
 
 /// Converts a parse error into a `Violation<'static>`.
-/// Uses `Box::leak` to produce `&'static Path` from the owned `PathBuf` in
-/// `ParseError`. Parse errors are rare infrastructure failures (V0 level);
-/// the leaked memory is acceptable for a CLI process (ADR-0005 pattern).
+/// Uses `Cow::Owned(path)` — path comes from a `PathBuf` in `ParseError`,
+/// not from a SourceFile buffer. No Box::leak needed (ADR-0005).
 fn parse_error_to_violation(err: ParseError) -> Violation<'static> {
     match err {
         ParseError::SyntaxError { path, line, column, message } => Violation {
             rule_id: "PARSE".to_string(),
             level: ViolationLevel::Error,
             message: format!("Syntax error: {message}"),
-            location: Location { path: Box::leak(path.into_boxed_path()), line, column },
+            location: Location { path: Cow::Owned(path), line, column },
         },
         ParseError::UnsupportedLanguage { path, language } => Violation {
             rule_id: "PARSE".to_string(),
             level: ViolationLevel::Warning,
             message: format!("Unsupported language: {language:?}"),
-            location: Location { path: Box::leak(path.into_boxed_path()), line: 0, column: 0 },
+            location: Location { path: Cow::Owned(path), line: 0, column: 0 },
         },
         ParseError::EmptySource { path } => Violation {
             rule_id: "PARSE".to_string(),
             level: ViolationLevel::Warning,
             message: "Empty source file skipped".to_string(),
-            location: Location { path: Box::leak(path.into_boxed_path()), line: 0, column: 0 },
+            location: Location { path: Cow::Owned(path), line: 0, column: 0 },
         },
     }
 }

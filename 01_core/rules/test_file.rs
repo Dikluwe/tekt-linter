@@ -4,9 +4,11 @@
 //! @layer L1
 //! @updated 2026-03-14
 
+use std::borrow::Cow;
+use std::path::Path;
+
 use crate::entities::layer::Layer;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
-use std::path::Path;
 
 pub trait HasCoverage<'a> {
     fn layer(&self) -> &Layer;
@@ -34,7 +36,7 @@ pub fn check<'a, T: HasCoverage<'a>>(file: &T) -> Vec<Violation<'a>> {
         level: ViolationLevel::Error,
         message: "Módulo do núcleo carece de verificação simultânea (test file ou bloco cfg(test))"
             .to_string(),
-        location: Location { path: file.path(), line: 1, column: 0 },
+        location: Location { path: Cow::Borrowed(file.path()), line: 1, column: 0 },
     }]
 }
 

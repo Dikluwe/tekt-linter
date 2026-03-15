@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
 description = "Crystalline Architecture Linter"
+repository = "https://github.com/Dikluwe/tekt-linter"
+license = "MIT"
 
 [lib]
 path = "lib.rs"
@@ -26,6 +28,9 @@ toml              = "0.8"
 # L2 — shell
 clap              = { version = "4", features = ["derive"] }
 colored           = "2"
+
+# L4 — wiring (ADR-0004)
+rayon             = "1"
 
 [dev-dependencies]
 tempfile = "3"

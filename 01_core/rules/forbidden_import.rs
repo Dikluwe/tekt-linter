@@ -4,10 +4,12 @@
 //! @layer L1
 //! @updated 2026-03-14
 
+use std::borrow::Cow;
+use std::path::Path;
+
 use crate::entities::layer::Layer;
 use crate::entities::parsed_file::Import;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
-use std::path::Path;
 
 pub trait HasImports<'a> {
     fn layer(&self) -> &Layer;
@@ -55,7 +57,7 @@ fn make_violation<'a, T: HasImports<'a>>(file: &T, import: &Import<'a>) -> Viola
             "Inversão de gravidade: {:?} não pode importar de {:?} ('{}')",
             file.layer(), import.target_layer, import.path
         ),
-        location: Location { path: file.path(), line: import.line, column: 0 },
+        location: Location { path: Cow::Borrowed(file.path()), line: import.line, column: 0 },
     }
 }
 

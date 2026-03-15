@@ -55,7 +55,7 @@ pub fn plan(violations: &[Violation<'_>], rewriter: &dyn HashRewriter) -> Vec<Fi
         .iter()
         .filter(|v| v.rule_id == "V5")
         .filter_map(|v| {
-            let (prompt_path, old_hash) = rewriter.read_header(v.location.path)?;
+            let (prompt_path, old_hash) = rewriter.read_header(&v.location.path)?;
             let new_hash = rewriter.compute_hash(&prompt_path);
             Some(FixEntry { source_path: v.location.path.to_path_buf(), old_hash, new_hash })
         })
@@ -209,6 +209,7 @@ pub fn format_results(results: &[FixResult], unfixable: usize, remaining_v5: usi
 mod tests {
     use super::*;
     use crate::entities::violation::{Location, ViolationLevel};
+    use std::borrow::Cow;
     use std::cell::RefCell;
     use std::path::{Path, PathBuf};
 
@@ -254,7 +255,7 @@ mod tests {
             rule_id: "V5".to_string(),
             level: ViolationLevel::Warning,
             message: "drift".to_string(),
-            location: Location { path: Path::new(path), line: 1, column: 0 },
+            location: Location { path: Cow::Borrowed(Path::new(path)), line: 1, column: 0 },
         }
     }
 
@@ -282,7 +283,7 @@ mod tests {
                 rule_id: "V1".to_string(),
                 level: ViolationLevel::Error,
                 message: "header missing".to_string(),
-                location: Location { path: Path::new("foo.rs"), line: 1, column: 0 },
+                location: Location { path: Cow::Borrowed(Path::new("foo.rs")), line: 1, column: 0 },
             },
         ];
         let entries = plan(&violations, &rewriter);

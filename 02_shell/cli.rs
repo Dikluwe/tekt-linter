@@ -231,6 +231,7 @@ pub fn should_fail(violations: &[Violation<'_>], fail_on: &FailLevel) -> bool {
 mod tests {
     use super::*;
     use crate::entities::violation::Location;
+    use std::borrow::Cow;
     use std::path::{Path, PathBuf};
 
     fn make_violation(rule_id: &str, level: ViolationLevel) -> Violation<'static> {
@@ -238,7 +239,11 @@ mod tests {
             rule_id: rule_id.to_string(),
             level,
             message: "test message".to_string(),
-            location: Location { path: Path::new("01_core/foo.rs"), line: 5, column: 0 },
+            location: Location {
+                path: Cow::Borrowed(Path::new("01_core/foo.rs")),
+                line: 5,
+                column: 0,
+            },
         }
     }
 

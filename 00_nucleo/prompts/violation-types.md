@@ -2,7 +2,7 @@
 
 **Camada**: L1 (Core - Entities)
 **Criado em**: 2025-03-13
-**Revisado em**: 2026-03-14 (ADR-0004 + Errata Cow)
+**Revisado em**: 2026-03-14 (ADR-0004, ADR-0005)
 
 ---
 
@@ -13,23 +13,26 @@ Este módulo define as entidades fundamentais do linter: `ParsedFile`,
 Intermediária (IR) sobre a qual todas as regras V1–V6 operam de forma
 pura e agnóstica à linguagem e filesystem.
 
-**Diretiva Zero-Copy (ADR-0004):** As estruturas não são donas das
-strings do código-fonte. Todas recebem lifetime `<'a>` e guardam
-referências (`&'a str`, `&'a Path`) para o conteúdo carregado em
-memória pelo walker. Uma única alocação por arquivo, zero cópias
-intermediárias — exceto onde documentado abaixo.
+**Diretiva Zero-Copy (ADR-0004):** As estruturas de dados não são
+donas das strings do código-fonte. Todas recebem lifetime `<'a>` e
+guardam referências para o conteúdo carregado em memória pelo walker.
+Uma única alocação por arquivo, zero cópias intermediárias — exceto
+onde documentado na tabela abaixo.
 
 **Exceções justificadas e documentadas:**
 
 | Campo | Tipo | Motivo |
 |-------|------|--------|
-| `PromptHeader.current_hash` | `Option<String>` | Calculado por SHA256 do arquivo em disco — não existe no buffer do fonte |
+| `PromptHeader.current_hash` | `Option<String>` | SHA256 calculado do disco — não existe no buffer do fonte |
 | `Token.symbol` | `Cow<'a, str>` | FQN resolvido por concatenação de alias não existe no buffer original |
-| `Violation.rule_id` | `String` | Identificador curto gerado pela regra, não extraído do fonte |
+| `Location.path` | `Cow<'a, Path>` | Violações normais usam `Borrowed(&'a Path)`. Erros de infraestrutura (V0, PARSE) usam `Owned(PathBuf)` — elimina `Box::leak()` (ADR-0005) |
+| `Violation.rule_id` | `String` | Identificador gerado pela regra, não extraído do fonte |
 | `Violation.message` | `String` | Mensagem formatada pela regra, não extraída do fonte |
 
-Toda outra alocação dentro do motor de avaliação de regras é
-violação da política zero-copy do ADR-0004.
+**Proibição de clone em L1:** As funções de regras apenas leem
+referências e comparam. Usar `.to_string()` ou `String::from()`
+dentro do motor de avaliação de regras é violação da política
+zero-copy — exceto `rule_id` e `message` gerados pela regra.
 
 ---
 
@@ -37,6 +40,9 @@ violação da política zero-copy do ADR-0004.
 
 ### `ViolationLevel` e `Violation<'a>`
 ```rust
+use std::borrow::Cow;
+use std::path::{Path, PathBuf};
+
 /// Fatal: erros de infraestrutura que impedem análise completa (V0).
 /// Fatal não pode ser suprimido por --fail-on — bloqueia CI
 /// independentemente de configuração.
@@ -49,9 +55,13 @@ pub enum ViolationLevel {
     Warning,
 }
 
+/// ADR-0005: path usa Cow<'a, Path>.
+/// Borrowed(&'a Path) — violações normais, path referencia o SourceFile.
+/// Owned(PathBuf) — erros de infraestrutura (V0, PARSE), path é owned.
+/// Elimina Box::leak() dos conversores em L4.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Location<'a> {
-    pub path: &'a Path,
+    pub path: Cow<'a, Path>,
     pub line: usize,
     pub column: usize,
 }
@@ -75,9 +85,15 @@ pub struct ParsedFile<'a> {
     // Para V1
     pub prompt_header: Option<PromptHeader<'a>>,
     pub prompt_file_exists: bool,
+    // true se prompt_header.prompt_path existe em 00_nucleo/
+    // false se header ausente ou arquivo não encontrado
+    // populado por L3 via PromptReader
 
     // Para V2
     pub has_test_coverage: bool,
+    // true se #[cfg(test)] no AST ou foo_test.rs adjacente
+    // true se arquivo é declaration-only (isento de V2)
+    // populado por L3 (FileWalker + RustParser)
 
     // Para V3
     pub imports: Vec<Import<'a>>,
@@ -87,7 +103,12 @@ pub struct ParsedFile<'a> {
 
     // Para V6
     pub public_interface: PublicInterface<'a>,
+    // Interface pública extraída do AST pelo RustParser (L3)
+
     pub prompt_snapshot: Option<PublicInterface<'a>>,
+    // Snapshot registrado em ## Interface Snapshot do prompt
+    // None se prompt não tem snapshot ou não existe
+    // Populado por L3 via PromptSnapshotReader
 }
 ```
 
@@ -95,8 +116,10 @@ pub struct ParsedFile<'a> {
 ```rust
 pub struct PromptHeader<'a> {
     pub prompt_path: &'a str,
-    pub prompt_hash: Option<&'a str>,  // declarado no header do arquivo
-    pub current_hash: Option<String>,  // EXCEÇÃO: SHA256 calculado do disco
+    pub prompt_hash: Option<&'a str>,  // hash declarado no header
+    pub current_hash: Option<String>,  // EXCEÇÃO zero-copy:
+    // SHA256[0..8] calculado pelo FsPromptReader a partir do disco.
+    // Não existe no buffer do arquivo fonte.
     pub layer: Layer,
     pub updated: Option<&'a str>,
 }
@@ -109,7 +132,7 @@ pub struct Import<'a> {
     pub line: usize,
     pub kind: ImportKind,
     /// Resolvido por L3 via crystalline.toml.
-    /// Layer::Unknown para crates externas.
+    /// Layer::Unknown para crates externas — não gera violação V3.
     pub target_layer: Layer,
 }
 
@@ -126,7 +149,7 @@ pub enum ImportKind {
 use std::borrow::Cow;
 
 pub struct Token<'a> {
-    /// FQN resolvido pelo RustParser (ADR-0004 + Errata).
+    /// FQN resolvido pelo RustParser (ADR-0004 + Errata Cow).
     ///
     /// Cow::Borrowed(&'a str) — símbolo presente literalmente no buffer:
     ///   `std::fs::read(...)`  →  Borrowed("std::fs::read")
@@ -134,9 +157,8 @@ pub struct Token<'a> {
     /// Cow::Owned(String) — FQN construído por resolução de alias:
     ///   `use std::fs as f; f::read(...)`  →  Owned("std::fs::read")
     ///
-    /// V4 trata ambos identicamente via Deref<Target = str> —
-    /// compara &str sem conhecer a origem da string.
-    /// L1 permanece alheio à distinção Borrowed/Owned.
+    /// V4 acessa via Deref<Target = str> — alheio à distinção.
+    /// L1 permanece alheio à origem da string.
     pub symbol: Cow<'a, str>,
     pub line: usize,
     pub column: usize,
@@ -175,6 +197,7 @@ impl<'a> PublicInterface<'a> {
 /// Critério de igualdade: name + params + return_type devem ser
 /// todos iguais. Mudança em qualquer campo é quebra de contrato.
 /// PartialEq derivado sobre a struct completa — nunca comparar só name.
+/// foo(a: String) → foo(a: Vec<String>) é remoção + adição no delta.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionSignature<'a> {
     pub name: &'a str,
@@ -225,12 +248,43 @@ impl<'a> InterfaceDelta<'a> {
     /// Produz string legível para mensagem de violação.
     /// Ordem: adições antes de remoções, funções antes de tipos.
     /// Exemplo: "+fn check, -fn validate, +struct Delta"
-    pub fn describe(&self) -> String { ... }
+    pub fn describe(&self) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        for f in &self.added_functions {
+            parts.push(format!("+fn {}", f.name));
+        }
+        for f in &self.removed_functions {
+            parts.push(format!("-fn {}", f.name));
+        }
+        for t in &self.added_types {
+            parts.push(format!("+{} {}", type_kind_str(&t.kind), t.name));
+        }
+        for t in &self.removed_types {
+            parts.push(format!("-{} {}", type_kind_str(&t.kind), t.name));
+        }
+        for r in &self.added_reexports {
+            parts.push(format!("+use {}", r));
+        }
+        for r in &self.removed_reexports {
+            parts.push(format!("-use {}", r));
+        }
+        parts.join(", ")
+    }
+}
+
+fn type_kind_str(kind: &TypeKind) -> &'static str {
+    match kind {
+        TypeKind::Struct => "struct",
+        TypeKind::Enum   => "enum",
+        TypeKind::Trait  => "trait",
+    }
 }
 
 /// Computa delta entre interface atual e snapshot.
-/// Usa PartialEq completo (name + params + return_type).
+/// Usa PartialEq completo (name + params + return_type) —
+/// nunca compara apenas por name.
 /// Mudança de assinatura aparece como remoção + adição.
+/// Função pura — zero I/O, zero alocações além dos Vec de resultado.
 pub fn compute_delta<'a>(
     current: &PublicInterface<'a>,
     snapshot: &PublicInterface<'a>,
@@ -276,32 +330,42 @@ pub enum Language {
 ## Responsabilidades de População (L3)
 
 L3 constrói `ParsedFile<'a>` inteiramente antes de entregar a L1.
-L1 apenas lê — nunca deriva, nunca aloca (exceto Cow::Owned em tokens
-com alias resolvido, transparente para L1 via Deref).
+L1 apenas lê — nunca deriva, nunca aloca além das exceções documentadas.
 
 | Campo | Quem popula | Como |
 |-------|-------------|------|
 | `prompt_file_exists` | `FsPromptReader` | `PromptReader::exists()` |
-| `has_test_coverage` | `FileWalker` + `RustParser` | adjacência em disco + nó `#[cfg(test)]` no AST |
-| `imports` com `target_layer` | `RustParser` | `use_declaration` no AST + `LayerResolver` |
+| `has_test_coverage` | `FileWalker` + `RustParser` | adjacência em disco + nó `#[cfg(test)]` no AST + detection de declaration-only |
+| `imports` com `target_layer` | `RustParser` | `use_declaration` no AST + `LayerResolver` via `crystalline.toml` |
 | `tokens` com FQN | `RustParser` | Fase 1 (tabela de aliases) + Fase 2 (call_expression). Alias → `Cow::Owned`, direto → `Cow::Borrowed` |
 | `PromptHeader.prompt_hash` | `RustParser` | fatia `&'a str` do buffer do arquivo |
 | `PromptHeader.current_hash` | `FsPromptReader` | SHA256[0..8] calculado do disco — `Option<String>` |
 | `public_interface` | `RustParser` | nós `pub` do AST, strings normalizadas como `&'a str` |
-| `prompt_snapshot` | `PromptSnapshotReader` | desserialização do JSON em `## Interface Snapshot` |
+| `prompt_snapshot` | `PromptSnapshotReader` | desserialização do JSON em `## Interface Snapshot` do prompt |
+
+**Responsabilidades de L4 (wiring) para construção de `Location`:**
+
+| Violação | Como construir `Location.path` |
+|----------|-------------------------------|
+| V1–V6 normais | `Cow::Borrowed(parsed_file.path)` |
+| V0 (SourceError) | `Cow::Owned(path)` — path vem de `SourceError::Unreadable` |
+| PARSE (ParseError) | `Cow::Owned(path)` — path vem das variants de `ParseError` |
 
 ---
 
 ## Restrições (L1)
 
-- Zero I/O — todas as structs referenciam o buffer de `SourceFile`
-- `ParsedFile<'a>` é construído inteiramente por L3
+- Zero I/O — todas as structs referenciam o buffer do `SourceFile`
+- `ParsedFile<'a>` é construído inteiramente por L3 antes de chegar a L1
 - `compute_delta` é função pura sobre dois `PublicInterface<'a>`
-- Proibido usar `.to_string()` ou `String::from()` dentro das funções
-  de regras — exceto `Violation.rule_id` e `Violation.message` que
-  são gerados pela regra, não extraídos do fonte
-- `Token.symbol` é `Cow<'a, str>` — V4 acessa via `Deref` como `&str`
+- **Proibido** `.to_string()` ou `String::from()` dentro das funções
+  de regras — exceto `rule_id` e `message` gerados pela própria regra
+- `Token.symbol` é `Cow<'a, str>` — V4 acessa via `Deref<Target = str>`
   sem precisar saber se é Borrowed ou Owned
+- `Location.path` é `Cow<'a, Path>` — regras usam `Borrowed`,
+  wiring usa `Owned` para erros de infraestrutura sem `Box::leak()`
+- Comparação de `FunctionSignature` e `TypeSignature` usa `PartialEq`
+  derivado sobre a struct completa — nunca comparar apenas por `name`
 
 ---
 
@@ -309,30 +373,32 @@ com alias resolvido, transparente para L1 via Deref).
 ```
 Dado ParsedFile com prompt_file_exists = false
 Quando V1::check() for chamado
-Então retorna Violation com rule_id "V1" e level Error
+Então retorna Violation { rule_id: "V1", level: Error,
+      location: Location { path: Cow::Borrowed(..), .. } }
 
 Dado ParsedFile com has_test_coverage = false e layer = L1
 Quando V2::check() for chamado
-Então retorna Violation com rule_id "V2" e level Error
+Então retorna Violation { rule_id: "V2", level: Error,
+      location: Location { path: Cow::Borrowed(..), .. } }
 
 Dado Import com target_layer = L3 em arquivo com layer = L2
 Quando V3::check() for chamado
-Então retorna Violation com rule_id "V3" e level Error
+Então retorna Violation { rule_id: "V3", level: Error }
 
-Dado Token { symbol: Cow::Borrowed("std::fs::read"), .. } em L1
+Dado Token { symbol: Cow::Borrowed("std::fs::read"), .. } em arquivo L1
 Quando V4::check() for chamado
-Então retorna Violation com rule_id "V4"
+Então retorna Violation { rule_id: "V4", level: Error }
 — Borrowed tratado identicamente via Deref
 
-Dado Token { symbol: Cow::Owned("std::fs::read"), .. } em L1
+Dado Token { symbol: Cow::Owned("std::fs::read"), .. } em arquivo L1
 Quando V4::check() for chamado
-Então retorna Violation com rule_id "V4"
+Então retorna Violation { rule_id: "V4", level: Error }
 — Owned tratado identicamente via Deref
 
 Dado PromptHeader com prompt_hash = "a3f8c2d1"
 e current_hash = Some("b9e4f7a2")
 Quando V5::check() for chamado
-Então retorna Violation com rule_id "V5" e level Warning
+Então retorna Violation { rule_id: "V5", level: Warning }
 
 Dado PublicInterface com foo(a: String) -> bool
 E prompt_snapshot com foo(a: Vec<String>) -> bool
@@ -345,14 +411,25 @@ Dado PublicInterface idêntica ao prompt_snapshot
 Quando compute_delta() for chamado
 Então InterfaceDelta.is_empty() == true
 
-Dado Violation com level Fatal
-Quando comparado com Error ou Warning
-Então são distintos — Fatal não configurável via --fail-on
+Dado InterfaceDelta com +fn check e -fn validate e +struct Delta
+Quando describe() for chamado
+Então retorna "+fn check, -fn validate, +struct Delta"
+— ordem: adições antes de remoções, funções antes de tipos
 
-Dado ParsedFile construído com todos os campos populados
-Quando qualquer regra for chamada
-Então nenhuma regra aloca String exceto rule_id, message,
-e current_hash já presentes no ParsedFile
+Dado SourceError::Unreadable { path, reason }
+Quando source_error_to_violation() for chamado em L4
+Então retorna Violation { rule_id: "V0", level: Fatal,
+      location: Location { path: Cow::Owned(path), .. } }
+— sem Box::leak(), sem 'static desnecessário
+
+Dado ParseError::SyntaxError { path, line, .. }
+Quando parse_error_to_violation() for chamado em L4
+Então retorna Violation { level: Error,
+      location: Location { path: Cow::Owned(path), .. } }
+
+Dado Violation com level Fatal
+Quando should_fail() for chamado independentemente de --fail-on
+Então retorna true — Fatal não configurável
 ```
 
 ---
@@ -364,5 +441,6 @@ e current_hash já presentes no ParsedFile
 | 2025-03-13 | Criação inicial | parsed_file.rs, violation.rs, layer.rs |
 | 2025-03-13 | Gap 2: prompt_file_exists, has_test_coverage, Import.target_layer, PromptHeader.current_hash | parsed_file.rs |
 | 2025-03-13 | V6: PublicInterface, FunctionSignature, TypeSignature, InterfaceDelta, compute_delta | parsed_file.rs |
-| 2026-03-14 | ADR-0004: lifetimes `<'a>` em todas as structs, ViolationLevel::Fatal, exceções documentadas na tabela | parsed_file.rs, violation.rs |
-| 2026-03-14 | Errata Cow: Token.symbol alterado de `&'a str` para `Cow<'a, str>` — FQN resolvido por alias não existe no buffer original | parsed_file.rs |
+| 2026-03-14 | ADR-0004: lifetimes `<'a>` em todas as structs, ViolationLevel::Fatal, Cow<'a, str> em Token.symbol, proibição de clone documentada | parsed_file.rs, violation.rs |
+| 2026-03-14 | Errata Cow: Token.symbol alterado de &'a str para Cow<'a, str> | parsed_file.rs |
+| 2026-03-14 | ADR-0005: Location.path alterado de &'a Path para Cow<'a, Path>, elimina Box::leak() nos conversores, tabela de responsabilidades L4 adicionada, compute_delta com implementação completa, describe() com implementação completa | violation.rs, parsed_file.rs |

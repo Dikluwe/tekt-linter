@@ -4,10 +4,12 @@
 //! @layer L1
 //! @updated 2026-03-14
 
+use std::borrow::Cow;
+use std::path::Path;
+
 use crate::entities::layer::Layer;
 use crate::entities::parsed_file::Token;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
-use std::path::Path;
 
 pub trait HasTokens<'a> {
     fn layer(&self) -> &Layer;
@@ -61,7 +63,7 @@ fn make_violation<'a, T: HasTokens<'a>>(file: &T, token: &Token<'a>) -> Violatio
             "Núcleo Impuro: operação proibida '{}' detectada em L1",
             token.symbol
         ),
-        location: Location { path: file.path(), line: token.line, column: token.column },
+        location: Location { path: Cow::Borrowed(file.path()), line: token.line, column: token.column },
     }
 }
 

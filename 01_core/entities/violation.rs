@@ -4,6 +4,7 @@
 //! @layer L1
 //! @updated 2026-03-14
 
+use std::borrow::Cow;
 use std::path::Path;
 
 /// Fatal: erros de infraestrutura que impedem análise completa (V0).
@@ -18,9 +19,13 @@ pub enum ViolationLevel {
     Warning,
 }
 
+/// ADR-0005: path usa Cow<'a, Path>.
+/// Borrowed(&'a Path) — violações normais (V1–V6), path referencia o SourceFile.
+/// Owned(PathBuf)     — erros de infraestrutura (V0, PARSE), path é owned.
+/// Elimina Box::leak() nos conversores em L4.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Location<'a> {
-    pub path: &'a Path,
+    pub path: Cow<'a, Path>,
     pub line: usize,
     pub column: usize,
 }
@@ -36,6 +41,7 @@ pub struct Violation<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::borrow::Cow;
     use std::path::Path;
 
     fn make_violation(rule_id: &str, level: ViolationLevel) -> Violation<'static> {
@@ -44,7 +50,7 @@ mod tests {
             level,
             message: "test message".to_string(),
             location: Location {
-                path: Path::new("01_core/foo.rs"),
+                path: Cow::Borrowed(Path::new("01_core/foo.rs")),
                 line: 5,
                 column: 3,
             },
@@ -66,7 +72,7 @@ mod tests {
 
     #[test]
     fn location_eq() {
-        let a = Location { path: Path::new("foo.rs"), line: 1, column: 0 };
+        let a = Location { path: Cow::Borrowed(Path::new("foo.rs")), line: 1, column: 0 };
         let b = a.clone();
         assert_eq!(a, b);
     }

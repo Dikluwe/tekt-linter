@@ -4,9 +4,11 @@
 //! @layer L1
 //! @updated 2026-03-14
 
+use std::borrow::Cow;
+use std::path::Path;
+
 use crate::entities::parsed_file::PromptHeader;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
-use std::path::Path;
 
 pub trait HasPromptFilesystem<'a> {
     fn prompt_header(&self) -> Option<&PromptHeader<'a>>;
@@ -28,7 +30,7 @@ pub fn check<'a, T: HasPromptFilesystem<'a>>(file: &T) -> Vec<Violation<'a>> {
         rule_id: "V1".to_string(),
         level: ViolationLevel::Error,
         message: "Arquivo Cristalino sem linhagem causal @prompt encontrada".to_string(),
-        location: Location { path: file.path(), line: 1, column: 0 },
+        location: Location { path: Cow::Borrowed(file.path()), line: 1, column: 0 },
     }]
 }
 

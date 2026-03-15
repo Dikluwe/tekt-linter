@@ -50,7 +50,7 @@ pub fn plan<'a>(
         .iter()
         .filter(|v| v.rule_id == "V6")
         .filter_map(|v| {
-            let parsed = parsed_files.iter().find(|p| p.path == v.location.path)?;
+            let parsed = parsed_files.iter().find(|p| p.path == v.location.path.as_ref())?;
             let header = parsed.prompt_header.as_ref()?;
             let new_snapshot = rewriter.serialize_snapshot(&parsed.public_interface);
             Some(SnapshotEntry {
@@ -174,6 +174,7 @@ mod tests {
     use crate::entities::layer::{Language, Layer};
     use crate::entities::parsed_file::{PromptHeader, PublicInterface};
     use crate::entities::violation::{Location, ViolationLevel};
+    use std::borrow::Cow;
     use std::cell::RefCell;
     use std::path::{Path, PathBuf};
 
@@ -205,7 +206,7 @@ mod tests {
             rule_id: "V6".to_string(),
             level: ViolationLevel::Warning,
             message: "stale".to_string(),
-            location: Location { path: Path::new(path), line: 1, column: 0 },
+            location: Location { path: Cow::Borrowed(Path::new(path)), line: 1, column: 0 },
         }
     }
 
@@ -247,7 +248,7 @@ mod tests {
             rule_id: "V1".to_string(),
             level: ViolationLevel::Error,
             message: "missing header".to_string(),
-            location: Location { path: Path::new("foo.rs"), line: 1, column: 0 },
+            location: Location { path: Cow::Borrowed(Path::new("foo.rs")), line: 1, column: 0 },
         }];
         let files = vec![parsed_file_for("foo.rs")];
         let entries = plan(&violations, &files, &rewriter);
