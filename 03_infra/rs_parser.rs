@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rs-parser.md
-//! @prompt-hash c0d309ae
+//! @prompt-hash 36b3db44
 //! @layer L3
 //! @updated 2026-03-14
 
@@ -194,7 +194,8 @@ fn collect_imports<'a>(
             let line = node.start_position().row + 1;
             let path = use_declaration_path(node, source);
             let target_layer = resolve_layer(path, config);
-            imports.push(Import { path, line, kind: ImportKind::Use, target_layer });
+            let target_subdir = resolve_subdir(path, config);
+            imports.push(Import { path, line, kind: ImportKind::Use, target_layer, target_subdir });
         }
         "extern_crate_declaration" => {
             let line = node.start_position().row + 1;
@@ -204,7 +205,8 @@ fn collect_imports<'a>(
                 .trim_end_matches(';')
                 .trim();
             let target_layer = resolve_layer(path, config);
-            imports.push(Import { path, line, kind: ImportKind::ExternCrate, target_layer });
+            let target_subdir = resolve_subdir(path, config);
+            imports.push(Import { path, line, kind: ImportKind::ExternCrate, target_layer, target_subdir });
         }
         "mod_item" => {
             // Only bare `mod foo;` declarations (no block body)
@@ -221,6 +223,7 @@ fn collect_imports<'a>(
                     line,
                     kind: ImportKind::ModDecl,
                     target_layer: Layer::Unknown,
+                    target_subdir: None,
                 });
             }
         }
@@ -267,6 +270,29 @@ fn resolve_layer(path: &str, config: &CrystallineConfig) -> Layer {
         config.layer_for_module(module_name)
     } else {
         Layer::Unknown
+    }
+}
+
+/// Resolve o subdiretório de destino de um import para V9.
+/// Retorna Some("entities") se import aponta para crate::entities::...
+/// Retorna None para crates externas (não começam com "crate::" ou "super::").
+/// Inspeciona o segundo segmento do path — o nome do módulo de L1.
+fn resolve_subdir<'a>(path: &'a str, config: &CrystallineConfig) -> Option<&'a str> {
+    let path = path.trim_start_matches('{').trim();
+
+    if !path.starts_with("crate::") && !path.starts_with("super::") {
+        return None; // crate externa — sem subdir
+    }
+
+    let segments: Vec<&'a str> = path.splitn(4, "::").collect();
+    // segments[0] = "crate" | "super", segments[1] = module name
+    let module_name = segments.get(1).copied()?;
+
+    // Só é relevante para imports que apontam para L1
+    if config.layer_for_module(module_name) == crate::entities::layer::Layer::L1 {
+        Some(module_name)
+    } else {
+        None
     }
 }
 

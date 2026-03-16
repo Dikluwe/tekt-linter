@@ -2,7 +2,7 @@
 
 **Camada**: L1 (Core - Entities)
 **Criado em**: 2025-03-13
-**Revisado em**: 2026-03-14 (ADR-0004, ADR-0005)
+**Revisado em**: 2026-03-14 (ADR-0004, ADR-0005, ADR-0006)
 
 ---
 
@@ -10,7 +10,7 @@
 
 Este módulo define as entidades fundamentais do linter: `ParsedFile`,
 `Violation`, `Layer` e tipos auxiliares. Formam a Representação
-Intermediária (IR) sobre a qual todas as regras V1–V6 operam de forma
+Intermediária (IR) sobre a qual todas as regras V1–V9 operam de forma
 pura e agnóstica à linguagem e filesystem.
 
 **Diretiva Zero-Copy (ADR-0004):** As estruturas de dados não são
@@ -43,11 +43,11 @@ zero-copy — exceto `rule_id` e `message` gerados pela regra.
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
-/// Fatal: erros de infraestrutura que impedem análise completa (V0).
+/// Fatal: erros de infraestrutura que impedem análise completa (V0, V8).
 /// Fatal não pode ser suprimido por --fail-on — bloqueia CI
 /// independentemente de configuração.
-/// Error: violações arquiteturais bloqueantes (V1–V4).
-/// Warning: divergências não bloqueantes por padrão (V5–V6).
+/// Error: violações arquiteturais bloqueantes (V1–V4, V9).
+/// Warning: divergências não bloqueantes por padrão (V5–V7).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ViolationLevel {
     Fatal,
@@ -68,7 +68,7 @@ pub struct Location<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Violation<'a> {
-    pub rule_id: String,   // "V0"–"V6", "PARSE" — gerado pela regra
+    pub rule_id: String,   // "V0"–"V9", "PARSE" — gerado pela regra
     pub level: ViolationLevel,
     pub message: String,   // formatado pela regra
     pub location: Location<'a>,
@@ -95,7 +95,7 @@ pub struct ParsedFile<'a> {
     // true se arquivo é declaration-only (isento de V2)
     // populado por L3 (FileWalker + RustParser)
 
-    // Para V3
+    // Para V3 e V9
     pub imports: Vec<Import<'a>>,
 
     // Para V4
@@ -131,9 +131,16 @@ pub struct Import<'a> {
     pub path: &'a str,        // sempre presente no buffer — &'a str puro
     pub line: usize,
     pub kind: ImportKind,
-    /// Resolvido por L3 via crystalline.toml.
+    /// Resolvido por L3 via crystalline.toml [layers].
     /// Layer::Unknown para crates externas — não gera violação V3.
     pub target_layer: Layer,
+    /// Subdiretório de destino dentro da camada alvo.
+    /// Resolvido por L3 via crystalline.toml [l1_ports].
+    /// None se target_layer == Unknown (crate externa).
+    /// Some("entities") se import aponta para 01_core/entities/.
+    /// Some("internal") se import aponta para subdir não-porta.
+    /// Usado por V9 para detectar imports fora das portas de L1.
+    pub target_subdir: Option<&'a str>,  // ADR-0006
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -336,7 +343,8 @@ L1 apenas lê — nunca deriva, nunca aloca além das exceções documentadas.
 |-------|-------------|------|
 | `prompt_file_exists` | `FsPromptReader` | `PromptReader::exists()` |
 | `has_test_coverage` | `FileWalker` + `RustParser` | adjacência em disco + nó `#[cfg(test)]` no AST + detection de declaration-only |
-| `imports` com `target_layer` | `RustParser` | `use_declaration` no AST + `LayerResolver` via `crystalline.toml` |
+| `imports` com `target_layer` | `RustParser` | `use_declaration` no AST + `LayerResolver` via `crystalline.toml [layers]` |
+| `imports` com `target_subdir` | `RustParser` | segundo segmento do path resolvido contra `crystalline.toml [l1_ports]`. None para crates externas |
 | `tokens` com FQN | `RustParser` | Fase 1 (tabela de aliases) + Fase 2 (call_expression). Alias → `Cow::Owned`, direto → `Cow::Borrowed` |
 | `PromptHeader.prompt_hash` | `RustParser` | fatia `&'a str` do buffer do arquivo |
 | `PromptHeader.current_hash` | `FsPromptReader` | SHA256[0..8] calculado do disco — `Option<String>` |
@@ -347,7 +355,7 @@ L1 apenas lê — nunca deriva, nunca aloca além das exceções documentadas.
 
 | Violação | Como construir `Location.path` |
 |----------|-------------------------------|
-| V1–V6 normais | `Cow::Borrowed(parsed_file.path)` |
+| V1–V9 normais | `Cow::Borrowed(parsed_file.path)` |
 | V0 (SourceError) | `Cow::Owned(path)` — path vem de `SourceError::Unreadable` |
 | PARSE (ParseError) | `Cow::Owned(path)` — path vem das variants de `ParseError` |
 
@@ -416,6 +424,18 @@ Quando describe() for chamado
 Então retorna "+fn check, -fn validate, +struct Delta"
 — ordem: adições antes de remoções, funções antes de tipos
 
+Dado Import { target_layer: L1, target_subdir: Some("internal"), .. }
+em arquivo com layer = L2
+E "internal" não listado em [l1_ports]
+Quando V9::check() for chamado
+Então retorna Violation { rule_id: "V9", level: Error }
+
+Dado Import { target_layer: L1, target_subdir: Some("entities"), .. }
+em arquivo com layer = L2
+E "entities" listado em [l1_ports]
+Quando V9::check() for chamado
+Então retorna vec![] — porta válida
+
 Dado SourceError::Unreadable { path, reason }
 Quando source_error_to_violation() for chamado em L4
 Então retorna Violation { rule_id: "V0", level: Fatal,
@@ -441,6 +461,7 @@ Então retorna true — Fatal não configurável
 | 2025-03-13 | Criação inicial | parsed_file.rs, violation.rs, layer.rs |
 | 2025-03-13 | Gap 2: prompt_file_exists, has_test_coverage, Import.target_layer, PromptHeader.current_hash | parsed_file.rs |
 | 2025-03-13 | V6: PublicInterface, FunctionSignature, TypeSignature, InterfaceDelta, compute_delta | parsed_file.rs |
-| 2026-03-14 | ADR-0004: lifetimes `<'a>` em todas as structs, ViolationLevel::Fatal, Cow<'a, str> em Token.symbol, proibição de clone documentada | parsed_file.rs, violation.rs |
-| 2026-03-14 | Errata Cow: Token.symbol alterado de &'a str para Cow<'a, str> | parsed_file.rs |
-| 2026-03-14 | ADR-0005: Location.path alterado de &'a Path para Cow<'a, Path>, elimina Box::leak() nos conversores, tabela de responsabilidades L4 adicionada, compute_delta com implementação completa, describe() com implementação completa | violation.rs, parsed_file.rs |
+| 2026-03-14 | ADR-0004: lifetimes `<'a>`, ViolationLevel::Fatal, Cow<'a, str> em Token.symbol, proibição de clone documentada | parsed_file.rs, violation.rs |
+| 2026-03-14 | Errata Cow: Token.symbol de &'a str para Cow<'a, str> | parsed_file.rs |
+| 2026-03-14 | ADR-0005: Location.path de &'a Path para Cow<'a, Path>, elimina Box::leak(), tabela L4 adicionada | violation.rs |
+| 2026-03-14 | ADR-0006: Import.target_subdir adicionado para V9, linha de população adicionada na tabela L3, critérios V9 adicionados, ViolationLevel::Fatal atualizado para incluir V8 | parsed_file.rs |

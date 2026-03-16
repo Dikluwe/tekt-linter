@@ -1,13 +1,14 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/prompt-stale.md
-//! @prompt-hash 00000000
+//! @prompt-hash 5c27ee71
 //! @layer L1
 //! @updated 2026-03-14
 
 use std::borrow::Cow;
 
+use crate::contracts::rule_traits::HasPublicInterface;
 use crate::entities::parsed_file::{
-    FunctionSignature, InterfaceDelta, ParsedFile, PublicInterface, TypeSignature,
+    FunctionSignature, InterfaceDelta, PublicInterface, TypeSignature,
 };
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 
@@ -15,24 +16,26 @@ use crate::entities::violation::{Location, Violation, ViolationLevel};
 ///
 /// Detects when the public interface of a source file has changed since the
 /// last snapshot registered in the origin prompt. Pure L1 function — zero I/O.
-pub fn check<'a>(file: &ParsedFile<'a>) -> Vec<Violation<'a>> {
+pub fn check<'a, T: HasPublicInterface<'a>>(file: &T) -> Vec<Violation<'a>> {
     // V6 only applies to files that have a prompt header
-    let header = match &file.prompt_header {
+    let header = match file.prompt_header() {
         Some(h) => h,
         None => return vec![], // V1 covers missing header
     };
 
     // Without a baseline snapshot there is nothing to compare against
-    let snapshot = match &file.prompt_snapshot {
+    let snapshot = match file.prompt_snapshot() {
         Some(s) => s,
         None => return vec![], // first generation — no history yet
     };
 
-    if &file.public_interface == snapshot {
+    let current = file.public_interface();
+
+    if current == snapshot {
         return vec![];
     }
 
-    let delta = compute_delta(&file.public_interface, snapshot);
+    let delta = compute_delta(current, snapshot);
 
     if delta.is_empty() {
         return vec![];
@@ -47,7 +50,7 @@ pub fn check<'a>(file: &ParsedFile<'a>) -> Vec<Violation<'a>> {
             header.prompt_path,
             delta.describe()
         ),
-        location: Location { path: Cow::Borrowed(file.path), line: 1, column: 0 },
+        location: Location { path: Cow::Borrowed(file.path()), line: 1, column: 0 },
     }]
 }
 
@@ -94,7 +97,7 @@ mod tests {
     use super::*;
     use crate::entities::layer::{Language, Layer};
     use crate::entities::parsed_file::{
-        FunctionSignature, PromptHeader, PublicInterface, TypeKind, TypeSignature,
+        FunctionSignature, ParsedFile, PromptHeader, PublicInterface, TypeKind, TypeSignature,
     };
     use std::path::Path;
 

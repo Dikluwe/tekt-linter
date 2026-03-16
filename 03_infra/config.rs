@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash b47a45c9
+//! @prompt-hash 44f1f602
 //! @layer L3
 //! @updated 2026-03-13
 
@@ -18,6 +18,18 @@ pub struct CrystallineConfig {
     /// Rust module name → layer string ("L1", "L2", ...)
     #[serde(default)]
     pub module_layers: HashMap<String, String>,
+    /// Diretórios explicitamente excluídos — não disparam V8.
+    /// Exemplo: { "build" = "target", "vcs" = ".git" }
+    #[serde(default)]
+    pub excluded: HashMap<String, String>,
+    /// Subdiretórios de L1 acessíveis de L2/L3 — portas públicas para V9.
+    /// Exemplo: { "entities" = "01_core/entities" }
+    #[serde(default)]
+    pub l1_ports: HashMap<String, String>,
+    /// Prompts que existem legitimamente sem materialização Rust — isentos de V7.
+    /// Exemplo: { "00_nucleo/prompts/template.md" = "template" }
+    #[serde(default)]
+    pub orphan_exceptions: HashMap<String, String>,
 }
 
 impl CrystallineConfig {
@@ -59,7 +71,18 @@ impl Default for CrystallineConfig {
         layers.insert("L4".to_string(), "04_wiring".to_string());
         layers.insert("lab".to_string(), "lab".to_string());
 
-        Self { layers, module_layers }
+        let mut excluded = HashMap::new();
+        excluded.insert("build".to_string(), "target".to_string());
+        excluded.insert("vcs".to_string(), ".git".to_string());
+        excluded.insert("deps".to_string(), "node_modules".to_string());
+        excluded.insert("cargo".to_string(), ".cargo".to_string());
+
+        let mut l1_ports = HashMap::new();
+        l1_ports.insert("entities".to_string(), "01_core/entities".to_string());
+        l1_ports.insert("contracts".to_string(), "01_core/contracts".to_string());
+        l1_ports.insert("rules".to_string(), "01_core/rules".to_string());
+
+        Self { layers, module_layers, excluded, l1_ports, orphan_exceptions: HashMap::new() }
     }
 }
 

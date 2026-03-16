@@ -5,17 +5,11 @@
 //! @updated 2026-03-14
 
 use std::borrow::Cow;
-use std::path::Path;
 
+use crate::contracts::rule_traits::HasTokens;
 use crate::entities::layer::Layer;
 use crate::entities::parsed_file::Token;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
-
-pub trait HasTokens<'a> {
-    fn layer(&self) -> &Layer;
-    fn tokens(&self) -> &[Token<'a>];
-    fn path(&self) -> &'a Path;
-}
 
 /// V4 — Impure core: forbidden I/O symbol detected in L1.
 /// Operates semantically on ParsedFile.tokens (pre-extracted from AST by L3).

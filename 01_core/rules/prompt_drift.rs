@@ -5,15 +5,9 @@
 //! @updated 2026-03-14
 
 use std::borrow::Cow;
-use std::path::Path;
 
-use crate::entities::parsed_file::PromptHeader;
+use crate::contracts::rule_traits::HasHashes;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
-
-pub trait HasHashes<'a> {
-    fn prompt_header(&self) -> Option<&PromptHeader<'a>>;
-    fn path(&self) -> &'a Path;
-}
 
 /// V5 — Prompt drift detection.
 /// Fires when prompt_hash (declared in header) diverges from

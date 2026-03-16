@@ -5,16 +5,10 @@
 //! @updated 2026-03-14
 
 use std::borrow::Cow;
-use std::path::Path;
 
+use crate::contracts::rule_traits::HasCoverage;
 use crate::entities::layer::Layer;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
-
-pub trait HasCoverage<'a> {
-    fn layer(&self) -> &Layer;
-    fn has_test_coverage(&self) -> bool;
-    fn path(&self) -> &'a Path;
-}
 
 /// V2 — Missing test coverage for L1 modules.
 /// Fires when layer == L1 AND has_test_coverage == false.

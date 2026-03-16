@@ -5,16 +5,9 @@
 //! @updated 2026-03-14
 
 use std::borrow::Cow;
-use std::path::Path;
 
-use crate::entities::parsed_file::PromptHeader;
+use crate::contracts::rule_traits::HasPromptFilesystem;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
-
-pub trait HasPromptFilesystem<'a> {
-    fn prompt_header(&self) -> Option<&PromptHeader<'a>>;
-    fn prompt_file_exists(&self) -> bool;
-    fn path(&self) -> &'a Path;
-}
 
 /// V1 — Missing or unresolvable @prompt header.
 /// Fires when prompt_header is absent OR when the referenced prompt file

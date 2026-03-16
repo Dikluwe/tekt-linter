@@ -5,17 +5,11 @@
 //! @updated 2026-03-14
 
 use std::borrow::Cow;
-use std::path::Path;
 
+use crate::contracts::rule_traits::HasImports;
 use crate::entities::layer::Layer;
 use crate::entities::parsed_file::Import;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
-
-pub trait HasImports<'a> {
-    fn layer(&self) -> &Layer;
-    fn imports(&self) -> &[Import<'a>];
-    fn path(&self) -> &'a Path;
-}
 
 /// V3 — Forbidden import (gravity inversion).
 /// Compares file.layer with import.target_layer using the permission matrix.
@@ -95,7 +89,7 @@ mod tests {
     }
 
     fn import(path: &'static str, line: usize, target_layer: Layer) -> Import<'static> {
-        Import { path, line, kind: ImportKind::Use, target_layer }
+        Import { path, line, kind: ImportKind::Use, target_layer, target_subdir: None }
     }
 
     #[test]

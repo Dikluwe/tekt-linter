@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/violation-types.md
-//! @prompt-hash 00000000
+//! @prompt-hash 61cde08c
 //! @layer L1
 //! @updated 2026-03-14
 
@@ -23,9 +23,16 @@ pub struct Import<'a> {
     pub path: &'a str,  // sempre presente no buffer — &'a str puro
     pub line: usize,
     pub kind: ImportKind,
-    /// Resolvido por L3 via crystalline.toml.
-    /// Layer::Unknown para crates externas.
+    /// Resolvido por L3 via crystalline.toml [layers].
+    /// Layer::Unknown para crates externas — não gera violação V3.
     pub target_layer: Layer,
+    /// Subdiretório de destino dentro da camada alvo.
+    /// Resolvido por L3 via crystalline.toml [l1_ports].
+    /// None se target_layer == Unknown (crate externa).
+    /// Some("entities") se import aponta para 01_core/entities/.
+    /// Some("internal") se import aponta para subdir não-porta.
+    /// Usado por V9 para detectar imports fora das portas de L1.  (ADR-0006)
+    pub target_subdir: Option<&'a str>,
 }
 
 // ── Token ─────────────────────────────────────────────────────────────────────
@@ -159,9 +166,15 @@ pub struct PromptHeader<'a> {
     pub updated: Option<&'a str>,
 }
 
-// ── Trait Implementations for Rules (OCP) ───────────────────────────────────
+// ── Trait Implementations for Rules (via contracts::rule_traits) ─────────────
+// Direção correta: entities → contracts (nunca entities → rules)
 
-impl<'a> crate::rules::prompt_header::HasPromptFilesystem<'a> for ParsedFile<'a> {
+use crate::contracts::rule_traits::{
+    HasCoverage, HasHashes, HasImports, HasPromptFilesystem,
+    HasPublicInterface, HasPubLeak, HasTokens,
+};
+
+impl<'a> HasPromptFilesystem<'a> for ParsedFile<'a> {
     fn prompt_header(&self) -> Option<&PromptHeader<'a>> {
         self.prompt_header.as_ref()
     }
@@ -173,7 +186,7 @@ impl<'a> crate::rules::prompt_header::HasPromptFilesystem<'a> for ParsedFile<'a>
     }
 }
 
-impl<'a> crate::rules::test_file::HasCoverage<'a> for ParsedFile<'a> {
+impl<'a> HasCoverage<'a> for ParsedFile<'a> {
     fn layer(&self) -> &Layer {
         &self.layer
     }
@@ -185,7 +198,7 @@ impl<'a> crate::rules::test_file::HasCoverage<'a> for ParsedFile<'a> {
     }
 }
 
-impl<'a> crate::rules::forbidden_import::HasImports<'a> for ParsedFile<'a> {
+impl<'a> HasImports<'a> for ParsedFile<'a> {
     fn layer(&self) -> &Layer {
         &self.layer
     }
@@ -197,7 +210,7 @@ impl<'a> crate::rules::forbidden_import::HasImports<'a> for ParsedFile<'a> {
     }
 }
 
-impl<'a> crate::rules::impure_core::HasTokens<'a> for ParsedFile<'a> {
+impl<'a> HasTokens<'a> for ParsedFile<'a> {
     fn layer(&self) -> &Layer {
         &self.layer
     }
@@ -209,9 +222,36 @@ impl<'a> crate::rules::impure_core::HasTokens<'a> for ParsedFile<'a> {
     }
 }
 
-impl<'a> crate::rules::prompt_drift::HasHashes<'a> for ParsedFile<'a> {
+impl<'a> HasHashes<'a> for ParsedFile<'a> {
     fn prompt_header(&self) -> Option<&PromptHeader<'a>> {
         self.prompt_header.as_ref()
+    }
+    fn path(&self) -> &'a Path {
+        self.path
+    }
+}
+
+impl<'a> HasPublicInterface<'a> for ParsedFile<'a> {
+    fn prompt_header(&self) -> Option<&PromptHeader<'a>> {
+        self.prompt_header.as_ref()
+    }
+    fn public_interface(&self) -> &PublicInterface<'a> {
+        &self.public_interface
+    }
+    fn prompt_snapshot(&self) -> Option<&PublicInterface<'a>> {
+        self.prompt_snapshot.as_ref()
+    }
+    fn path(&self) -> &'a Path {
+        self.path
+    }
+}
+
+impl<'a> HasPubLeak<'a> for ParsedFile<'a> {
+    fn layer(&self) -> &Layer {
+        &self.layer
+    }
+    fn imports(&self) -> &[Import<'a>] {
+        &self.imports
     }
     fn path(&self) -> &'a Path {
         self.path
@@ -311,6 +351,7 @@ mod tests {
             line: 3,
             kind: ImportKind::Use,
             target_layer: Layer::Unknown,
+            target_subdir: None,
         };
         assert_eq!(import.target_layer, Layer::Unknown);
     }
@@ -335,6 +376,7 @@ mod tests {
             line: 2,
             kind: ImportKind::Use,
             target_layer: Layer::L2,
+            target_subdir: None,
         });
         f.tokens.push(Token {
             symbol: Cow::Borrowed("std::net::TcpStream"),
