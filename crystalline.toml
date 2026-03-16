@@ -5,6 +5,7 @@ root = "."
 rust = { grammar = "tree-sitter-rust", enabled = true }
 # typescript = { grammar = "tree-sitter-typescript", enabled = false }
 
+# Mapeados — arquivos aqui são analisados e devem ter layer
 [layers]
 L0  = "00_nucleo"
 L1  = "01_core"
@@ -12,6 +13,14 @@ L2  = "02_shell"
 L3  = "03_infra"
 L4  = "04_wiring"
 lab = "lab"
+
+# Excluídos — ignorados intencionalmente, não disparam V8 (ADR-0006)
+[excluded]
+build    = "target"
+deps     = "node_modules"
+vcs      = ".git"
+cargo    = ".cargo"
+lib_root = "lib.rs"
 
 # Rust module name → layer (used by LayerResolver for crate:: imports)
 [module_layers]
@@ -21,10 +30,26 @@ rules     = "L1"
 shell     = "L2"
 infra     = "L3"
 
+# Portas públicas de L1 — únicos subdiretórios acessíveis de L2/L3
+# Imports de outros subdiretórios de L1 disparam V9 (ADR-0006)
+[l1_ports]
+entities  = "entities"
+contracts = "contracts"
+rules     = "rules"
+
+# Prompts que existem legitimamente sem materialização Rust (ADR-0006)
+[orphan_exceptions]
+"00_nucleo/prompts/cargo.md"        = "gera Cargo.toml, não arquivo Rust"
+"00_nucleo/prompts/readme_prompt.md" = "gera README.md, não arquivo Rust"
+
 [rules]
+V0 = { level = "fatal" }
 V1 = { level = "error" }
 V2 = { level = "error" }
 V3 = { level = "error" }
 V4 = { level = "error" }
 V5 = { level = "warning" }
 V6 = { level = "warning" }
+V7 = { level = "warning" }
+V8 = { level = "fatal" }
+V9 = { level = "error" }

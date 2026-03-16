@@ -1,12 +1,13 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/project-index.md
-//! @prompt-hash 6c266cff
+//! @prompt-hash ab47cb4f
 //! @layer L1
 //! @updated 2026-03-15
 
 use std::collections::HashSet;
 use std::path::Path;
 
+use crate::entities::layer::Layer;
 use crate::entities::parsed_file::ParsedFile;
 
 // ── LocalIndex ────────────────────────────────────────────────────────────────
@@ -35,14 +36,8 @@ impl<'a> LocalIndex<'a> {
             referenced_prompt: file.prompt_header
                 .as_ref()
                 .map(|h| h.prompt_path),
-            alien_file: None, // arquivo parseado tem layer conhecida
-        }
-    }
-
-    pub fn from_alien(path: &'a Path) -> Self {
-        Self {
-            referenced_prompt: None,
-            alien_file: Some(path),
+            // Layer::Unknown em arquivo parseado → alien (ADR-0006)
+            alien_file: if file.layer == Layer::Unknown { Some(file.path) } else { None },
         }
     }
 
@@ -133,10 +128,10 @@ mod tests {
     }
 
     #[test]
-    fn from_alien_adds_path_to_index() {
+    fn unknown_layer_adds_alien_to_index() {
         let mut index = ProjectIndex::new();
         let path = Path::new("src/utils/helper.rs");
-        index.merge_local(LocalIndex::from_alien(path));
+        index.merge_local(LocalIndex { referenced_prompt: None, alien_file: Some(path) });
         assert_eq!(index.alien_files, vec![path]);
     }
 

@@ -1,12 +1,30 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/file-provider.md
-//! @prompt-hash 52fcd52b
+//! @prompt-hash eabe7c7e
 //! @layer L1
-//! @updated 2026-03-13
+//! @updated 2026-03-16
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::entities::layer::{Language, Layer};
+
+// ── SourceError ───────────────────────────────────────────────────────────────
+
+/// Erro irrecuperável ao ler um arquivo fonte.
+/// Propagado pelo FileWalker (L3) via FileProvider::files().
+/// Nunca silenciado — dispara V0 Fatal no pipeline (ADR-0004).
+#[derive(Debug)]
+pub enum SourceError {
+    Unreadable { path: PathBuf, reason: String },
+}
+
+impl SourceError {
+    pub fn path(&self) -> &Path {
+        match self {
+            SourceError::Unreadable { path, .. } => path,
+        }
+    }
+}
 
 /// Unit of transfer between FileWalker (L3) and LanguageParser (L3).
 /// All fields are populated by L3 before delivery — parser never accesses disk.
@@ -23,7 +41,7 @@ pub struct SourceFile {
 }
 
 pub trait FileProvider {
-    fn files(&self) -> impl Iterator<Item = SourceFile>;
+    fn files(&self) -> impl Iterator<Item = Result<SourceFile, SourceError>>;
 }
 
 #[cfg(test)]
@@ -70,8 +88,8 @@ mod tests {
     }
 
     impl FileProvider for MockProvider {
-        fn files(&self) -> impl Iterator<Item = SourceFile> {
-            self.items.clone().into_iter()
+        fn files(&self) -> impl Iterator<Item = Result<SourceFile, SourceError>> {
+            self.items.clone().into_iter().map(Ok)
         }
     }
 

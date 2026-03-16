@@ -543,3 +543,4 @@ Então exit 0 — o linter passa em sua própria validação
 | 2026-03-14 | ADR-0004: rayon, zero-copy, V0 Fatal, FQN, conversores com Cow::Owned | linter-core.md, main.rs |
 | 2026-03-14 | ADR-0005: Cow<'a,Path> nos conversores elimina Box::leak() | linter-core.md, main.rs |
 | 2026-03-14 | ADR-0006: Map-Reduce, V7–V9, ProjectIndex, PromptWalker, [excluded], [l1_ports], [orphan_exceptions], SARIF atualizado, critérios V7–V9 adicionados | linter-core.md, main.rs, crystalline.toml |
+| 2026-03-15 | collect_walker_results() helper documentado: separa Ok/Err do walker antes do par_bridge(), simplificando o pipeline Map-Reduce. from_parsed() detecta aliens internamente. SourceError.path() accessor registrado. | main.rs |

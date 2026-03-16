@@ -2,7 +2,7 @@
 
 **Camada**: L1 (Core — Contracts)
 **Criado em**: 2025-03-13
-**Revisado em**: 2026-03-14 (ADR-0004)
+**Revisado em**: 2026-03-15 (ADR-0006: SourceError.path() accessor)
 **Arquivos gerados**:
   - 01_core/contracts/file_provider.rs
 
@@ -61,6 +61,17 @@ pub enum SourceError {
         reason: String,
     },
 }
+
+impl SourceError {
+    /// Accessor para o path do arquivo que falhou.
+    /// Usado pelo wiring em L4 para construir LocalIndex::from_alien()
+    /// e source_error_to_violation() com Cow::Owned(path).
+    pub fn path(&self) -> &Path {
+        match self {
+            SourceError::Unreadable { path, .. } => path,
+        }
+    }
+}
 ```
 
 ---
@@ -81,11 +92,11 @@ pub trait FileProvider {
 ## Restrições
 
 - `FileProvider` nunca silencia arquivos ilegíveis — propaga `SourceError`
-- Ignora intencionalmente apenas diretórios configurados para exclusão
-  (`target/`, `node_modules/`, `.git/`) — não arquivos individuais
+- Ignora intencionalmente apenas diretórios em `config.excluded` —
+  não arquivos individuais
 - `SourceFile` não implementa `Clone` intencionalmente — o conteúdo
   é grande e deve ser carregado uma única vez por arquivo
-- L1 nunca instancia `SourceFile` diretamente — é responsabilidade
+- L1 nunca instancia `SourceFile` diretamente — responsabilidade
   exclusiva de L3
 
 ---
@@ -101,7 +112,11 @@ Quando files() for chamado
 Então retorna Err(SourceError::Unreadable) para esse arquivo
 E continua iterando os demais — não aborta o iterator
 
-Dado diretório com target/ contendo arquivos .rs
+Dado SourceError::Unreadable { path, .. }
+Quando path() for chamado
+Então retorna &Path do arquivo que falhou
+
+Dado diretório com target/ em config.excluded
 Quando files() for chamado
 Então nenhum arquivo de target/ aparece no iterator
 
@@ -130,5 +145,6 @@ E Err → Violation { rule_id: "V0", level: Fatal }
 | Data | Motivo | Arquivos afetados |
 |------|--------|-------------------|
 | 2025-03-13 | Criação inicial | file_provider.rs |
-| 2025-03-13 | Gap 4: adicionados layer e has_adjacent_test, tabela de responsabilidades | file_provider.rs |
-| 2026-03-14 | ADR-0004: SourceError adicionado, files() retorna Result, nota sobre ownership e zero-copy, SourceFile não-Clone | file_provider.rs |
+| 2025-03-13 | Gap 4: layer e has_adjacent_test, tabela de responsabilidades | file_provider.rs |
+| 2026-03-14 | ADR-0004: SourceError adicionado, files() retorna Result, SourceFile não-Clone | file_provider.rs |
+| 2026-03-15 | ADR-0006: SourceError.path() accessor adicionado — necessário para LocalIndex::from_alien() e source_error_to_violation() em L4 | file_provider.rs |

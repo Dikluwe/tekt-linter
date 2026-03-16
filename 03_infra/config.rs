@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 44f1f602
+//! @prompt-hash 68d61185
 //! @layer L3
 //! @updated 2026-03-13
 
@@ -76,6 +76,7 @@ impl Default for CrystallineConfig {
         excluded.insert("vcs".to_string(), ".git".to_string());
         excluded.insert("deps".to_string(), "node_modules".to_string());
         excluded.insert("cargo".to_string(), ".cargo".to_string());
+        excluded.insert("lib_root".to_string(), "lib.rs".to_string());
 
         let mut l1_ports = HashMap::new();
         l1_ports.insert("entities".to_string(), "01_core/entities".to_string());

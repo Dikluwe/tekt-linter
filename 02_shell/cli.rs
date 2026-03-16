@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/sarif-formatter.md
-//! @prompt-hash d408668f
+//! @prompt-hash a1a7e5f5
 //! @layer L2
 //! @updated 2026-03-14
 
@@ -29,8 +29,8 @@ pub struct Cli {
     #[arg(long, default_value = "error")]
     pub fail_on: FailLevel,
 
-    /// Comma-separated list of checks to run (e.g. v1,v2,v3,v4,v5,v6)
-    #[arg(long, default_value = "v1,v2,v3,v4,v5,v6")]
+    /// Comma-separated list of checks to run (e.g. v1,v2,v3,v4,v5,v6,v7,v8,v9)
+    #[arg(long, default_value = "v1,v2,v3,v4,v5,v6,v7,v8,v9")]
     pub checks: String,
 
     /// Disable V5 drift detection
@@ -94,6 +94,9 @@ pub struct EnabledChecks {
     pub v4: bool,
     pub v5: bool,
     pub v6: bool,
+    pub v7: bool,
+    pub v8: bool,
+    pub v9: bool,
 }
 
 impl EnabledChecks {
@@ -106,6 +109,9 @@ impl EnabledChecks {
             v4: lower.contains("v4"),
             v5: lower.contains("v5") && !no_drift,
             v6: lower.contains("v6") && !no_stale,
+            v7: lower.contains("v7"),
+            v8: lower.contains("v8"),
+            v9: lower.contains("v9"),
         }
     }
 }
@@ -190,12 +196,16 @@ fn sarif_level(level: &ViolationLevel) -> &'static str {
 
 fn sarif_rules() -> Vec<serde_json::Value> {
     vec![
+        sarif_rule("V0", "UnreadableSource", "Unreadable source file — I/O error", "error"),
         sarif_rule("V1", "MissingPromptHeader", "Missing @prompt lineage header", "error"),
         sarif_rule("V2", "MissingTestFile", "Missing test coverage for L1 module", "error"),
         sarif_rule("V3", "ForbiddenImport", "Import violates layer dependency direction", "error"),
         sarif_rule("V4", "ImpureCore", "I/O operation detected in L1 core", "error"),
         sarif_rule("V5", "PromptDrift", "Prompt hash mismatch — implementation drifted", "warning"),
         sarif_rule("V6", "PromptStale", "Public interface changed since last prompt snapshot", "warning"),
+        sarif_rule("V7", "OrphanPrompt", "Prompt without any materialization in L1–L4", "warning"),
+        sarif_rule("V8", "AlienFile", "Source file outside all mapped layers", "error"),
+        sarif_rule("V9", "PubLeak", "Import bypasses L1 encapsulation boundary", "error"),
     ]
 }
 
@@ -309,7 +319,7 @@ mod tests {
             path: PathBuf::from("."),
             format: OutputFormat::Text,
             fail_on: FailLevel::Error,
-            checks: "v1,v2,v3,v4,v5,v6".to_string(),
+            checks: "v1,v2,v3,v4,v5,v6,v7,v8,v9".to_string(),
             no_drift: false,
             no_stale: false,
             quiet: false,
