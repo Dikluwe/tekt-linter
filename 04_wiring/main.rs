@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use clap::Parser as ClapParser;
+use rayon::prelude::*;
 
 use crystalline_lint::contracts::file_provider::{FileProvider, SourceError, SourceFile};
 use crystalline_lint::contracts::language_parser::LanguageParser;
@@ -99,7 +100,7 @@ fn main() {
     let (mut all_violations, all_parsed, project_index) =
         run_pipeline(&source_files, &source_errors, &parser, &enabled, &l1_ports, &wiring_config);
 
-    // ── V7/V8 post-reduce ─────────────────────────────────────────────────────
+    // ── V7/V8/V11 post-reduce ─────────────────────────────────────────────────
     if enabled.v7 {
         if let Some(ref ap) = all_prompts {
             all_violations.extend(orphan_prompt::check_orphans(&project_index, ap));
@@ -267,11 +268,21 @@ impl SnapshotRewriter for L3SnapshotWriter {
 
 // ── Pipeline ──────────────────────────────────────────────────────────────────
 
-/// Parses all source files, runs per-file checks (V1–V6, V9), and builds the
-/// ProjectIndex for post-reduce checks (V7, V8).
+/// Parses all source files and runs per-file checks via rayon Map-Reduce.
 ///
-/// `source_files` must outlive the returned vecs — `ParsedFile<'a>` and
-/// `Violation<'a>` borrow from them (zero-copy, ADR-0004).
+/// **Fase Map** (`par_iter`):
+/// - `source_errors` → V0 Fatal + `LocalIndex::from_source_error()`
+/// - `source_files`  → `parser.parse()` → `run_checks()` + `LocalIndex::from_parsed()`
+/// - Cada thread produz `(Vec<Violation>, Option<ParsedFile>, LocalIndex)` independentemente
+///
+/// **Fase Reduce** (`fold` + `reduce`):
+/// - `fold`: acumula por thread sem estado compartilhado
+/// - `reduce`: funde os acumuladores de cada thread
+/// - `ProjectIndex::merge` é associativa e comutativa — ordem de fusão não afeta resultado
+///
+/// `source_files` must outlive the returned vecs — `ParsedFile<'a>` borrows from
+/// them (zero-copy, ADR-0004). `RustParser` é `Sync` — cria `TsParser::new()`
+/// dentro de `parse()`, sem campo mutable compartilhado.
 fn run_pipeline<'a>(
     source_files: &'a [SourceFile],
     source_errors: &'a [SourceError],
@@ -280,31 +291,66 @@ fn run_pipeline<'a>(
     l1_ports: &L1Ports,
     wiring_config: &WiringConfig,
 ) -> (Vec<Violation<'a>>, Vec<ParsedFile<'a>>, ProjectIndex<'a>) {
-    let mut violations: Vec<Violation<'a>> = Vec::new();
-    let mut parsed_files = Vec::new();
-    let mut project_index = ProjectIndex::new();
+    // Fase Map ─────────────────────────────────────────────────────────────────
 
     // V0: unreadable files — Fatal, never silenced
-    for err in source_errors {
-        violations.push(source_error_to_violation(err));
-        project_index.merge_local(LocalIndex::from_source_error());
-    }
+    let error_map = source_errors
+        .par_iter()
+        .map(|err| -> (Vec<Violation<'a>>, Option<ParsedFile<'a>>, LocalIndex<'a>) {
+            (vec![source_error_to_violation(err)], None, LocalIndex::from_source_error())
+        });
 
     // V1–V10, V12 per file
-    for source_file in source_files {
-        match parser.parse(source_file) {
-            Ok(parsed) => {
-                violations.extend(run_checks(&parsed, enabled, l1_ports, wiring_config));
-                project_index.merge_local(LocalIndex::from_parsed(&parsed));
-                parsed_files.push(parsed);
+    let file_map = source_files
+        .par_iter()
+        .map(|source_file| -> (Vec<Violation<'a>>, Option<ParsedFile<'a>>, LocalIndex<'a>) {
+            match parser.parse(source_file) {
+                Ok(parsed) => {
+                    let violations = run_checks(&parsed, enabled, l1_ports, wiring_config);
+                    let local = LocalIndex::from_parsed(&parsed);
+                    (violations, Some(parsed), local)
+                }
+                Err(err) => (
+                    vec![parse_error_to_violation(err)],
+                    None,
+                    LocalIndex::from_parse_error(),
+                ),
             }
-            Err(err) => {
-                violations.push(parse_error_to_violation(err));
-            }
-        }
-    }
+        });
 
-    (violations, parsed_files, project_index)
+    // Fase Reduce ──────────────────────────────────────────────────────────────
+    //
+    // fold()   — acumula por thread; cada thread começa com acumulador vazio
+    // reduce() — funde os acumuladores de threads distintas
+    // ProjectIndex::merge() associativa e comutativa — ordem irrelevante
+
+    error_map
+        .chain(file_map)
+        .fold(
+            || {
+                (
+                    Vec::<Violation<'a>>::new(),
+                    Vec::<ParsedFile<'a>>::new(),
+                    ProjectIndex::<'a>::new(),
+                )
+            },
+            |(mut viols, mut parsed_acc, mut idx), (v, pf, local)| {
+                viols.extend(v);
+                if let Some(p) = pf {
+                    parsed_acc.push(p);
+                }
+                idx.merge_local(local);
+                (viols, parsed_acc, idx)
+            },
+        )
+        .reduce(
+            || (Vec::new(), Vec::new(), ProjectIndex::new()),
+            |(mut viols_a, mut parsed_a, idx_a), (viols_b, parsed_b, idx_b)| {
+                viols_a.extend(viols_b);
+                parsed_a.extend(parsed_b);
+                (viols_a, parsed_a, idx_a.merge(idx_b))
+            },
+        )
 }
 
 // ── Rule dispatcher ───────────────────────────────────────────────────────────
