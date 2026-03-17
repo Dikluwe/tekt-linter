@@ -1,13 +1,13 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/rule-traits.md
-//! @prompt-hash eaf0b326
+//! @prompt-hash eb8b75e4
 //! @layer L1
 //! @updated 2026-03-16
 
 use std::path::Path;
 
 use crate::entities::layer::Layer;
-use crate::entities::parsed_file::{Import, PromptHeader, PublicInterface, Token};
+use crate::entities::parsed_file::{Declaration, Import, PromptHeader, PublicInterface, Token};
 
 // ── V1 ────────────────────────────────────────────────────────────────────────
 
@@ -72,6 +72,20 @@ pub trait HasPubLeak<'a> {
     fn path(&self) -> &'a Path;
 }
 
+// ── V12 ───────────────────────────────────────────────────────────────────────
+
+/// Para V12 — verifica declarações de tipo em L4.
+///
+/// `declarations()` expõe struct/enum/impl-sem-trait de nível superior.
+/// V12 filtra por `layer() == Layer::L4` internamente.
+/// `impl Trait for Type` não aparece em `declarations()` —
+/// o RustParser só captura `impl Type { ... }` sem trait.
+pub trait HasWiringPurity<'a> {
+    fn layer(&self) -> &Layer;
+    fn declarations(&self) -> &[Declaration<'a>];
+    fn path(&self) -> &'a Path;
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -81,7 +95,7 @@ mod tests {
     use std::path::Path;
 
     use crate::entities::layer::{Language, Layer};
-    use crate::entities::parsed_file::{ImportKind, TokenKind};
+    use crate::entities::parsed_file::{DeclarationKind, ImportKind, TokenKind};
 
     // ── Minimal mocks verifying each trait is implementable independently ──
 
@@ -156,6 +170,17 @@ mod tests {
         fn path(&self) -> &'static Path { self.path }
     }
 
+    struct MockV12 {
+        layer: Layer,
+        declarations: Vec<Declaration<'static>>,
+        path: &'static Path,
+    }
+    impl HasWiringPurity<'static> for MockV12 {
+        fn layer(&self) -> &Layer { &self.layer }
+        fn declarations(&self) -> &[Declaration<'static>] { &self.declarations }
+        fn path(&self) -> &'static Path { self.path }
+    }
+
     #[test]
     fn mock_v1_implements_has_prompt_filesystem() {
         let m = MockV1 { path: Path::new("foo.rs") };
@@ -214,5 +239,30 @@ mod tests {
         };
         let m = MockV9 { layer: Layer::L2, imports: vec![imp], path: Path::new("foo.rs") };
         assert_eq!(m.imports().len(), 1);
+    }
+
+    #[test]
+    fn mock_v12_implements_has_wiring_purity() {
+        let decl = Declaration { kind: DeclarationKind::Enum, name: "OutputMode", line: 3 };
+        let m = MockV12 {
+            layer: Layer::L4,
+            declarations: vec![decl],
+            path: Path::new("04_wiring/main.rs"),
+        };
+        assert_eq!(m.layer(), &Layer::L4);
+        assert_eq!(m.declarations().len(), 1);
+        assert_eq!(m.declarations()[0].kind, DeclarationKind::Enum);
+        assert_eq!(m.declarations()[0].name, "OutputMode");
+    }
+
+    #[test]
+    fn mock_v12_empty_declarations_for_non_l4() {
+        let m = MockV12 {
+            layer: Layer::L3,
+            declarations: vec![],
+            path: Path::new("03_infra/walker.rs"),
+        };
+        assert_eq!(m.layer(), &Layer::L3);
+        assert!(m.declarations().is_empty());
     }
 }

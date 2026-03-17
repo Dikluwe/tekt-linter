@@ -6,7 +6,7 @@
 
 use std::borrow::Cow;
 
-use crate::contracts::rule_traits::HasPromptFilesystem;
+use crate::entities::rule_traits::HasPromptFilesystem;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 
 /// V1 — Missing or unresolvable @prompt header.

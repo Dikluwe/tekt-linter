@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rs-parser.md
-//! @prompt-hash 36b3db44
+//! @prompt-hash ae7652ed
 //! @layer L3
 //! @updated 2026-03-14
 
@@ -15,8 +15,8 @@ use crate::contracts::prompt_reader::PromptReader;
 use crate::contracts::prompt_snapshot_reader::PromptSnapshotReader;
 use crate::entities::layer::{Language, Layer};
 use crate::entities::parsed_file::{
-    FunctionSignature, Import, ImportKind, ParsedFile, PromptHeader, PublicInterface, Token,
-    TokenKind, TypeKind, TypeSignature,
+    Declaration, DeclarationKind, FunctionSignature, Import, ImportKind, ParsedFile,
+    PromptHeader, PublicInterface, Token, TokenKind, TypeKind, TypeSignature,
 };
 use crate::infra::config::CrystallineConfig;
 
@@ -109,6 +109,25 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
             .as_ref()
             .and_then(|h| self.snapshot_reader.read_snapshot(h.prompt_path));
 
+        // ── Declared traits (V11) ──────────────────────────────────────────
+        let declared_traits = if file.layer == Layer::L1
+            && path_contains_segment(file.path.as_path(), "contracts")
+        {
+            extract_declared_traits(root, source)
+        } else {
+            vec![]
+        };
+
+        // ── Implemented traits (V11) ───────────────────────────────────────
+        let implemented_traits = if matches!(file.layer, Layer::L2 | Layer::L3) {
+            extract_implemented_traits(root, source)
+        } else {
+            vec![]
+        };
+
+        // ── Declarations (V12) ─────────────────────────────────────────────
+        let declarations = extract_declarations(root, source);
+
         Ok(ParsedFile {
             path: file.path.as_path(),
             layer: file.layer.clone(),
@@ -120,6 +139,9 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
             tokens,
             public_interface,
             prompt_snapshot,
+            declared_traits,
+            implemented_traits,
+            declarations,
         })
     }
 }
@@ -539,6 +561,99 @@ fn has_impl_with_functions(node: Node, _source: &[u8]) -> bool {
     false
 }
 
+// ── Declared / Implemented traits / Declarations (ADR-0007) ──────────────────
+
+/// Returns true if any component of `path` equals `segment` exactly.
+fn path_contains_segment(path: &std::path::Path, segment: &str) -> bool {
+    path.components().any(|c| c.as_os_str().to_str().unwrap_or("") == segment)
+}
+
+/// Returns the last `::` segment of a trait path, stripping generic params.
+/// `crate::contracts::FileProvider<'a>` → `"FileProvider"`
+/// `LanguageParser` → `"LanguageParser"`
+fn trait_last_segment(path_str: &str) -> &str {
+    let base = path_str.rsplit("::").next().unwrap_or(path_str);
+    base.split('<').next().unwrap_or(base).trim()
+}
+
+/// Extract names of public `trait` items at the top level of the AST.
+/// Caller must gate on `L1/contracts` — this function does no filtering.
+fn extract_declared_traits<'a>(root: Node, source: &'a [u8]) -> Vec<&'a str> {
+    let mut traits = Vec::new();
+    for i in 0..root.child_count() {
+        if let Some(node) = root.child(i) {
+            if node.kind() == "trait_item" && is_pub_item(node, source) {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    traits.push(node_text(name_node, source));
+                }
+            }
+        }
+    }
+    traits
+}
+
+/// Extract trait names from top-level `impl Trait for Type` items.
+/// Only items where the `trait` field is present are captured.
+/// Caller must gate on `L2 | L3` — this function does no filtering.
+fn extract_implemented_traits<'a>(root: Node, source: &'a [u8]) -> Vec<&'a str> {
+    let mut traits = Vec::new();
+    for i in 0..root.child_count() {
+        if let Some(node) = root.child(i) {
+            if node.kind() == "impl_item" {
+                if let Some(trait_node) = node.child_by_field_name("trait") {
+                    let trait_str = node_text(trait_node, source);
+                    traits.push(trait_last_segment(trait_str));
+                }
+            }
+        }
+    }
+    traits
+}
+
+/// Extract top-level struct/enum/impl-without-trait declarations for V12.
+/// All files are processed — V12 filters by `layer == L4` internally.
+fn extract_declarations<'a>(root: Node, source: &'a [u8]) -> Vec<Declaration<'a>> {
+    let mut decls = Vec::new();
+    for i in 0..root.child_count() {
+        if let Some(node) = root.child(i) {
+            match node.kind() {
+                "struct_item" => {
+                    if let Some(name_node) = node.child_by_field_name("name") {
+                        decls.push(Declaration {
+                            kind: DeclarationKind::Struct,
+                            name: node_text(name_node, source),
+                            line: node.start_position().row + 1,
+                        });
+                    }
+                }
+                "enum_item" => {
+                    if let Some(name_node) = node.child_by_field_name("name") {
+                        decls.push(Declaration {
+                            kind: DeclarationKind::Enum,
+                            name: node_text(name_node, source),
+                            line: node.start_position().row + 1,
+                        });
+                    }
+                }
+                "impl_item" => {
+                    // Only capture impl without trait: `impl Type { ... }`
+                    if node.child_by_field_name("trait").is_none() {
+                        if let Some(type_node) = node.child_by_field_name("type") {
+                            decls.push(Declaration {
+                                kind: DeclarationKind::Impl,
+                                name: node_text(type_node, source),
+                                line: node.start_position().row + 1,
+                            });
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    decls
+}
+
 // ── AST utilities ─────────────────────────────────────────────────────────────
 
 fn node_text<'a>(node: Node, source: &'a [u8]) -> &'a str {
@@ -689,5 +804,164 @@ fn main() {}",
         file.has_adjacent_test = true;
         let parsed = parser.parse(&file).unwrap();
         assert!(parsed.has_test_coverage);
+    }
+
+    // ── declared_traits ───────────────────────────────────────────────────
+
+    #[test]
+    fn declared_traits_extracted_for_l1_contracts() {
+        let parser = make_parser();
+        let mut file = source_file(
+            "pub trait FileProvider { fn files(&self); }\n\
+             pub trait LanguageParser { fn parse(&self); }\n\
+             trait InternalHelper { fn helper(&self); }",
+        );
+        file.path = PathBuf::from("01_core/contracts/file_provider.rs");
+        file.layer = Layer::L1;
+        let parsed = parser.parse(&file).unwrap();
+        assert!(parsed.declared_traits.contains(&"FileProvider"));
+        assert!(parsed.declared_traits.contains(&"LanguageParser"));
+        assert!(!parsed.declared_traits.contains(&"InternalHelper"));
+    }
+
+    #[test]
+    fn declared_traits_empty_for_l1_non_contracts_subdir() {
+        let parser = make_parser();
+        let mut file = source_file("pub trait HasImports<'a> { fn imports(&self); }");
+        file.path = PathBuf::from("01_core/rules/forbidden_import.rs");
+        file.layer = Layer::L1;
+        let parsed = parser.parse(&file).unwrap();
+        assert!(parsed.declared_traits.is_empty());
+    }
+
+    #[test]
+    fn declared_traits_empty_for_l2() {
+        let parser = make_parser();
+        let mut file = source_file("pub trait SomeTrait { fn do_it(&self); }");
+        file.path = PathBuf::from("02_shell/contracts/foo.rs");
+        file.layer = Layer::L2;
+        let parsed = parser.parse(&file).unwrap();
+        assert!(parsed.declared_traits.is_empty());
+    }
+
+    // ── implemented_traits ────────────────────────────────────────────────
+
+    #[test]
+    fn implemented_traits_extracted_for_l3() {
+        let parser = make_parser();
+        let mut file = source_file(
+            "pub struct FsWalker;\n\
+             impl FileProvider for FsWalker { fn files(&self) {} }\n\
+             impl LanguageParser for FsWalker { fn parse(&self) {} }\n\
+             impl FsWalker { fn new() -> Self { FsWalker } }",
+        );
+        file.path = PathBuf::from("03_infra/walker.rs");
+        file.layer = Layer::L3;
+        let parsed = parser.parse(&file).unwrap();
+        assert!(parsed.implemented_traits.contains(&"FileProvider"));
+        assert!(parsed.implemented_traits.contains(&"LanguageParser"));
+        assert!(!parsed.implemented_traits.contains(&"FsWalker"));
+    }
+
+    #[test]
+    fn implemented_traits_extracted_for_l2() {
+        let parser = make_parser();
+        let mut file = source_file(
+            "pub struct Cli;\n\
+             impl PromptReader for Cli { fn read(&self) {} }",
+        );
+        file.path = PathBuf::from("02_shell/cli.rs");
+        file.layer = Layer::L2;
+        let parsed = parser.parse(&file).unwrap();
+        assert!(parsed.implemented_traits.contains(&"PromptReader"));
+    }
+
+    #[test]
+    fn implemented_traits_empty_for_l1() {
+        let parser = make_parser();
+        let mut file = source_file(
+            "impl HasImports for ParsedFile { fn layer(&self) -> u8 { 0 } }",
+        );
+        file.path = PathBuf::from("01_core/entities/parsed_file.rs");
+        file.layer = Layer::L1;
+        let parsed = parser.parse(&file).unwrap();
+        assert!(parsed.implemented_traits.is_empty());
+    }
+
+    #[test]
+    fn implemented_traits_strips_path_prefix() {
+        let parser = make_parser();
+        let mut file = source_file(
+            "pub struct R;\n\
+             impl crate::contracts::FileProvider for R { fn files(&self) {} }",
+        );
+        file.path = PathBuf::from("03_infra/reader.rs");
+        file.layer = Layer::L3;
+        let parsed = parser.parse(&file).unwrap();
+        assert!(parsed.implemented_traits.contains(&"FileProvider"));
+    }
+
+    // ── declarations ──────────────────────────────────────────────────────
+
+    #[test]
+    fn declarations_captures_struct_enum_impl_without_trait() {
+        let parser = make_parser();
+        let mut file = source_file(
+            "pub struct OutputRewriter {}\n\
+             impl OutputRewriter { pub fn new() -> Self { OutputRewriter {} } }\n\
+             impl Formatter for OutputRewriter { fn fmt(&self) {} }\n\
+             pub enum OutputMode { Text, Sarif }",
+        );
+        file.path = PathBuf::from("04_wiring/main.rs");
+        file.layer = Layer::L4;
+        let parsed = parser.parse(&file).unwrap();
+        let kinds: Vec<_> = parsed.declarations.iter().map(|d| (&d.kind, d.name)).collect();
+        assert!(kinds.contains(&(&DeclarationKind::Struct, "OutputRewriter")));
+        assert!(kinds.contains(&(&DeclarationKind::Impl, "OutputRewriter")));
+        assert!(kinds.contains(&(&DeclarationKind::Enum, "OutputMode")));
+        // impl with trait must NOT be captured
+        assert!(!parsed.declarations.iter().any(|d| d.name == "Formatter"));
+    }
+
+    #[test]
+    fn declarations_extracted_for_l3_too() {
+        let parser = make_parser();
+        let mut file = source_file("pub struct FileWalker { root: String }");
+        file.path = PathBuf::from("03_infra/walker.rs");
+        file.layer = Layer::L3;
+        let parsed = parser.parse(&file).unwrap();
+        assert!(parsed.declarations.iter().any(|d| d.kind == DeclarationKind::Struct && d.name == "FileWalker"));
+    }
+
+    #[test]
+    fn declarations_impl_with_trait_not_captured() {
+        let parser = make_parser();
+        let mut file = source_file(
+            "pub struct Rewriter;\n\
+             impl HashRewriter for Rewriter { fn rewrite(&self) {} }",
+        );
+        file.path = PathBuf::from("04_wiring/main.rs");
+        file.layer = Layer::L4;
+        let parsed = parser.parse(&file).unwrap();
+        // Only Struct captured — the impl Trait for ... must be absent
+        assert_eq!(parsed.declarations.iter().filter(|d| d.kind == DeclarationKind::Impl).count(), 0);
+        assert_eq!(parsed.declarations.iter().filter(|d| d.kind == DeclarationKind::Struct).count(), 1);
+    }
+
+    // ── trait_last_segment unit tests ─────────────────────────────────────
+
+    #[test]
+    fn trait_last_segment_strips_prefix() {
+        assert_eq!(trait_last_segment("crate::contracts::FileProvider"), "FileProvider");
+    }
+
+    #[test]
+    fn trait_last_segment_strips_generics() {
+        assert_eq!(trait_last_segment("LanguageParser<'a>"), "LanguageParser");
+    }
+
+    #[test]
+    fn trait_last_segment_simple_name() {
+        assert_eq!(trait_last_segment("PromptReader"), "PromptReader");
     }
 }

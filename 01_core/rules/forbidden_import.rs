@@ -6,7 +6,7 @@
 
 use std::borrow::Cow;
 
-use crate::contracts::rule_traits::HasImports;
+use crate::entities::rule_traits::HasImports;
 use crate::entities::layer::Layer;
 use crate::entities::parsed_file::Import;
 use crate::entities::violation::{Location, Violation, ViolationLevel};

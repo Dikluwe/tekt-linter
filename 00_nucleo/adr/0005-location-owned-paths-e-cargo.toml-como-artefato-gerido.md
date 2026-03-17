@@ -1,6 +1,6 @@
 # ⚖️ ADR-0005: Location Owned Paths e Cargo.toml como Artefato Gerido
 
-**Status**: `PROPOSTO`
+**Status**: `IMPLEMENTADO`
 **Data**: 2026-03-14
 
 ---
@@ -23,12 +23,9 @@ seus paths vêm de `PathBuf` owned gerado durante o parse de erro,
 não do conteúdo do `SourceFile`. Logo, não podem ser `&'a str`
 genuínos.
 
-`Box::leak()` é inofensivo na prática — num utilitário CLI de
-curta duração, vazar uma dúzia de bytes de paths é irrelevante,
-e o SO limpa tudo no `exit()`. Mas é uma dívida arquitetural:
-viola o invariante de zero-copy de forma invisível e poderia
-causar problemas reais num contexto de longa duração (LSP server,
-watch mode).
+`Box::leak()` viola o invariante de zero-copy de forma invisível:
+a string concatenada não existe no buffer original, e a ausência
+de qualquer sinal no tipo torna a exceção silenciosa.
 
 ### Problema 2 — `Cargo.toml` sem nucleação
 
@@ -82,6 +79,17 @@ arquivo.
 
 ---
 
+## Estado de Implementação
+
+Ambos os problemas estão resolvidos no código:
+
+- `Location<'a>` usa `Cow<'a, Path>` em `violation.rs`
+- Os conversores `source_error_to_violation` e `parse_error_to_violation`
+  em `main.rs` usam `Cow::Owned(path)` — sem `Box::leak()`
+- `cargo.md` existe em `00_nucleo/prompts/`
+
+---
+
 ## Prompts Afetados
 
 | Prompt | Natureza da mudança |
@@ -89,24 +97,6 @@ arquivo.
 | `violation-types.md` | `Location<'a>` com `Cow<'a, Path>` |
 | `linter-core.md` | Remoção de `Box::leak()`, atualização de conversores |
 | `cargo.md` | Criação — nucleação de `Cargo.toml` |
-
----
-
-## Estado Provisório Aceito
-
-Até a implementação deste ADR, `Box::leak()` permanece em
-`main.rs` com o seguinte comentário obrigatório de linhagem:
-```rust
-// ADR-0004 trade-off aceito: path de erro de infraestrutura
-// vem de PathBuf owned, não do buffer do SourceFile.
-// Box::leak() é inofensivo em CLI de curta duração —
-// o SO limpa no exit(). Resolução em ADR-0005: Location
-// com Cow<'a, Path>.
-let leaked_path: &'static Path = Box::leak(path.into_boxed_path());
-```
-
-O comentário `TODO(ADR-0005)` não é suficiente — o comentário
-deve explicar a decisão, não apenas apontar para trabalho futuro.
 
 ---
 
@@ -119,7 +109,6 @@ deve explicar a decisão, não apenas apontar para trabalho futuro.
 - `main.rs` fica livre de `Box::leak()` e `'static` desnecessário
 - `Cargo.toml` entra no ciclo de nucleação — mudanças de
   dependência passam por L0
-- Watch mode e LSP server futuros não herdam dívida de memória
 
 ### ❌ Negativas
 
@@ -141,7 +130,7 @@ deve explicar a decisão, não apenas apontar para trabalho futuro.
 
 | Alternativa | Prós | Contras |
 |-------------|------|---------|
-| Manter `Box::leak()` permanentemente | Zero esforço | Viola zero-copy, problemático em watch mode / LSP |
+| Manter `Box::leak()` permanentemente | Zero esforço | Viola zero-copy, exceção invisível no tipo |
 | `Arc<Path>` em `Location` | Sem lifetime em `Location` | Overhead de contagem de referências desnecessário para CLI |
 | `PathBuf` owned em `Location` | Simples | Quebra zero-copy para o caso comum — regressão |
 
@@ -152,6 +141,3 @@ deve explicar a decisão, não apenas apontar para trabalho futuro.
 - ADR-0004: Reformulação do Motor de Análise
 - `violation-types.md` — Errata Cow (`Token.symbol`)
 - `linter-core.md` — Pipeline concorrente, nota sobre `Box::leak()`
-```
-
----

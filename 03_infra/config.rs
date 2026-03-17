@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 68d61185
+//! @prompt-hash 56bcb4fa
 //! @layer L3
 //! @updated 2026-03-13
 
@@ -10,6 +10,14 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::entities::layer::Layer;
+
+/// Configuração de exceções para V12 — lida de `[wiring_exceptions]`.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct WiringExceptionsConfig {
+    /// `true` (padrão): structs de adapter são permitidas em L4.
+    /// `false`: structs em L4 também disparam V12.
+    pub allow_adapter_structs: Option<bool>,
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CrystallineConfig {
@@ -30,6 +38,9 @@ pub struct CrystallineConfig {
     /// Exemplo: { "00_nucleo/prompts/template.md" = "template" }
     #[serde(default)]
     pub orphan_exceptions: HashMap<String, String>,
+    /// Configuração de exceções V12 — lida de `[wiring_exceptions]`.
+    #[serde(default)]
+    pub wiring_exceptions: WiringExceptionsConfig,
 }
 
 impl CrystallineConfig {
@@ -83,7 +94,14 @@ impl Default for CrystallineConfig {
         l1_ports.insert("contracts".to_string(), "01_core/contracts".to_string());
         l1_ports.insert("rules".to_string(), "01_core/rules".to_string());
 
-        Self { layers, module_layers, excluded, l1_ports, orphan_exceptions: HashMap::new() }
+        Self {
+            layers,
+            module_layers,
+            excluded,
+            l1_ports,
+            orphan_exceptions: HashMap::new(),
+            wiring_exceptions: WiringExceptionsConfig::default(),
+        }
     }
 }
 

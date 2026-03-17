@@ -42,14 +42,23 @@ rules     = "rules"
 "00_nucleo/prompts/cargo.md"        = "gera Cargo.toml, não arquivo Rust"
 "00_nucleo/prompts/readme_prompt.md" = "gera README.md, não arquivo Rust"
 
+# Exceções V12 — declarações permitidas em L4
+# true = permite struct_item em L4 (padrão — adapter structs são comuns)
+# enum_item e impl_item sem trait são sempre proibidos
+[wiring_exceptions]
+allow_adapter_structs = true
+
 [rules]
-V0 = { level = "fatal" }
-V1 = { level = "error" }
-V2 = { level = "error" }
-V3 = { level = "error" }
-V4 = { level = "error" }
-V5 = { level = "warning" }
-V6 = { level = "warning" }
-V7 = { level = "warning" }
-V8 = { level = "fatal" }
-V9 = { level = "error" }
+V0  = { level = "fatal" }
+V1  = { level = "error" }
+V2  = { level = "error" }
+V3  = { level = "error" }
+V4  = { level = "error" }
+V5  = { level = "warning" }
+V6  = { level = "warning" }
+V7  = { level = "warning" }
+V8  = { level = "fatal" }
+V9  = { level = "error" }
+V10 = { level = "fatal" }
+V11 = { level = "error" }
+V12 = { level = "warning" }

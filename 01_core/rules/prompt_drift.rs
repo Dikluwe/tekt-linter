@@ -6,7 +6,7 @@
 
 use std::borrow::Cow;
 
-use crate::contracts::rule_traits::HasHashes;
+use crate::entities::rule_traits::HasHashes;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 
 /// V5 — Prompt drift detection.

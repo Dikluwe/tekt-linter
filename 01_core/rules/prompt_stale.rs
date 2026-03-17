@@ -6,7 +6,7 @@
 
 use std::borrow::Cow;
 
-use crate::contracts::rule_traits::HasPublicInterface;
+use crate::entities::rule_traits::HasPublicInterface;
 use crate::entities::parsed_file::{
     FunctionSignature, InterfaceDelta, PublicInterface, TypeSignature,
 };
@@ -119,6 +119,9 @@ mod tests {
             tokens: vec![],
             public_interface: PublicInterface::empty(),
             prompt_snapshot: None,
+            declared_traits: vec![],
+            implemented_traits: vec![],
+            declarations: vec![],
         }
     }
 

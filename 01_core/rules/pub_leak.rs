@@ -7,7 +7,7 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
 
-use crate::contracts::rule_traits::HasPubLeak;
+use crate::entities::rule_traits::HasPubLeak;
 use crate::entities::layer::Layer;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 

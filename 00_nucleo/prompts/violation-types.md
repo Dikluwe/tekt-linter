@@ -2,7 +2,7 @@
 
 **Camada**: L1 (Core - Entities)
 **Criado em**: 2025-03-13
-**Revisado em**: 2026-03-14 (ADR-0004, ADR-0005, ADR-0006)
+**Revisado em**: 2026-03-16 (ADR-0007: Declaration, HasWiringPurity, V11 fields em LocalIndex/ProjectIndex)
 
 ---
 
@@ -10,7 +10,7 @@
 
 Este módulo define as entidades fundamentais do linter: `ParsedFile`,
 `Violation`, `Layer` e tipos auxiliares. Formam a Representação
-Intermediária (IR) sobre a qual todas as regras V1–V9 operam de forma
+Intermediária (IR) sobre a qual todas as regras V1–V12 operam de forma
 pura e agnóstica à linguagem e filesystem.
 
 **Diretiva Zero-Copy (ADR-0004):** As estruturas de dados não são
@@ -25,7 +25,7 @@ onde documentado na tabela abaixo.
 |-------|------|--------|
 | `PromptHeader.current_hash` | `Option<String>` | SHA256 calculado do disco — não existe no buffer do fonte |
 | `Token.symbol` | `Cow<'a, str>` | FQN resolvido por concatenação de alias não existe no buffer original |
-| `Location.path` | `Cow<'a, Path>` | Violações normais usam `Borrowed(&'a Path)`. Erros de infraestrutura (V0, PARSE) usam `Owned(PathBuf)` — elimina `Box::leak()` (ADR-0005) |
+| `Location.path` | `Cow<'a, Path>` | Violações normais usam `Borrowed(&'a Path)`. Erros de infraestrutura (V0, PARSE) e violações globais (V11) usam `Owned(PathBuf)` — elimina `Box::leak()` (ADR-0005) |
 | `Violation.rule_id` | `String` | Identificador gerado pela regra, não extraído do fonte |
 | `Violation.message` | `String` | Mensagem formatada pela regra, não extraída do fonte |
 
@@ -43,11 +43,12 @@ zero-copy — exceto `rule_id` e `message` gerados pela regra.
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
-/// Fatal: erros de infraestrutura que impedem análise completa (V0, V8).
+/// Fatal: erros de infraestrutura que impedem análise completa (V0, V8)
+/// e violações de quarentena que comprometem a garantia de produção (V10).
 /// Fatal não pode ser suprimido por --fail-on — bloqueia CI
 /// independentemente de configuração.
-/// Error: violações arquiteturais bloqueantes (V1–V4, V9).
-/// Warning: divergências não bloqueantes por padrão (V5–V7).
+/// Error: violações arquiteturais bloqueantes (V1–V4, V9, V11).
+/// Warning: divergências não bloqueantes por padrão (V5–V7, V12).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ViolationLevel {
     Fatal,
@@ -57,7 +58,8 @@ pub enum ViolationLevel {
 
 /// ADR-0005: path usa Cow<'a, Path>.
 /// Borrowed(&'a Path) — violações normais, path referencia o SourceFile.
-/// Owned(PathBuf) — erros de infraestrutura (V0, PARSE), path é owned.
+/// Owned(PathBuf) — erros de infraestrutura (V0, PARSE) e violações
+/// globais sem arquivo específico (V11), path é owned.
 /// Elimina Box::leak() dos conversores em L4.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Location<'a> {
@@ -68,7 +70,7 @@ pub struct Location<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Violation<'a> {
-    pub rule_id: String,   // "V0"–"V9", "PARSE" — gerado pela regra
+    pub rule_id: String,   // "V0"–"V12", "PARSE" — gerado pela regra
     pub level: ViolationLevel,
     pub message: String,   // formatado pela regra
     pub location: Location<'a>,
@@ -95,7 +97,7 @@ pub struct ParsedFile<'a> {
     // true se arquivo é declaration-only (isento de V2)
     // populado por L3 (FileWalker + RustParser)
 
-    // Para V3 e V9
+    // Para V3, V9, V10
     pub imports: Vec<Import<'a>>,
 
     // Para V4
@@ -109,6 +111,13 @@ pub struct ParsedFile<'a> {
     // Snapshot registrado em ## Interface Snapshot do prompt
     // None se prompt não tem snapshot ou não existe
     // Populado por L3 via PromptSnapshotReader
+
+    // Para V12
+    pub declarations: Vec<Declaration<'a>>,
+    // Declarações de tipo de nível superior extraídas do AST.
+    // Usado por V12 para detectar struct/enum/impl sem trait em L4.
+    // Populado por L3 (RustParser) para todos os arquivos —
+    // V12 filtra por layer == L4 internamente.
 }
 ```
 
@@ -116,7 +125,7 @@ pub struct ParsedFile<'a> {
 ```rust
 pub struct PromptHeader<'a> {
     pub prompt_path: &'a str,
-    pub prompt_hash: Option<&'a str>,  // hash declarado no header
+    pub prompt_hash: Option<&'a str>,  // hash declarado no header do arquivo
     pub current_hash: Option<String>,  // EXCEÇÃO zero-copy:
     // SHA256[0..8] calculado pelo FsPromptReader a partir do disco.
     // Não existe no buffer do arquivo fonte.
@@ -133,6 +142,7 @@ pub struct Import<'a> {
     pub kind: ImportKind,
     /// Resolvido por L3 via crystalline.toml [layers].
     /// Layer::Unknown para crates externas — não gera violação V3.
+    /// Layer::Lab para imports de lab/ — dispara V10 em produção.
     pub target_layer: Layer,
     /// Subdiretório de destino dentro da camada alvo.
     /// Resolvido por L3 via crystalline.toml [l1_ports].
@@ -176,6 +186,34 @@ pub struct Token<'a> {
 pub enum TokenKind {
     CallExpression,
     MacroInvocation,
+}
+```
+
+### `Declaration<'a>` (V12)
+```rust
+/// Declaração de tipo de nível superior num arquivo fonte.
+/// Usado por V12 para detectar struct/enum/impl sem trait em L4.
+/// Populado por RustParser para todos os arquivos — V12 filtra
+/// por layer == L4 internamente.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Declaration<'a> {
+    pub kind: DeclarationKind,
+    pub name: &'a str,
+    pub line: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeclarationKind {
+    /// struct_item de nível superior.
+    /// Permitido em L4 se allow_adapter_structs = true (padrão).
+    Struct,
+    /// enum_item de nível superior.
+    /// Sempre proibido em L4 — enums pertencem a L1 ou L2.
+    Enum,
+    /// impl_item sem trait: `impl Type { ... }`.
+    /// Sempre proibido em L4 — indica lógica de negócio no wiring.
+    /// `impl Trait for Type` NÃO é capturado aqui — é o padrão de adapter.
+    Impl,
 }
 ```
 
@@ -332,6 +370,26 @@ pub enum Language {
 }
 ```
 
+### `WiringConfig` (V12)
+```rust
+/// Configuração de exceções para V12, lida de crystalline.toml
+/// [wiring_exceptions] e injetada por L4.
+/// V12 nunca lê o toml diretamente.
+#[derive(Debug, Clone)]
+pub struct WiringConfig {
+    /// Se true, struct_item em L4 é permitido (padrão: true).
+    /// Structs de adapter são comuns em fases de migração.
+    /// enum_item e impl_item sem trait são sempre proibidos.
+    pub allow_adapter_structs: bool,
+}
+
+impl Default for WiringConfig {
+    fn default() -> Self {
+        Self { allow_adapter_structs: true }
+    }
+}
+```
+
 ---
 
 ## Responsabilidades de População (L3)
@@ -343,21 +401,30 @@ L1 apenas lê — nunca deriva, nunca aloca além das exceções documentadas.
 |-------|-------------|------|
 | `prompt_file_exists` | `FsPromptReader` | `PromptReader::exists()` |
 | `has_test_coverage` | `FileWalker` + `RustParser` | adjacência em disco + nó `#[cfg(test)]` no AST + detection de declaration-only |
-| `imports` com `target_layer` | `RustParser` | `use_declaration` no AST + `LayerResolver` via `crystalline.toml [layers]` |
-| `imports` com `target_subdir` | `RustParser` | segundo segmento do path resolvido contra `crystalline.toml [l1_ports]`. None para crates externas |
+| `imports` com `target_layer` | `RustParser` | `use_declaration` no AST + `LayerResolver` via `crystalline.toml [layers]`. `Layer::Lab` é resolvido para imports de `lab/` |
+| `imports` com `target_subdir` | `RustParser` | segundo segmento do path resolvido contra `crystalline.toml [l1_ports]`. None para crates externas e imports de Lab |
 | `tokens` com FQN | `RustParser` | Fase 1 (tabela de aliases) + Fase 2 (call_expression). Alias → `Cow::Owned`, direto → `Cow::Borrowed` |
 | `PromptHeader.prompt_hash` | `RustParser` | fatia `&'a str` do buffer do arquivo |
 | `PromptHeader.current_hash` | `FsPromptReader` | SHA256[0..8] calculado do disco — `Option<String>` |
 | `public_interface` | `RustParser` | nós `pub` do AST, strings normalizadas como `&'a str` |
 | `prompt_snapshot` | `PromptSnapshotReader` | desserialização do JSON em `## Interface Snapshot` do prompt |
+| `declarations` | `RustParser` | nós `struct_item`, `enum_item` e `impl_item` sem trait de nível superior. `impl Trait for Type` não é capturado |
+
+**Responsabilidades de L3 para V11 (via LocalIndex):**
+
+| Campo | Quem popula | Como |
+|-------|-------------|------|
+| `LocalIndex.declared_traits` | `RustParser` | nós `trait_item` com `pub` em arquivos com `layer == L1` e `subdir == "contracts"` |
+| `LocalIndex.implemented_traits` | `RustParser` | nós `impl_item` com `impl <TraitName> for` em arquivos com `layer == L2 \| L3` |
 
 **Responsabilidades de L4 (wiring) para construção de `Location`:**
 
 | Violação | Como construir `Location.path` |
 |----------|-------------------------------|
-| V1–V9 normais | `Cow::Borrowed(parsed_file.path)` |
+| V1–V10, V12 normais | `Cow::Borrowed(parsed_file.path)` |
 | V0 (SourceError) | `Cow::Owned(path)` — path vem de `SourceError::Unreadable` |
 | PARSE (ParseError) | `Cow::Owned(path)` — path vem das variants de `ParseError` |
+| V11 (global) | `Cow::Owned(PathBuf::from("01_core/contracts"))` — violação global sem arquivo específico |
 
 ---
 
@@ -374,10 +441,15 @@ L1 apenas lê — nunca deriva, nunca aloca além das exceções documentadas.
   wiring usa `Owned` para erros de infraestrutura sem `Box::leak()`
 - Comparação de `FunctionSignature` e `TypeSignature` usa `PartialEq`
   derivado sobre a struct completa — nunca comparar apenas por `name`
+- `Declaration` é populado por L3 para todos os arquivos —
+  V12 filtra por `layer == L4` internamente, não o parser
+- `WiringConfig` é injetado por L4 em V12 — nunca lido diretamente
+  de disco por L1
 
 ---
 
 ## Critérios de Verificação
+
 ```
 Dado ParsedFile com prompt_file_exists = false
 Quando V1::check() for chamado
@@ -436,6 +508,52 @@ E "entities" listado em [l1_ports]
 Quando V9::check() for chamado
 Então retorna vec![] — porta válida
 
+Dado Import { target_layer: Layer::Lab, line: 5, .. }
+em arquivo com layer = L1
+Quando V10::check() for chamado
+Então retorna Violation { rule_id: "V10", level: Fatal,
+      location: Location { path: Cow::Borrowed(..), line: 5 } }
+
+Dado Import { target_layer: Layer::Lab, .. }
+em arquivo com layer = Lab
+Quando V10::check() for chamado
+Então retorna vec![] — lab pode importar lab
+
+Dado all_declared_traits = {"FileProvider"}
+E all_implemented_traits = {}
+Quando check_dangling_contracts() for chamado
+Então retorna Violation { rule_id: "V11", level: Error,
+      location: Location { path: Cow::Owned("01_core/contracts"), .. } }
+
+Dado all_declared_traits = {"FileProvider"}
+E all_implemented_traits = {"FileProvider"}
+Quando check_dangling_contracts() for chamado
+Então retorna vec![]
+
+Dado Declaration { kind: Enum, name: "OutputMode", line: 3 }
+em arquivo com layer = L4
+Quando V12::check() for chamado com WiringConfig::default()
+Então retorna Violation { rule_id: "V12", level: Warning, location.line: 3 }
+— enum nunca permitido em L4
+
+Dado Declaration { kind: Struct, name: "L3HashRewriter", line: 7 }
+em arquivo com layer = L4
+Quando V12::check() for chamado com WiringConfig { allow_adapter_structs: true }
+Então retorna vec![] — struct de adapter explicitamente permitida
+
+Dado Declaration { kind: Impl, name: "L3HashRewriter", line: 10 }
+(impl sem trait)
+em arquivo com layer = L4
+Quando V12::check() for chamado
+Então retorna Violation { rule_id: "V12", level: Warning }
+— impl sem trait é lógica de negócio no wiring
+
+Dado Declaration { kind: Impl, name: "HashRewriter for L3HashRewriter", .. }
+(impl com trait — NÃO capturado como DeclarationKind::Impl)
+em arquivo com layer = L4
+Quando V12::check() for chamado
+Então retorna vec![] — impl de trait é o padrão de adapter
+
 Dado SourceError::Unreadable { path, reason }
 Quando source_error_to_violation() for chamado em L4
 Então retorna Violation { rule_id: "V0", level: Fatal,
@@ -465,3 +583,5 @@ Então retorna true — Fatal não configurável
 | 2026-03-14 | Errata Cow: Token.symbol de &'a str para Cow<'a, str> | parsed_file.rs |
 | 2026-03-14 | ADR-0005: Location.path de &'a Path para Cow<'a, Path>, elimina Box::leak(), tabela L4 adicionada | violation.rs |
 | 2026-03-14 | ADR-0006: Import.target_subdir adicionado para V9, linha de população adicionada na tabela L3, critérios V9 adicionados, ViolationLevel::Fatal atualizado para incluir V8 | parsed_file.rs |
+| 2026-03-16 | ADR-0007: Declaration e DeclarationKind para V12; ParsedFile.declarations; WiringConfig; V10 Fatal na tabela de níveis e critérios; V11 na tabela L4 de Location e critérios; tabela de responsabilidades L3 para V11 (declared_traits, implemented_traits via LocalIndex) | parsed_file.rs, violation.rs |
+| 2026-03-16 | Materialização ADR-0007: Declaration, DeclarationKind, WiringConfig adicionados a parsed_file.rs; ParsedFile recebe declared_traits, implemented_traits e declarations; impl HasWiringPurity para ParsedFile | parsed_file.rs |

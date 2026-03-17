@@ -6,7 +6,7 @@
 
 use std::borrow::Cow;
 
-use crate::contracts::rule_traits::HasTokens;
+use crate::entities::rule_traits::HasTokens;
 use crate::entities::layer::Layer;
 use crate::entities::parsed_file::Token;
 use crate::entities::violation::{Location, Violation, ViolationLevel};

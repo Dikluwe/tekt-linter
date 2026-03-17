@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 68d61185
+//! @prompt-hash 56bcb4fa
 //! @layer L4
 //! @updated 2026-03-16
 
@@ -16,7 +16,7 @@ use crystalline_lint::contracts::parse_error::ParseError;
 use crystalline_lint::contracts::prompt_provider::PromptProvider;
 use crystalline_lint::contracts::prompt_reader::PromptReader;
 use crystalline_lint::contracts::prompt_snapshot_reader::PromptSnapshotReader;
-use crystalline_lint::entities::parsed_file::{ParsedFile, PublicInterface};
+use crystalline_lint::entities::parsed_file::{ParsedFile, PublicInterface, WiringConfig};
 use crystalline_lint::entities::project_index::{LocalIndex, ProjectIndex};
 use crystalline_lint::entities::violation::{Location, Violation, ViolationLevel};
 use crystalline_lint::infra::config::CrystallineConfig;
@@ -28,8 +28,8 @@ use crystalline_lint::infra::rs_parser::RustParser;
 use crystalline_lint::infra::snapshot_writer;
 use crystalline_lint::infra::walker::FileWalker;
 use crystalline_lint::rules::{
-    alien_file, forbidden_import, impure_core, orphan_prompt, prompt_drift, prompt_header,
-    prompt_stale, pub_leak, test_file,
+    alien_file, dangling_contract, forbidden_import, impure_core, orphan_prompt, prompt_drift,
+    prompt_header, prompt_stale, pub_leak, quarantine_leak, test_file, wiring_logic_leak,
 };
 use crystalline_lint::rules::pub_leak::L1Ports;
 use crystalline_lint::shell::cli::{validate_args, Cli, EnabledChecks, OutputFormat};
@@ -78,6 +78,11 @@ fn main() {
     // ── L1Ports from config ───────────────────────────────────────────────────
     let l1_ports = L1Ports::new(config.l1_ports.keys().cloned().collect());
 
+    // ── WiringConfig for V12 ──────────────────────────────────────────────────
+    let wiring_config = WiringConfig {
+        allow_adapter_structs: config.wiring_exceptions.allow_adapter_structs.unwrap_or(true),
+    };
+
     // ── Instantiate L3 components ─────────────────────────────────────────────
     let parser = RustParser::new(
         FsPromptReader { nucleo_root: nucleo_root.clone() },
@@ -92,7 +97,7 @@ fn main() {
     let (source_files, source_errors) = collect_walker_results(walker.files());
 
     let (mut all_violations, all_parsed, project_index) =
-        run_pipeline(&source_files, &source_errors, &parser, &enabled, &l1_ports);
+        run_pipeline(&source_files, &source_errors, &parser, &enabled, &l1_ports, &wiring_config);
 
     // ── V7/V8 post-reduce ─────────────────────────────────────────────────────
     if enabled.v7 {
@@ -102,6 +107,9 @@ fn main() {
     }
     if enabled.v8 {
         all_violations.extend(alien_file::check_aliens(&project_index));
+    }
+    if enabled.v11 {
+        all_violations.extend(dangling_contract::check_dangling_contracts(&project_index));
     }
 
     // ── --fix-hashes branch ───────────────────────────────────────────────────
@@ -130,9 +138,9 @@ fn main() {
             let (re_files, re_errors) = collect_walker_results(rewalker.files());
             let v5_only = EnabledChecks {
                 v1: false, v2: false, v3: false, v4: false, v5: true, v6: false,
-                v7: false, v8: false, v9: false,
+                v7: false, v8: false, v9: false, v10: false, v11: false, v12: false,
             };
-            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v5_only, &l1_ports);
+            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v5_only, &l1_ports, &wiring_config);
             violations.iter().filter(|v| v.rule_id == "V5").count()
         };
 
@@ -171,9 +179,9 @@ fn main() {
             let (re_files, re_errors) = collect_walker_results(rewalker.files());
             let v6_only = EnabledChecks {
                 v1: false, v2: false, v3: false, v4: false, v5: false, v6: true,
-                v7: false, v8: false, v9: false,
+                v7: false, v8: false, v9: false, v10: false, v11: false, v12: false,
             };
-            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v6_only, &l1_ports);
+            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v6_only, &l1_ports, &wiring_config);
             violations.iter().filter(|v| v.rule_id == "V6").count()
         };
 
@@ -270,6 +278,7 @@ fn run_pipeline<'a>(
     parser: &RustParser<FsPromptReader, FsPromptSnapshotReader>,
     enabled: &EnabledChecks,
     l1_ports: &L1Ports,
+    wiring_config: &WiringConfig,
 ) -> (Vec<Violation<'a>>, Vec<ParsedFile<'a>>, ProjectIndex<'a>) {
     let mut violations: Vec<Violation<'a>> = Vec::new();
     let mut parsed_files = Vec::new();
@@ -281,11 +290,11 @@ fn run_pipeline<'a>(
         project_index.merge_local(LocalIndex::from_source_error());
     }
 
-    // V1–V9 per file
+    // V1–V10, V12 per file
     for source_file in source_files {
         match parser.parse(source_file) {
             Ok(parsed) => {
-                violations.extend(run_checks(&parsed, enabled, l1_ports));
+                violations.extend(run_checks(&parsed, enabled, l1_ports, wiring_config));
                 project_index.merge_local(LocalIndex::from_parsed(&parsed));
                 parsed_files.push(parsed);
             }
@@ -304,15 +313,18 @@ fn run_checks<'a>(
     file: &ParsedFile<'a>,
     enabled: &EnabledChecks,
     l1_ports: &L1Ports,
+    wiring_config: &WiringConfig,
 ) -> Vec<Violation<'a>> {
     let mut violations = Vec::new();
-    if enabled.v1 { violations.extend(prompt_header::check(file)); }
-    if enabled.v2 { violations.extend(test_file::check(file)); }
-    if enabled.v3 { violations.extend(forbidden_import::check(file)); }
-    if enabled.v4 { violations.extend(impure_core::check(file)); }
-    if enabled.v5 { violations.extend(prompt_drift::check(file)); }
-    if enabled.v6 { violations.extend(prompt_stale::check(file)); }
-    if enabled.v9 { violations.extend(pub_leak::check(file, l1_ports)); }
+    if enabled.v1  { violations.extend(prompt_header::check(file)); }
+    if enabled.v2  { violations.extend(test_file::check(file)); }
+    if enabled.v3  { violations.extend(forbidden_import::check(file)); }
+    if enabled.v4  { violations.extend(impure_core::check(file)); }
+    if enabled.v5  { violations.extend(prompt_drift::check(file)); }
+    if enabled.v6  { violations.extend(prompt_stale::check(file)); }
+    if enabled.v9  { violations.extend(pub_leak::check(file, l1_ports)); }
+    if enabled.v10 { violations.extend(quarantine_leak::check(file)); }
+    if enabled.v12 { violations.extend(wiring_logic_leak::check(file, wiring_config)); }
     violations
 }
 

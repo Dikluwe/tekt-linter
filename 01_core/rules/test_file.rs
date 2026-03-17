@@ -6,7 +6,7 @@
 
 use std::borrow::Cow;
 
-use crate::contracts::rule_traits::HasCoverage;
+use crate::entities::rule_traits::HasCoverage;
 use crate::entities::layer::Layer;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 

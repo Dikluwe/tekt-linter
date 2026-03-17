@@ -45,6 +45,9 @@ mod tests {
             tokens: vec![],
             public_interface: crate::entities::parsed_file::PublicInterface::empty(),
             prompt_snapshot: None,
+            declared_traits: vec![],
+            implemented_traits: vec![],
+            declarations: vec![],
         }
     }
 

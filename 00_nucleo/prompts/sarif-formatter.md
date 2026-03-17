@@ -3,7 +3,7 @@
 **Camada**: L2 (Shell)
 **Padrão**: CLI Controller e Presenter
 **Criado em**: 2025-03-13
-**Revisado em**: 2026-03-15 (ADR-0006: V7, V8, V9)
+**Revisado em**: 2026-03-16 (ADR-0007: V10, V11, V12)
 
 ---
 
@@ -35,14 +35,14 @@ ARGS:
   [PATH]    Raiz do projeto a analisar [padrão: .]
 
 OPTIONS:
-  --format <fmt>         sarif | text | json        [padrão: text]
-  --fail-on <level>      error | warning            [padrão: error]
-  --checks <list>        v0,v1,v2,v3,v4,v5,v6,v7,v8,v9  [padrão: all]
+  --format <fmt>         sarif | text | json                  [padrão: text]
+  --fail-on <level>      error | warning                      [padrão: error]
+  --checks <list>        v0,v1,...,v12                        [padrão: all]
   --no-drift             desabilita V5
   --no-stale             desabilita V6
   --machine-readable     alias para --format sarif
   --quiet                apenas exit code, sem output
-  --config <path>        crystalline.toml           [padrão: ./crystalline.toml]
+  --config <path>        crystalline.toml                     [padrão: ./crystalline.toml]
   --fix-hashes           corrige @prompt-hash divergentes (V5)
   --update-snapshot      atualiza Interface Snapshot nos prompts (V6)
   --dry-run              usado com --fix-hashes ou --update-snapshot
@@ -52,9 +52,9 @@ OPTIONS:
 - `--dry-run` sem `--fix-hashes` ou `--update-snapshot`
 - `--fix-hashes` e `--update-snapshot` simultaneamente
 
-**Notas sobre V0 e V8:**
-`--checks` pode omitir `v0` ou `v8` para suprimir output, mas
-ambos são Fatal — sempre bloqueiam CI independentemente de
+**Notas sobre V0, V8 e V10:**
+`--checks` pode omitir `v0`, `v8` ou `v10` para suprimir output,
+mas os três são Fatal — sempre bloqueiam CI independentemente de
 `--fail-on` e `--checks`.
 
 ---
@@ -62,25 +62,33 @@ ambos são Fatal — sempre bloqueiam CI independentemente de
 ## Responsabilidades Output (SARIF)
 
 - Transformar `Vec<Violation>` em JSON válido sob SARIF `2.1.0`
-- Popular `runs.tool.driver.rules` com metadados de V0–V9
+- Popular `runs.tool.driver.rules` com metadados de V0–V12
 - Mapear cada `Violation` em `runs.results.region.startLine`
 - Como fallback (`--format text`): strings coloridas legíveis
   para stdout, estilo output do Cargo
 
 **Tabela de regras SARIF:**
 
-| ID | Nome | Level padrão |
-|----|------|--------------|
-| V0 | UnreadableSource | fatal |
-| V1 | MissingPromptHeader | error |
-| V2 | MissingTestFile | error |
-| V3 | ForbiddenImport | error |
-| V4 | ImpureCore | error |
-| V5 | PromptDrift | warning |
-| V6 | PromptStale | warning |
-| V7 | OrphanPrompt | warning |
-| V8 | AlienFile | fatal |
-| V9 | PubLeak | error |
+| ID  | Nome | Level padrão |
+|-----|------|--------------|
+| V0  | UnreadableSource | fatal → mapeado para `error` no SARIF |
+| V1  | MissingPromptHeader | error |
+| V2  | MissingTestFile | error |
+| V3  | ForbiddenImport | error |
+| V4  | ImpureCore | error |
+| V5  | PromptDrift | warning |
+| V6  | PromptStale | warning |
+| V7  | OrphanPrompt | warning |
+| V8  | AlienFile | fatal → mapeado para `error` no SARIF |
+| V9  | PubLeak | error |
+| V10 | QuarantineLeak | fatal → mapeado para `error` no SARIF |
+| V11 | DanglingContract | error |
+| V12 | WiringLogicLeak | warning |
+
+*SARIF 2.1.0 não tem nível `fatal`. V0, V8 e V10 são mapeados
+para `"error"` no output SARIF. O comportamento Fatal (bloqueia
+CI independentemente de `--fail-on`) é aplicado pelo linter
+internamente antes de consultar o nível SARIF.*
 
 ---
 
@@ -112,31 +120,42 @@ pub struct EnabledChecks {
     pub v7: bool,
     pub v8: bool,
     pub v9: bool,
+    pub v10: bool,
+    pub v11: bool,
+    pub v12: bool,
 }
 
 impl EnabledChecks {
     pub fn from_cli(checks: &str, no_drift: bool, no_stale: bool) -> Self {
         let lower = checks.to_lowercase();
         Self {
-            v1: lower.contains("v1"),
-            v2: lower.contains("v2"),
-            v3: lower.contains("v3"),
-            v4: lower.contains("v4"),
-            v5: lower.contains("v5") && !no_drift,
-            v6: lower.contains("v6") && !no_stale,
-            v7: lower.contains("v7"),
-            v8: lower.contains("v8"),
-            v9: lower.contains("v9"),
+            v1:  lower.contains("v1"),
+            v2:  lower.contains("v2"),
+            v3:  lower.contains("v3"),
+            v4:  lower.contains("v4"),
+            v5:  lower.contains("v5") && !no_drift,
+            v6:  lower.contains("v6") && !no_stale,
+            v7:  lower.contains("v7"),
+            v8:  lower.contains("v8"),
+            v9:  lower.contains("v9"),
+            v10: lower.contains("v10"),
+            v11: lower.contains("v11"),
+            v12: lower.contains("v12"),
         }
     }
 }
 ```
 
-**Nota sobre V7 e V8 no pipeline:**
-V7 e V8 são verificados na fase global pós-reduce, não por arquivo.
-`enabled.v7` e `enabled.v8` controlam se as verificações globais
-são executadas após o Map-Reduce — não são passados para `run_checks`.
-`enabled.v9` é passado para `run_checks` por arquivo.
+**Nota sobre V7, V8 e V11 no pipeline:**
+V7, V8 e V11 são verificados na fase global pós-reduce, não por
+arquivo. `enabled.v7`, `enabled.v8` e `enabled.v11` controlam
+se as verificações globais são executadas após o Map-Reduce —
+não são passados para `run_checks`. `enabled.v9`, `enabled.v10`
+e `enabled.v12` são passados para `run_checks` por arquivo.
+
+**Nota sobre V10 Fatal:**
+`--checks` sem `v10` suprime o output da violação mas não o exit
+code — V10 Fatal bloqueia CI incondicionalmente, como V0 e V8.
 
 ---
 
@@ -173,6 +192,19 @@ Dado Vec<Violation> com V9 error
 Quando format_sarif() for chamado
 Então SARIF contém resultado com ruleId "V9" e level "error"
 
+Dado Vec<Violation> com V10 fatal
+Quando format_sarif() for chamado
+Então SARIF contém resultado com ruleId "V10" e level "error"
+— Fatal mapeado para "error" no SARIF, idêntico ao tratamento de V0 e V8
+
+Dado Vec<Violation> com V11 error
+Quando format_sarif() for chamado
+Então SARIF contém resultado com ruleId "V11" e level "error"
+
+Dado Vec<Violation> com V12 warning
+Quando format_sarif() for chamado
+Então SARIF contém resultado com ruleId "V12" e level "warning"
+
 Dado --dry-run sem --fix-hashes e sem --update-snapshot
 Quando validate_args() for chamado
 Então retorna Err com mensagem de uso
@@ -185,14 +217,23 @@ Dado --no-stale
 Quando EnabledChecks::from_cli() for chamado
 Então v6 = false
 
-Dado --checks v1,v3,v9
+Dado --checks v1,v3,v9,v10
 Quando EnabledChecks::from_cli() for chamado
 Então v1 = true, v2 = false, v3 = true, v4 = false,
-     v5 = false, v6 = false, v7 = false, v8 = false, v9 = true
+     v5 = false, v6 = false, v7 = false, v8 = false,
+     v9 = true, v10 = true, v11 = false, v12 = false
 
 Dado --checks all (padrão)
 Quando EnabledChecks::from_cli() for chamado
-Então v1..v9 = true (exceto v5 se --no-drift, v6 se --no-stale)
+Então v1..v12 = true (exceto v5 se --no-drift, v6 se --no-stale)
+
+Dado Vec<Violation> com apenas V10 Fatal
+Quando should_fail() for chamado com --fail-on error
+Então retorna true — V10 Fatal bloqueia independentemente de --fail-on
+
+Dado format_sarif() com violations V0–V12
+Quando chamado
+Então SARIF driver.rules contém exatamente 13 entradas (V0 a V12)
 ```
 
 ---
@@ -206,3 +247,4 @@ Então v1..v9 = true (exceto v5 se --no-drift, v6 se --no-stale)
 | 2025-03-13 | V6: --update-snapshot, --no-stale, V6 na tabela SARIF | cli.rs |
 | 2026-03-14 | ADR-0004: V0 na tabela SARIF, EnabledChecks atualizado | cli.rs |
 | 2026-03-15 | ADR-0006: V7, V8, V9 nas flags, tabela SARIF, EnabledChecks, nota sobre V7/V8 na fase global vs V9 por arquivo | cli.rs |
+| 2026-03-16 | ADR-0007: V10, V11, V12 na tabela SARIF e EnabledChecks; nota Fatal para V10; nota V11 na fase global; V10/V12 em run_checks por arquivo; critérios V10–V12 adicionados | cli.rs |

@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/sarif-formatter.md
-//! @prompt-hash a1a7e5f5
+//! @prompt-hash 5f68f7cf
 //! @layer L2
 //! @updated 2026-03-14
 
@@ -29,8 +29,10 @@ pub struct Cli {
     #[arg(long, default_value = "error")]
     pub fail_on: FailLevel,
 
-    /// Comma-separated list of checks to run (e.g. v1,v2,v3,v4,v5,v6,v7,v8,v9)
-    #[arg(long, default_value = "v1,v2,v3,v4,v5,v6,v7,v8,v9")]
+    /// Comma-separated list of checks to run (e.g. v1,v2,...,v12)
+    /// V11 (dangling-contract) is opt-in — not included in the default because
+    /// rule_traits in L1/contracts/ are implemented by ParsedFile (L1), not L2/L3.
+    #[arg(long, default_value = "v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12")]
     pub checks: String,
 
     /// Disable V5 drift detection
@@ -97,6 +99,11 @@ pub struct EnabledChecks {
     pub v7: bool,
     pub v8: bool,
     pub v9: bool,
+    pub v10: bool,
+    /// V11 is opt-in (not in default --checks) because rule_traits in
+    /// L1/contracts/ are implemented by ParsedFile (L1), not L2/L3.
+    pub v11: bool,
+    pub v12: bool,
 }
 
 impl EnabledChecks {
@@ -112,6 +119,9 @@ impl EnabledChecks {
             v7: lower.contains("v7"),
             v8: lower.contains("v8"),
             v9: lower.contains("v9"),
+            v10: lower.contains("v10"),
+            v11: lower.contains("v11"),
+            v12: lower.contains("v12"),
         }
     }
 }
@@ -206,6 +216,9 @@ fn sarif_rules() -> Vec<serde_json::Value> {
         sarif_rule("V7", "OrphanPrompt", "Prompt without any materialization in L1–L4", "warning"),
         sarif_rule("V8", "AlienFile", "Source file outside all mapped layers", "error"),
         sarif_rule("V9", "PubLeak", "Import bypasses L1 encapsulation boundary", "error"),
+        sarif_rule("V10", "QuarantineLeak", "Production code imports from lab/ quarantine", "error"),
+        sarif_rule("V11", "DanglingContract", "Contract trait without implementation in L2/L3", "error"),
+        sarif_rule("V12", "WiringLogicLeak", "Type declaration in L4 wiring layer", "warning"),
     ]
 }
 
@@ -319,7 +332,7 @@ mod tests {
             path: PathBuf::from("."),
             format: OutputFormat::Text,
             fail_on: FailLevel::Error,
-            checks: "v1,v2,v3,v4,v5,v6,v7,v8,v9".to_string(),
+            checks: "v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12".to_string(),
             no_drift: false,
             no_stale: false,
             quiet: false,
