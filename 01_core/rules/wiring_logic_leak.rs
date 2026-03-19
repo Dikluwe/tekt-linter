@@ -48,17 +48,24 @@ pub fn check<'a, T: HasWiringPurity<'a>>(file: &T, config: &WiringConfig) -> Vec
 
 fn is_forbidden(d: &Declaration, config: &WiringConfig) -> bool {
     match d.kind {
-        DeclarationKind::Enum => true,                           // enums nunca pertencem a L4
-        DeclarationKind::Struct => !config.allow_adapter_structs, // configurável
-        DeclarationKind::Impl => true,                           // impl sem trait = lógica de negócio
+        DeclarationKind::Enum      => true,                           // enums nunca pertencem a L4
+        DeclarationKind::Struct    => !config.allow_adapter_structs,  // configurável
+        DeclarationKind::Impl      => true,                           // impl sem trait = lógica de negócio
+        // ADR-0009: linguagens OO
+        DeclarationKind::Class     => !config.allow_adapter_structs,  // Class ≡ Struct (ADR-0009)
+        DeclarationKind::Interface => true,                           // interfaces pertencem a L1/L2
+        DeclarationKind::TypeAlias => true,                           // type aliases pertencem a L1/L2
     }
 }
 
 fn declaration_kind_str(kind: &DeclarationKind) -> &'static str {
     match kind {
-        DeclarationKind::Struct => "struct",
-        DeclarationKind::Enum => "enum",
-        DeclarationKind::Impl => "impl",
+        DeclarationKind::Struct    => "struct",
+        DeclarationKind::Enum      => "enum",
+        DeclarationKind::Impl      => "impl",
+        DeclarationKind::Class     => "class",
+        DeclarationKind::Interface => "interface",
+        DeclarationKind::TypeAlias => "type",
     }
 }
 
@@ -156,5 +163,52 @@ mod tests {
             decl(DeclarationKind::Impl, "Config", 10),
         ]);
         assert_eq!(check(&file, &allow_structs()).len(), 2);
+    }
+
+    // ── ADR-0009: linguagens OO ────────────────────────────────────────────────
+
+    #[test]
+    fn class_without_implements_allowed_when_allow_adapter_structs_true() {
+        let file = l4_file(vec![decl(DeclarationKind::Class, "Formatter", 5)]);
+        assert!(check(&file, &allow_structs()).is_empty());
+    }
+
+    #[test]
+    fn class_without_implements_forbidden_when_allow_adapter_structs_false() {
+        let file = l4_file(vec![decl(DeclarationKind::Class, "Formatter", 5)]);
+        let violations = check(&file, &deny_structs());
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("Formatter"));
+        assert!(violations[0].message.contains("class"));
+    }
+
+    #[test]
+    fn interface_always_forbidden_in_l4() {
+        let file = l4_file(vec![decl(DeclarationKind::Interface, "InternalConfig", 7)]);
+        let violations = check(&file, &allow_structs());
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("InternalConfig"));
+        assert!(violations[0].message.contains("interface"));
+    }
+
+    #[test]
+    fn type_alias_always_forbidden_in_l4() {
+        let file = l4_file(vec![decl(DeclarationKind::TypeAlias, "Mode", 9)]);
+        let violations = check(&file, &allow_structs());
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("Mode"));
+        assert!(violations[0].message.contains("type"));
+    }
+
+    #[test]
+    fn class_with_allow_structs_and_interface_both_in_l4() {
+        // Class allowed, Interface forbidden
+        let file = l4_file(vec![
+            decl(DeclarationKind::Class, "Adapter", 2),
+            decl(DeclarationKind::Interface, "Config", 10),
+        ]);
+        let violations = check(&file, &allow_structs());
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("Config"));
     }
 }

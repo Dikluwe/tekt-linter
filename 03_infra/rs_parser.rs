@@ -1,8 +1,8 @@
 //! Crystalline Lineage
-//! @prompt 00_nucleo/prompts/rs-parser.md
-//! @prompt-hash ae7652ed
+//! @prompt 00_nucleo/prompts/parsers/rust.md
+//! @prompt-hash b1f942cf
 //! @layer L3
-//! @updated 2026-03-14
+//! @updated 2026-03-18
 
 use std::borrow::Cow;
 
@@ -426,6 +426,9 @@ fn extract_type_sig<'a>(
             .child_by_field_name("body")
             .map(|b| extract_trait_method_names(b, source))
             .unwrap_or_default(),
+        // OO types (Class/Interface/TypeAlias) are never produced by RustParser;
+        // this arm is required for exhaustiveness when TsParser uses the same enum.
+        TypeKind::Class | TypeKind::Interface | TypeKind::TypeAlias => vec![],
     };
 
     Some(TypeSignature { name, kind, members })

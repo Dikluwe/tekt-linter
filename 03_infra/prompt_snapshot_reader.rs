@@ -33,6 +33,11 @@ enum OwnedTypeKind {
     Struct,
     Enum,
     Trait,
+    // ADR-0009: linguagens OO
+    Class,
+    Interface,
+    #[serde(rename = "type")]
+    TypeAlias,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -70,9 +75,12 @@ fn owned_to_static(owned: OwnedPublicInterface) -> PublicInterface<'static> {
             .map(|t| TypeSignature {
                 name: leak_str(t.name),
                 kind: match t.kind {
-                    OwnedTypeKind::Struct => TypeKind::Struct,
-                    OwnedTypeKind::Enum => TypeKind::Enum,
-                    OwnedTypeKind::Trait => TypeKind::Trait,
+                    OwnedTypeKind::Struct    => TypeKind::Struct,
+                    OwnedTypeKind::Enum      => TypeKind::Enum,
+                    OwnedTypeKind::Trait     => TypeKind::Trait,
+                    OwnedTypeKind::Class     => TypeKind::Class,
+                    OwnedTypeKind::Interface => TypeKind::Interface,
+                    OwnedTypeKind::TypeAlias => TypeKind::TypeAlias,
                 },
                 members: t.members.into_iter().map(leak_str).collect(),
             })
@@ -98,9 +106,12 @@ fn interface_to_owned(iface: &PublicInterface<'_>) -> OwnedPublicInterface {
             .map(|t| OwnedTypeSignature {
                 name: t.name.to_string(),
                 kind: match t.kind {
-                    TypeKind::Struct => OwnedTypeKind::Struct,
-                    TypeKind::Enum => OwnedTypeKind::Enum,
-                    TypeKind::Trait => OwnedTypeKind::Trait,
+                    TypeKind::Struct    => OwnedTypeKind::Struct,
+                    TypeKind::Enum      => OwnedTypeKind::Enum,
+                    TypeKind::Trait     => OwnedTypeKind::Trait,
+                    TypeKind::Class     => OwnedTypeKind::Class,
+                    TypeKind::Interface => OwnedTypeKind::Interface,
+                    TypeKind::TypeAlias => OwnedTypeKind::TypeAlias,
                 },
                 members: t.members.iter().map(|m| m.to_string()).collect(),
             })

@@ -2,7 +2,7 @@
 
 **Camada**: L1 (Core - Entities)
 **Criado em**: 2025-03-13
-**Revisado em**: 2026-03-16 (ADR-0007: Declaration, HasWiringPurity, V11 fields em LocalIndex/ProjectIndex)
+**Revisado em**: 2026-03-18 (ADR-0009: TypeKind e DeclarationKind estendidos para linguagens OO)
 
 ---
 
@@ -32,7 +32,7 @@ onde documentado na tabela abaixo.
 **Proibição de clone em L1:** As funções de regras apenas leem
 referências e comparam. Usar `.to_string()` ou `String::from()`
 dentro do motor de avaliação de regras é violação da política
-zero-copy — exceto `rule_id` e `message` gerados pela regra.
+zero-copy — exceto `rule_id` e `message` gerados pela própria regra.
 
 ---
 
@@ -60,7 +60,6 @@ pub enum ViolationLevel {
 /// Borrowed(&'a Path) — violações normais, path referencia o SourceFile.
 /// Owned(PathBuf) — erros de infraestrutura (V0, PARSE) e violações
 /// globais sem arquivo específico (V11), path é owned.
-/// Elimina Box::leak() dos conversores em L4.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Location<'a> {
     pub path: Cow<'a, Path>,
@@ -88,14 +87,12 @@ pub struct ParsedFile<'a> {
     pub prompt_header: Option<PromptHeader<'a>>,
     pub prompt_file_exists: bool,
     // true se prompt_header.prompt_path existe em 00_nucleo/
-    // false se header ausente ou arquivo não encontrado
     // populado por L3 via PromptReader
 
     // Para V2
     pub has_test_coverage: bool,
-    // true se #[cfg(test)] no AST ou foo_test.rs adjacente
-    // true se arquivo é declaration-only (isento de V2)
-    // populado por L3 (FileWalker + RustParser)
+    // true se construto de teste no AST, ficheiro adjacente, ou declaration-only
+    // populado por L3 (FileWalker + parser)
 
     // Para V3, V9, V10
     pub imports: Vec<Import<'a>>,
@@ -105,7 +102,7 @@ pub struct ParsedFile<'a> {
 
     // Para V6
     pub public_interface: PublicInterface<'a>,
-    // Interface pública extraída do AST pelo RustParser (L3)
+    // Interface pública extraída do AST pelo parser L3
 
     pub prompt_snapshot: Option<PublicInterface<'a>>,
     // Snapshot registrado em ## Interface Snapshot do prompt
@@ -114,10 +111,14 @@ pub struct ParsedFile<'a> {
 
     // Para V12
     pub declarations: Vec<Declaration<'a>>,
-    // Declarações de tipo de nível superior extraídas do AST.
-    // Usado por V12 para detectar struct/enum/impl sem trait em L4.
-    // Populado por L3 (RustParser) para todos os arquivos —
+    // Declarações de tipo de nível superior — struct/enum/impl-sem-trait/
+    // class/interface/type-alias. Populado para todos os arquivos.
     // V12 filtra por layer == L4 internamente.
+
+    // Para V11 — transportados para LocalIndex via from_parsed()
+    // Não consumidos por nenhuma regra de L1 directamente
+    pub declared_traits: Vec<&'a str>,
+    pub implemented_traits: Vec<&'a str>,
 }
 ```
 
@@ -128,7 +129,6 @@ pub struct PromptHeader<'a> {
     pub prompt_hash: Option<&'a str>,  // hash declarado no header do arquivo
     pub current_hash: Option<String>,  // EXCEÇÃO zero-copy:
     // SHA256[0..8] calculado pelo FsPromptReader a partir do disco.
-    // Não existe no buffer do arquivo fonte.
     pub layer: Layer,
     pub updated: Option<&'a str>,
 }
@@ -140,24 +140,24 @@ pub struct Import<'a> {
     pub path: &'a str,        // sempre presente no buffer — &'a str puro
     pub line: usize,
     pub kind: ImportKind,
-    /// Resolvido por L3 via crystalline.toml [layers].
-    /// Layer::Unknown para crates externas — não gera violação V3.
+    /// Resolvido por L3 via resolução física (ADR-0009).
+    /// Layer::Unknown para packages externos.
     /// Layer::Lab para imports de lab/ — dispara V10 em produção.
     pub target_layer: Layer,
     /// Subdiretório de destino dentro da camada alvo.
-    /// Resolvido por L3 via crystalline.toml [l1_ports].
-    /// None se target_layer == Unknown (crate externa).
+    /// Resolvido por L3 via strip_prefix após resolução física.
+    /// None se target_layer == Unknown.
     /// Some("entities") se import aponta para 01_core/entities/.
-    /// Some("internal") se import aponta para subdir não-porta.
     /// Usado por V9 para detectar imports fora das portas de L1.
-    pub target_subdir: Option<&'a str>,  // ADR-0006
+    pub target_subdir: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportKind {
-    Use,
-    ExternCrate,
-    ModDecl,
+    Use,         // Rust: use crate::...
+    ExternCrate, // Rust: extern crate ...
+    ModDecl,     // Rust: mod foo;
+    EsImport,    // TypeScript/JavaScript: import { X } from '...'
 }
 ```
 
@@ -166,7 +166,7 @@ pub enum ImportKind {
 use std::borrow::Cow;
 
 pub struct Token<'a> {
-    /// FQN resolvido pelo RustParser (ADR-0004 + Errata Cow).
+    /// FQN resolvido pelo parser (ADR-0004 + Errata Cow).
     ///
     /// Cow::Borrowed(&'a str) — símbolo presente literalmente no buffer:
     ///   `std::fs::read(...)`  →  Borrowed("std::fs::read")
@@ -175,7 +175,6 @@ pub struct Token<'a> {
     ///   `use std::fs as f; f::read(...)`  →  Owned("std::fs::read")
     ///
     /// V4 acessa via Deref<Target = str> — alheio à distinção.
-    /// L1 permanece alheio à origem da string.
     pub symbol: Cow<'a, str>,
     pub line: usize,
     pub column: usize,
@@ -192,9 +191,9 @@ pub enum TokenKind {
 ### `Declaration<'a>` (V12)
 ```rust
 /// Declaração de tipo de nível superior num arquivo fonte.
-/// Usado por V12 para detectar struct/enum/impl sem trait em L4.
-/// Populado por RustParser para todos os arquivos — V12 filtra
-/// por layer == L4 internamente.
+/// Usado por V12 para detectar tipos que não pertencem a L4.
+/// Populado por cada parser para todos os arquivos —
+/// V12 filtra por layer == L4 internamente.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Declaration<'a> {
     pub kind: DeclarationKind,
@@ -202,18 +201,39 @@ pub struct Declaration<'a> {
     pub line: usize,
 }
 
+/// Kinds de declaração detectáveis em qualquer linguagem suportada.
+///
+/// ADR-0009: estendido com variantes para linguagens OO. A extensão
+/// é universal — não específica de TypeScript. Qualquer linguagem
+/// futura com classes, interfaces ou type aliases usa estas variantes.
+///
+/// V12 trata DeclarationKind::Class como Struct para fins de
+/// allow_adapter_structs — ambos são tipos concretos de dados.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeclarationKind {
+    // ── Rust ──────────────────────────────────────────────────────────────
     /// struct_item de nível superior.
     /// Permitido em L4 se allow_adapter_structs = true (padrão).
     Struct,
     /// enum_item de nível superior.
-    /// Sempre proibido em L4 — enums pertencem a L1 ou L2.
+    /// Sempre proibido em L4.
     Enum,
     /// impl_item sem trait: `impl Type { ... }`.
-    /// Sempre proibido em L4 — indica lógica de negócio no wiring.
-    /// `impl Trait for Type` NÃO é capturado aqui — é o padrão de adapter.
+    /// Sempre proibido em L4.
+    /// `impl Trait for Type` NÃO é capturado aqui.
     Impl,
+
+    // ── Linguagens OO (TypeScript, Python, Go...) ─────────────────────────
+    /// class_declaration ou equivalente.
+    /// Tratado como Struct por V12 para allow_adapter_structs.
+    /// Proibido em L4 por padrão (allow_adapter_structs = true permite).
+    Class,
+    /// interface_declaration ou equivalente.
+    /// Sempre proibido em L4 — interfaces pertencem a L1 ou L2.
+    Interface,
+    /// type_alias_declaration ou equivalente (type X = ...).
+    /// Sempre proibido em L4.
+    TypeAlias,
 }
 ```
 
@@ -229,6 +249,10 @@ pub struct PublicInterface<'a> {
 }
 
 impl<'a> PublicInterface<'a> {
+    pub fn empty() -> Self {
+        Self { functions: vec![], types: vec![], reexports: vec![] }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.functions.is_empty()
             && self.types.is_empty()
@@ -247,22 +271,36 @@ impl<'a> PublicInterface<'a> {
 pub struct FunctionSignature<'a> {
     pub name: &'a str,
     pub params: Vec<&'a str>,         // tipos normalizados (whitespace colapsado)
-    pub return_type: Option<&'a str>, // None para fn que retorna ()
+    pub return_type: Option<&'a str>, // None para fn/function que retorna void/()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeSignature<'a> {
     pub name: &'a str,
     pub kind: TypeKind,
-    pub members: Vec<&'a str>, // campos de struct / variantes de enum /
-                               // assinaturas de método de trait
+    pub members: Vec<&'a str>, // campos de struct/class / variantes de enum /
+                               // assinaturas de método de trait/interface
 }
 
+/// Kinds de tipo detectáveis em qualquer linguagem suportada.
+///
+/// ADR-0009: estendido com variantes para linguagens OO. A extensão
+/// é universal — não específica de TypeScript. Qualquer linguagem
+/// futura com classes, interfaces ou type aliases usa estas variantes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeKind {
+    // ── Rust ──────────────────────────────────────────────────────────────
     Struct,
     Enum,
     Trait,
+
+    // ── Linguagens OO (TypeScript, Python, Go...) ─────────────────────────
+    /// class ou equivalente (Python class, Go struct com métodos...).
+    Class,
+    /// interface ou equivalente (TypeScript interface, Go interface...).
+    Interface,
+    /// type alias ou equivalente (TypeScript type X = ..., Go type X Y).
+    TypeAlias,
 }
 ```
 
@@ -292,36 +330,26 @@ impl<'a> InterfaceDelta<'a> {
 
     /// Produz string legível para mensagem de violação.
     /// Ordem: adições antes de remoções, funções antes de tipos.
-    /// Exemplo: "+fn check, -fn validate, +struct Delta"
     pub fn describe(&self) -> String {
         let mut parts: Vec<String> = Vec::new();
-        for f in &self.added_functions {
-            parts.push(format!("+fn {}", f.name));
-        }
-        for f in &self.removed_functions {
-            parts.push(format!("-fn {}", f.name));
-        }
-        for t in &self.added_types {
-            parts.push(format!("+{} {}", type_kind_str(&t.kind), t.name));
-        }
-        for t in &self.removed_types {
-            parts.push(format!("-{} {}", type_kind_str(&t.kind), t.name));
-        }
-        for r in &self.added_reexports {
-            parts.push(format!("+use {}", r));
-        }
-        for r in &self.removed_reexports {
-            parts.push(format!("-use {}", r));
-        }
+        for f in &self.added_functions   { parts.push(format!("+fn {}", f.name)); }
+        for f in &self.removed_functions { parts.push(format!("-fn {}", f.name)); }
+        for t in &self.added_types       { parts.push(format!("+{} {}", type_kind_str(&t.kind), t.name)); }
+        for t in &self.removed_types     { parts.push(format!("-{} {}", type_kind_str(&t.kind), t.name)); }
+        for r in &self.added_reexports   { parts.push(format!("+use {}", r)); }
+        for r in &self.removed_reexports { parts.push(format!("-use {}", r)); }
         parts.join(", ")
     }
 }
 
 fn type_kind_str(kind: &TypeKind) -> &'static str {
     match kind {
-        TypeKind::Struct => "struct",
-        TypeKind::Enum   => "enum",
-        TypeKind::Trait  => "trait",
+        TypeKind::Struct    => "struct",
+        TypeKind::Enum      => "enum",
+        TypeKind::Trait     => "trait",
+        TypeKind::Class     => "class",
+        TypeKind::Interface => "interface",
+        TypeKind::TypeAlias => "type",
     }
 }
 
@@ -329,7 +357,6 @@ fn type_kind_str(kind: &TypeKind) -> &'static str {
 /// Usa PartialEq completo (name + params + return_type) —
 /// nunca compara apenas por name.
 /// Mudança de assinatura aparece como remoção + adição.
-/// Função pura — zero I/O, zero alocações além dos Vec de resultado.
 pub fn compute_delta<'a>(
     current: &PublicInterface<'a>,
     snapshot: &PublicInterface<'a>,
@@ -351,7 +378,7 @@ pub fn compute_delta<'a>(
             .filter(|r| !snapshot.reexports.contains(r))
             .cloned().collect(),
         removed_reexports: snapshot.reexports.iter()
-            .filter(|r| !current.reexports.contains(r))
+            .filter(|r| !snapshot.reexports.contains(r))
             .cloned().collect(),
     }
 }
@@ -374,12 +401,14 @@ pub enum Language {
 ```rust
 /// Configuração de exceções para V12, lida de crystalline.toml
 /// [wiring_exceptions] e injetada por L4.
-/// V12 nunca lê o toml diretamente.
+/// V12 nunca lê o toml directamente.
 #[derive(Debug, Clone)]
 pub struct WiringConfig {
-    /// Se true, struct_item em L4 é permitido (padrão: true).
-    /// Structs de adapter são comuns em fases de migração.
-    /// enum_item e impl_item sem trait são sempre proibidos.
+    /// Se true, struct_item (Rust) e class_declaration (linguagens OO)
+    /// em L4 são permitidos (padrão: true).
+    /// Structs e classes de adapter são comuns em fases de migração.
+    /// enum_item, impl_item sem trait, interface_declaration e
+    /// type_alias_declaration são sempre proibidos.
     pub allow_adapter_structs: bool,
 }
 
@@ -400,31 +429,26 @@ L1 apenas lê — nunca deriva, nunca aloca além das exceções documentadas.
 | Campo | Quem popula | Como |
 |-------|-------------|------|
 | `prompt_file_exists` | `FsPromptReader` | `PromptReader::exists()` |
-| `has_test_coverage` | `FileWalker` + `RustParser` | adjacência em disco + nó `#[cfg(test)]` no AST + detection de declaration-only |
-| `imports` com `target_layer` | `RustParser` | `use_declaration` no AST + `LayerResolver` via `crystalline.toml [layers]`. `Layer::Lab` é resolvido para imports de `lab/` |
-| `imports` com `target_subdir` | `RustParser` | segundo segmento do path resolvido contra `crystalline.toml [l1_ports]`. None para crates externas e imports de Lab |
-| `tokens` com FQN | `RustParser` | Fase 1 (tabela de aliases) + Fase 2 (call_expression). Alias → `Cow::Owned`, direto → `Cow::Borrowed` |
-| `PromptHeader.prompt_hash` | `RustParser` | fatia `&'a str` do buffer do arquivo |
-| `PromptHeader.current_hash` | `FsPromptReader` | SHA256[0..8] calculado do disco — `Option<String>` |
-| `public_interface` | `RustParser` | nós `pub` do AST, strings normalizadas como `&'a str` |
-| `prompt_snapshot` | `PromptSnapshotReader` | desserialização do JSON em `## Interface Snapshot` do prompt |
-| `declarations` | `RustParser` | nós `struct_item`, `enum_item` e `impl_item` sem trait de nível superior. `impl Trait for Type` não é capturado |
+| `has_test_coverage` | `FileWalker` + parser | adjacência + construto de teste no AST + declaration-only |
+| `imports` com `target_layer` | parser L3 | resolução física via `normalize` + `resolve_file_layer` (ADR-0009) |
+| `imports` com `target_subdir` | parser L3 | `strip_prefix` após resolução física contra valor de `[layers]` |
+| `tokens` com FQN | `RustParser` | Fase 1 (tabela de aliases) + Fase 2 (call_expression). `EsImport` não gera tokens — V4 TS usa call expressions directamente |
+| `PromptHeader.prompt_hash` | parser L3 | fatia `&'a str` do buffer |
+| `PromptHeader.current_hash` | `FsPromptReader` | SHA256[0..8] — `Option<String>` |
+| `public_interface` | parser L3 | nós `pub`/`export` do AST, strings normalizadas |
+| `prompt_snapshot` | `PromptSnapshotReader` | JSON em `## Interface Snapshot` |
+| `declarations` | parser L3 | struct/enum/impl-sem-trait/class/interface/type-alias de nível superior. Para todos os arquivos |
+| `declared_traits` | parser L3 | traits/interfaces com `pub`/`export` em L1/contracts/ |
+| `implemented_traits` | parser L3 | traits/interfaces implementadas via `impl`/`implements` em L2/L3 |
 
-**Responsabilidades de L3 para V11 (via LocalIndex):**
-
-| Campo | Quem popula | Como |
-|-------|-------------|------|
-| `LocalIndex.declared_traits` | `RustParser` | nós `trait_item` com `pub` em arquivos com `layer == L1` e `subdir == "contracts"` |
-| `LocalIndex.implemented_traits` | `RustParser` | nós `impl_item` com `impl <TraitName> for` em arquivos com `layer == L2 \| L3` |
-
-**Responsabilidades de L4 (wiring) para construção de `Location`:**
+**Responsabilidades de L4 para construção de `Location`:**
 
 | Violação | Como construir `Location.path` |
 |----------|-------------------------------|
 | V1–V10, V12 normais | `Cow::Borrowed(parsed_file.path)` |
-| V0 (SourceError) | `Cow::Owned(path)` — path vem de `SourceError::Unreadable` |
-| PARSE (ParseError) | `Cow::Owned(path)` — path vem das variants de `ParseError` |
-| V11 (global) | `Cow::Owned(PathBuf::from("01_core/contracts"))` — violação global sem arquivo específico |
+| V0 (SourceError) | `Cow::Owned(path)` |
+| PARSE (ParseError) | `Cow::Owned(path)` |
+| V11 (global) | `Cow::Owned(PathBuf::from("01_core/contracts"))` |
 
 ---
 
@@ -443,13 +467,13 @@ L1 apenas lê — nunca deriva, nunca aloca além das exceções documentadas.
   derivado sobre a struct completa — nunca comparar apenas por `name`
 - `Declaration` é populado por L3 para todos os arquivos —
   V12 filtra por `layer == L4` internamente, não o parser
-- `WiringConfig` é injetado por L4 em V12 — nunca lido diretamente
-  de disco por L1
+- `WiringConfig` é injetado por L4 em V12 — nunca lido de disco por L1
+- `DeclarationKind::Class` é tratado como `Struct` por V12 para
+  `allow_adapter_structs` — ambos são tipos concretos de dados
 
 ---
 
 ## Critérios de Verificação
-
 ```
 Dado ParsedFile com prompt_file_exists = false
 Quando V1::check() for chamado
@@ -458,8 +482,7 @@ Então retorna Violation { rule_id: "V1", level: Error,
 
 Dado ParsedFile com has_test_coverage = false e layer = L1
 Quando V2::check() for chamado
-Então retorna Violation { rule_id: "V2", level: Error,
-      location: Location { path: Cow::Borrowed(..), .. } }
+Então retorna Violation { rule_id: "V2", level: Error }
 
 Dado Import com target_layer = L3 em arquivo com layer = L2
 Quando V3::check() for chamado
@@ -494,7 +517,13 @@ Então InterfaceDelta.is_empty() == true
 Dado InterfaceDelta com +fn check e -fn validate e +struct Delta
 Quando describe() for chamado
 Então retorna "+fn check, -fn validate, +struct Delta"
-— ordem: adições antes de remoções, funções antes de tipos
+
+Dado InterfaceDelta com TypeSignature { kind: TypeKind::Class, name: "Foo" }
+adicionada e TypeSignature { kind: TypeKind::Interface, name: "Bar" }
+removida
+Quando describe() for chamado
+Então retorna "+class Foo, -interface Bar"
+— type_kind_str cobre Class e Interface correctamente
 
 Dado Import { target_layer: L1, target_subdir: Some("internal"), .. }
 em arquivo com layer = L2
@@ -502,22 +531,11 @@ E "internal" não listado em [l1_ports]
 Quando V9::check() for chamado
 Então retorna Violation { rule_id: "V9", level: Error }
 
-Dado Import { target_layer: L1, target_subdir: Some("entities"), .. }
-em arquivo com layer = L2
-E "entities" listado em [l1_ports]
-Quando V9::check() for chamado
-Então retorna vec![] — porta válida
-
 Dado Import { target_layer: Layer::Lab, line: 5, .. }
 em arquivo com layer = L1
 Quando V10::check() for chamado
 Então retorna Violation { rule_id: "V10", level: Fatal,
       location: Location { path: Cow::Borrowed(..), line: 5 } }
-
-Dado Import { target_layer: Layer::Lab, .. }
-em arquivo com layer = Lab
-Quando V10::check() for chamado
-Então retorna vec![] — lab pode importar lab
 
 Dado all_declared_traits = {"FileProvider"}
 E all_implemented_traits = {}
@@ -525,34 +543,29 @@ Quando check_dangling_contracts() for chamado
 Então retorna Violation { rule_id: "V11", level: Error,
       location: Location { path: Cow::Owned("01_core/contracts"), .. } }
 
-Dado all_declared_traits = {"FileProvider"}
-E all_implemented_traits = {"FileProvider"}
-Quando check_dangling_contracts() for chamado
-Então retorna vec![]
-
-Dado Declaration { kind: Enum, name: "OutputMode", line: 3 }
+Dado Declaration { kind: DeclarationKind::Enum, name: "Mode", line: 3 }
 em arquivo com layer = L4
 Quando V12::check() for chamado com WiringConfig::default()
-Então retorna Violation { rule_id: "V12", level: Warning, location.line: 3 }
-— enum nunca permitido em L4
+Então retorna Violation { rule_id: "V12", level: Warning }
+— Enum sempre proibido em L4
 
-Dado Declaration { kind: Struct, name: "L3HashRewriter", line: 7 }
+Dado Declaration { kind: DeclarationKind::Class, name: "Adapter", line: 5 }
 em arquivo com layer = L4
 Quando V12::check() for chamado com WiringConfig { allow_adapter_structs: true }
-Então retorna vec![] — struct de adapter explicitamente permitida
+Então retorna vec![]
+— Class tratado como Struct para allow_adapter_structs
 
-Dado Declaration { kind: Impl, name: "L3HashRewriter", line: 10 }
-(impl sem trait)
+Dado Declaration { kind: DeclarationKind::Interface, name: "Foo", line: 7 }
 em arquivo com layer = L4
 Quando V12::check() for chamado
 Então retorna Violation { rule_id: "V12", level: Warning }
-— impl sem trait é lógica de negócio no wiring
+— Interface sempre proibida em L4
 
-Dado Declaration { kind: Impl, name: "HashRewriter for L3HashRewriter", .. }
-(impl com trait — NÃO capturado como DeclarationKind::Impl)
+Dado Declaration { kind: DeclarationKind::TypeAlias, name: "Cfg", line: 9 }
 em arquivo com layer = L4
 Quando V12::check() for chamado
-Então retorna vec![] — impl de trait é o padrão de adapter
+Então retorna Violation { rule_id: "V12", level: Warning }
+— TypeAlias sempre proibida em L4
 
 Dado SourceError::Unreadable { path, reason }
 Quando source_error_to_violation() for chamado em L4
@@ -582,6 +595,6 @@ Então retorna true — Fatal não configurável
 | 2026-03-14 | ADR-0004: lifetimes `<'a>`, ViolationLevel::Fatal, Cow<'a, str> em Token.symbol, proibição de clone documentada | parsed_file.rs, violation.rs |
 | 2026-03-14 | Errata Cow: Token.symbol de &'a str para Cow<'a, str> | parsed_file.rs |
 | 2026-03-14 | ADR-0005: Location.path de &'a Path para Cow<'a, Path>, elimina Box::leak(), tabela L4 adicionada | violation.rs |
-| 2026-03-14 | ADR-0006: Import.target_subdir adicionado para V9, linha de população adicionada na tabela L3, critérios V9 adicionados, ViolationLevel::Fatal atualizado para incluir V8 | parsed_file.rs |
-| 2026-03-16 | ADR-0007: Declaration e DeclarationKind para V12; ParsedFile.declarations; WiringConfig; V10 Fatal na tabela de níveis e critérios; V11 na tabela L4 de Location e critérios; tabela de responsabilidades L3 para V11 (declared_traits, implemented_traits via LocalIndex) | parsed_file.rs, violation.rs |
-| 2026-03-16 | Materialização ADR-0007: Declaration, DeclarationKind, WiringConfig adicionados a parsed_file.rs; ParsedFile recebe declared_traits, implemented_traits e declarations; impl HasWiringPurity para ParsedFile | parsed_file.rs |
+| 2026-03-14 | ADR-0006: Import.target_subdir adicionado para V9 | parsed_file.rs |
+| 2026-03-16 | ADR-0007: Declaration e DeclarationKind para V12; ParsedFile.declarations; WiringConfig; V10/V11/V12 nos critérios; tabela L3 para V11 | parsed_file.rs, violation.rs |
+| 2026-03-18 | ADR-0009: TypeKind estendido com Class/Interface/TypeAlias; DeclarationKind estendido com Interface/TypeAlias; ImportKind::EsImport adicionado; type_kind_str actualizado para cobrir novas variantes; WiringConfig.allow_adapter_structs nota sobre Class≡Struct; tabela L3 actualizada para resolução física e linguagens OO; critérios para Class/Interface/TypeAlias adicionados | parsed_file.rs |

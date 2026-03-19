@@ -208,7 +208,7 @@ mod tests {
         file.prompt_snapshot = Some(PublicInterface::empty());
         let violations = check(&file);
         assert_eq!(violations.len(), 1);
-        assert!(violations[0].message.contains("+type Foo"));
+        assert!(violations[0].message.contains("+struct Foo"));
     }
 
     #[test]
@@ -251,7 +251,7 @@ mod tests {
         };
         let desc = delta.describe();
         assert!(desc.contains("+fn new_fn"));
-        assert!(desc.contains("-type OldType"));
+        assert!(desc.contains("-struct OldType"));
     }
 
     #[test]

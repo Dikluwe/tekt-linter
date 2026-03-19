@@ -2,8 +2,8 @@
 root = "."
 
 [languages]
-rust = { grammar = "tree-sitter-rust", enabled = true }
-# typescript = { grammar = "tree-sitter-typescript", enabled = false }
+rust       = { grammar = "tree-sitter-rust",       enabled = true }
+typescript = { grammar = "tree-sitter-typescript", enabled = true }
 
 # Mapeados — arquivos aqui são analisados e devem ter layer
 [layers]
@@ -39,14 +39,21 @@ rules     = "rules"
 
 # Prompts que existem legitimamente sem materialização Rust (ADR-0006)
 [orphan_exceptions]
-"00_nucleo/prompts/cargo.md"        = "gera Cargo.toml, não arquivo Rust"
-"00_nucleo/prompts/readme_prompt.md" = "gera README.md, não arquivo Rust"
+"00_nucleo/prompts/cargo.md"                   = "gera Cargo.toml, não arquivo Rust"
+"00_nucleo/prompts/readme_prompt.md"           = "gera README.md, não arquivo Rust"
+"00_nucleo/prompts/parsers/_template.md"       = "contrato editorial, não materializa directamente"
 
 # Exceções V12 — declarações permitidas em L4
 # true = permite struct_item em L4 (padrão — adapter structs são comuns)
 # enum_item e impl_item sem trait são sempre proibidos
 [wiring_exceptions]
 allow_adapter_structs = true
+
+# TypeScript path aliases — opcional (apenas para projectos com tsconfig.json paths)
+# [ts_aliases]
+# "@core"  = "01_core"
+# "@shell" = "02_shell"
+# "@infra" = "03_infra"
 
 [rules]
 V0  = { level = "fatal" }

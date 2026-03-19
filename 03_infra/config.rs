@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 56bcb4fa
+//! @prompt-hash a6c311f2
 //! @layer L3
 //! @updated 2026-03-13
 
@@ -41,6 +41,10 @@ pub struct CrystallineConfig {
     /// Configuração de exceções V12 — lida de `[wiring_exceptions]`.
     #[serde(default)]
     pub wiring_exceptions: WiringExceptionsConfig,
+    /// Aliases de path TypeScript — lida de `[ts_aliases]` (ADR-0009).
+    /// Exemplo: { "@core" = "01_core", "@shell" = "02_shell" }
+    #[serde(default)]
+    pub ts_aliases: HashMap<String, String>,
 }
 
 impl CrystallineConfig {
@@ -101,6 +105,7 @@ impl Default for CrystallineConfig {
             l1_ports,
             orphan_exceptions: HashMap::new(),
             wiring_exceptions: WiringExceptionsConfig::default(),
+            ts_aliases: HashMap::new(),
         }
     }
 }

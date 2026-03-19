@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/violation-types.md
-//! @prompt-hash 25d39a93
+//! @prompt-hash 28b2c451
 //! @layer L1
 //! @updated 2026-03-14
 
@@ -13,9 +13,10 @@ use crate::entities::layer::{Language, Layer};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportKind {
-    Use,
-    ExternCrate,
-    ModDecl,
+    Use,         // Rust: use crate::...
+    ExternCrate, // Rust: extern crate ...
+    ModDecl,     // Rust: mod foo;
+    EsImport,    // TypeScript/JavaScript: import { X } from '...'
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,20 +74,33 @@ pub struct Declaration<'a> {
     pub line: usize,
 }
 
-/// Tipo de declaração de nível superior capturado pelo RustParser.
+/// Tipo de declaração de nível superior.
 /// `impl Trait for Type` NÃO é capturado como Impl — apenas
 /// `impl Type { ... }` sem trait gera DeclarationKind::Impl.
+/// `class com implements` NÃO é capturado — é adapter (ADR-0009).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeclarationKind {
+    // ── Rust ──────────────────────────────────────────────────────────────
     /// struct_item de nível superior.
     /// Permitido em L4 se allow_adapter_structs = true (padrão).
     Struct,
     /// enum_item de nível superior.
-    /// Sempre proibido em L4 — enums pertencem a L1 ou L2.
+    /// Sempre proibido em L4.
     Enum,
     /// impl_item sem trait: `impl Type { ... }`.
-    /// Sempre proibido em L4 — indica lógica de negócio no wiring.
+    /// Sempre proibido em L4.
     Impl,
+
+    // ── Linguagens OO (TypeScript, Python, Go...) ─────────────────────────
+    /// class_declaration sem implements.
+    /// Tratado como Struct por V12 para allow_adapter_structs.
+    Class,
+    /// interface_declaration.
+    /// Sempre proibido em L4 — interfaces pertencem a L1 ou L2.
+    Interface,
+    /// type_alias_declaration (type X = ...).
+    /// Sempre proibido em L4.
+    TypeAlias,
 }
 
 // ── WiringConfig (V12) ────────────────────────────────────────────────────────
@@ -95,9 +109,11 @@ pub enum DeclarationKind {
 /// crystalline.toml [wiring_exceptions]. V12 nunca lê o toml diretamente.
 #[derive(Debug, Clone)]
 pub struct WiringConfig {
-    /// Se true, struct_item em L4 é permitido (padrão: true).
-    /// Structs de adapter são comuns em fases de migração.
-    /// enum_item e impl_item sem trait são sempre proibidos.
+    /// Se true, struct_item (Rust) e class_declaration (linguagens OO)
+    /// em L4 são permitidos (padrão: true).
+    /// Structs e classes de adapter são comuns em fases de migração.
+    /// enum_item, impl_item sem trait, interface_declaration e
+    /// type_alias_declaration são sempre proibidos.
     pub allow_adapter_structs: bool,
 }
 
@@ -145,9 +161,18 @@ pub struct TypeSignature<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeKind {
+    // ── Rust ──────────────────────────────────────────────────────────────
     Struct,
     Enum,
     Trait,
+
+    // ── Linguagens OO (TypeScript, Python, Go...) ─────────────────────────
+    /// class ou equivalente.
+    Class,
+    /// interface ou equivalente.
+    Interface,
+    /// type alias ou equivalente (TypeScript type X = ...).
+    TypeAlias,
 }
 
 // ── InterfaceDelta ─────────────────────────────────────────────────────────────
@@ -167,7 +192,7 @@ pub struct InterfaceDelta<'a> {
 impl<'a> InterfaceDelta<'a> {
     /// Produz string legível para mensagem de violação.
     /// Ordem: adições antes de remoções, funções antes de tipos.
-    /// Exemplo: "+fn check, -fn validate, +struct Delta"
+    /// Exemplo: "+fn check, -fn validate, +struct Delta, -interface Bar"
     pub fn describe(&self) -> String {
         let mut parts: Vec<String> = Vec::new();
         for f in &self.added_functions {
@@ -177,10 +202,10 @@ impl<'a> InterfaceDelta<'a> {
             parts.push(format!("-fn {}", f.name));
         }
         for t in &self.added_types {
-            parts.push(format!("+type {}", t.name));
+            parts.push(format!("+{} {}", type_kind_str(&t.kind), t.name));
         }
         for t in &self.removed_types {
-            parts.push(format!("-type {}", t.name));
+            parts.push(format!("-{} {}", type_kind_str(&t.kind), t.name));
         }
         for r in &self.added_reexports {
             parts.push(format!("+reexport {r}"));
@@ -198,6 +223,19 @@ impl<'a> InterfaceDelta<'a> {
             && self.removed_types.is_empty()
             && self.added_reexports.is_empty()
             && self.removed_reexports.is_empty()
+    }
+}
+
+/// Converte TypeKind em string legível para mensagens de violação e delta.
+/// Cobre todas as variantes incluindo as novas de linguagens OO (ADR-0009).
+pub fn type_kind_str(kind: &TypeKind) -> &'static str {
+    match kind {
+        TypeKind::Struct    => "struct",
+        TypeKind::Enum      => "enum",
+        TypeKind::Trait     => "trait",
+        TypeKind::Class     => "class",
+        TypeKind::Interface => "interface",
+        TypeKind::TypeAlias => "type",
     }
 }
 
@@ -461,6 +499,27 @@ mod tests {
         assert_eq!(f.tokens.len(), 1);
     }
 
+    // ── ImportKind::EsImport ──────────────────────────────────────────────────
+
+    #[test]
+    fn es_import_kind_is_distinct() {
+        assert_ne!(ImportKind::EsImport, ImportKind::Use);
+        assert_ne!(ImportKind::EsImport, ImportKind::ModDecl);
+    }
+
+    #[test]
+    fn import_es_import_kind() {
+        let import = Import {
+            path: "../01_core/entities/layer",
+            line: 1,
+            kind: ImportKind::EsImport,
+            target_layer: Layer::L1,
+            target_subdir: Some("entities"),
+        };
+        assert_eq!(import.kind, ImportKind::EsImport);
+        assert_eq!(import.target_subdir, Some("entities"));
+    }
+
     // ── Declaration / DeclarationKind ─────────────────────────────────────────
 
     #[test]
@@ -468,6 +527,8 @@ mod tests {
         assert_ne!(DeclarationKind::Struct, DeclarationKind::Enum);
         assert_ne!(DeclarationKind::Enum, DeclarationKind::Impl);
         assert_ne!(DeclarationKind::Struct, DeclarationKind::Impl);
+        assert_ne!(DeclarationKind::Class, DeclarationKind::Interface);
+        assert_ne!(DeclarationKind::Interface, DeclarationKind::TypeAlias);
     }
 
     #[test]
@@ -482,8 +543,14 @@ mod tests {
         f.declarations.push(Declaration { kind: DeclarationKind::Struct, name: "Adapter", line: 2 });
         f.declarations.push(Declaration { kind: DeclarationKind::Enum, name: "Mode", line: 5 });
         f.declarations.push(Declaration { kind: DeclarationKind::Impl, name: "Adapter", line: 8 });
-        assert_eq!(f.declarations.len(), 3);
+        f.declarations.push(Declaration { kind: DeclarationKind::Class, name: "Formatter", line: 11 });
+        f.declarations.push(Declaration { kind: DeclarationKind::Interface, name: "Config", line: 14 });
+        f.declarations.push(Declaration { kind: DeclarationKind::TypeAlias, name: "Mode2", line: 17 });
+        assert_eq!(f.declarations.len(), 6);
         assert_eq!(f.declarations[1].kind, DeclarationKind::Enum);
+        assert_eq!(f.declarations[3].kind, DeclarationKind::Class);
+        assert_eq!(f.declarations[4].kind, DeclarationKind::Interface);
+        assert_eq!(f.declarations[5].kind, DeclarationKind::TypeAlias);
     }
 
     #[test]
@@ -492,6 +559,28 @@ mod tests {
         let d = Declaration { kind: DeclarationKind::Impl, name: "L3HashRewriter", line: 10 };
         assert_eq!(d.name, "L3HashRewriter");
         assert_eq!(d.line, 10);
+    }
+
+    // ── TypeKind / type_kind_str ──────────────────────────────────────────────
+
+    #[test]
+    fn type_kind_str_covers_all_variants() {
+        use super::type_kind_str;
+        assert_eq!(type_kind_str(&TypeKind::Struct),    "struct");
+        assert_eq!(type_kind_str(&TypeKind::Enum),      "enum");
+        assert_eq!(type_kind_str(&TypeKind::Trait),     "trait");
+        assert_eq!(type_kind_str(&TypeKind::Class),     "class");
+        assert_eq!(type_kind_str(&TypeKind::Interface), "interface");
+        assert_eq!(type_kind_str(&TypeKind::TypeAlias), "type");
+    }
+
+    #[test]
+    fn interface_delta_describe_uses_kind_str() {
+        use super::type_kind_str;
+        let kind_class = TypeKind::Class;
+        let kind_iface = TypeKind::Interface;
+        assert_eq!(format!("+{} Foo", type_kind_str(&kind_class)), "+class Foo");
+        assert_eq!(format!("-{} Bar", type_kind_str(&kind_iface)), "-interface Bar");
     }
 
     // ── WiringConfig ──────────────────────────────────────────────────────────

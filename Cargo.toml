@@ -16,8 +16,9 @@ path = "04_wiring/main.rs"
 
 [dependencies]
 # L3 — infra
-tree-sitter       = "0.22"
-tree-sitter-rust  = "0.21"
+tree-sitter            = "0.22"
+tree-sitter-rust       = "0.21"
+tree-sitter-typescript = "0.21"
 walkdir           = "2"
 sha2              = "0.10"
 hex               = "0.4"

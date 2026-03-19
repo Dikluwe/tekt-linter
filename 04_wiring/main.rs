@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 56bcb4fa
+//! @prompt-hash a6c311f2
 //! @layer L4
 //! @updated 2026-03-16
 
@@ -25,7 +25,9 @@ use crystalline_lint::infra::hash_writer;
 use crystalline_lint::infra::prompt_reader::FsPromptReader;
 use crystalline_lint::infra::prompt_snapshot_reader::FsPromptSnapshotReader;
 use crystalline_lint::infra::prompt_walker::FsPromptWalker;
+use crystalline_lint::entities::layer::Language;
 use crystalline_lint::infra::rs_parser::RustParser;
+use crystalline_lint::infra::ts_parser::TsParser;
 use crystalline_lint::infra::snapshot_writer;
 use crystalline_lint::infra::walker::FileWalker;
 use crystalline_lint::rules::{
@@ -85,11 +87,19 @@ fn main() {
     };
 
     // ── Instantiate L3 components ─────────────────────────────────────────────
-    let parser = RustParser::new(
-        FsPromptReader { nucleo_root: nucleo_root.clone() },
-        FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
-        config.clone(),
-    );
+    let parser = MultiParser {
+        rust: RustParser::new(
+            FsPromptReader { nucleo_root: nucleo_root.clone() },
+            FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+            config.clone(),
+        ),
+        ts: TsParser::new(
+            FsPromptReader { nucleo_root: nucleo_root.clone() },
+            FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+            config.clone(),
+            cli.path.clone(),
+        ),
+    };
     let walker = FileWalker::new(cli.path.clone(), config.clone());
 
     // Collect source files and errors separately so ParsedFile<'a> can borrow
@@ -130,11 +140,19 @@ fn main() {
 
         // Re-run analysis to count remaining V5
         let remaining_v5 = {
-            let reparser = RustParser::new(
-                FsPromptReader { nucleo_root: nucleo_root.clone() },
-                FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
-                config.clone(),
-            );
+            let reparser = MultiParser {
+                rust: RustParser::new(
+                    FsPromptReader { nucleo_root: nucleo_root.clone() },
+                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    config.clone(),
+                ),
+                ts: TsParser::new(
+                    FsPromptReader { nucleo_root: nucleo_root.clone() },
+                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    config.clone(),
+                    cli.path.clone(),
+                ),
+            };
             let rewalker = FileWalker::new(cli.path.clone(), config.clone());
             let (re_files, re_errors) = collect_walker_results(rewalker.files());
             let v5_only = EnabledChecks {
@@ -171,11 +189,19 @@ fn main() {
 
         // Re-run to count remaining V6
         let remaining_v6 = {
-            let reparser = RustParser::new(
-                FsPromptReader { nucleo_root: nucleo_root.clone() },
-                FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
-                config.clone(),
-            );
+            let reparser = MultiParser {
+                rust: RustParser::new(
+                    FsPromptReader { nucleo_root: nucleo_root.clone() },
+                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    config.clone(),
+                ),
+                ts: TsParser::new(
+                    FsPromptReader { nucleo_root: nucleo_root.clone() },
+                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    config.clone(),
+                    cli.path.clone(),
+                ),
+            };
             let rewalker = FileWalker::new(cli.path.clone(), config);
             let (re_files, re_errors) = collect_walker_results(rewalker.files());
             let v6_only = EnabledChecks {
@@ -208,6 +234,28 @@ fn main() {
     // ── Exit code ─────────────────────────────────────────────────────────────
     if crystalline_lint::shell::cli::should_fail(&all_violations, &cli.fail_on) {
         process::exit(1);
+    }
+}
+
+// ── MultiParser — L4 composition root ────────────────────────────────────────
+
+/// Selecciona parser por `file.language`. Linguagem não suportada →
+/// `ParseError::UnsupportedLanguage`. Zero lógica de negócio — pura composição.
+struct MultiParser {
+    rust: RustParser<FsPromptReader, FsPromptSnapshotReader>,
+    ts:   TsParser<FsPromptReader, FsPromptSnapshotReader>,
+}
+
+impl LanguageParser for MultiParser {
+    fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
+        match file.language {
+            Language::Rust       => self.rust.parse(file),
+            Language::TypeScript => self.ts.parse(file),
+            _ => Err(ParseError::UnsupportedLanguage {
+                path: file.path.clone(),
+                language: file.language.clone(),
+            }),
+        }
     }
 }
 
@@ -281,12 +329,11 @@ impl SnapshotRewriter for L3SnapshotWriter {
 /// - `ProjectIndex::merge` é associativa e comutativa — ordem de fusão não afeta resultado
 ///
 /// `source_files` must outlive the returned vecs — `ParsedFile<'a>` borrows from
-/// them (zero-copy, ADR-0004). `RustParser` é `Sync` — cria `TsParser::new()`
-/// dentro de `parse()`, sem campo mutable compartilhado.
-fn run_pipeline<'a>(
+/// them (zero-copy, ADR-0004). `P` é `Sync` — sem campo mutable compartilhado.
+fn run_pipeline<'a, P: LanguageParser + Sync>(
     source_files: &'a [SourceFile],
     source_errors: &'a [SourceError],
-    parser: &RustParser<FsPromptReader, FsPromptSnapshotReader>,
+    parser: &P,
     enabled: &EnabledChecks,
     l1_ports: &L1Ports,
     wiring_config: &WiringConfig,
