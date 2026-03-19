@@ -4,6 +4,7 @@ root = "."
 [languages]
 rust       = { grammar = "tree-sitter-rust",       enabled = true }
 typescript = { grammar = "tree-sitter-typescript", enabled = true }
+python     = { grammar = "tree-sitter-python",     enabled = true }
 
 # Mapeados — arquivos aqui são analisados e devem ter layer
 [layers]
@@ -54,6 +55,12 @@ allow_adapter_structs = true
 # "@core"  = "01_core"
 # "@shell" = "02_shell"
 # "@infra" = "03_infra"
+
+# Python package aliases — opcional (mapeia package name → layer dir)
+# [py_aliases]
+# "core"  = "01_core"
+# "shell" = "02_shell"
+# "infra" = "03_infra"
 
 [rules]
 V0  = { level = "fatal" }

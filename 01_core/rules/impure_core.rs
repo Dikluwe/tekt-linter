@@ -1,13 +1,13 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/impure-core.md
-//! @prompt-hash 1f68fc28
+//! @prompt-hash 3ff92bd1
 //! @layer L1
 //! @updated 2026-03-14
 
 use std::borrow::Cow;
 
 use crate::entities::rule_traits::HasTokens;
-use crate::entities::layer::Layer;
+use crate::entities::layer::{Language, Layer};
 use crate::entities::parsed_file::Token;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 
@@ -16,37 +16,49 @@ use crate::entities::violation::{Location, Violation, ViolationLevel};
 /// Never uses regex or string contains — only symbol comparison.
 /// Token.symbol is Cow<'a, str> — V4 accesses via Deref as &str,
 /// transparent to the Borrowed/Owned distinction.
-const FORBIDDEN_SYMBOLS: &[&str] = &[
-    "std::fs",
-    "std::io",
-    "std::net",
-    "std::process",
-    "tokio::fs",
-    "tokio::io",
-    "tokio::process",
-    "reqwest",
-    "sqlx",
-    "diesel",
-    "std::time::SystemTime::now",
-    "rand::random",
-];
+fn forbidden_symbols_for(language: &Language) -> &'static [&'static str] {
+    match language {
+        Language::Rust => &[
+            "std::fs", "std::io", "std::net", "std::process",
+            "tokio::fs", "tokio::io", "tokio::process",
+            "reqwest", "sqlx", "diesel",
+            "std::time::SystemTime::now", "rand::random",
+        ],
+        Language::TypeScript => &[
+            "fs", "node:fs", "fs/promises", "node:fs/promises",
+            "child_process", "node:child_process",
+            "net", "node:net", "http", "node:http",
+            "https", "node:https", "dgram", "node:dgram",
+            "dns", "node:dns", "readline", "node:readline",
+            "process.env", "Date.now", "Math.random",
+        ],
+        Language::Python => &[
+            "os", "os.path", "pathlib", "shutil", "subprocess",
+            "socket", "urllib", "http.client", "ftplib", "smtplib",
+            "open", "random.random", "time.time", "datetime.now",
+        ],
+        Language::Unknown => &[],
+    }
+}
 
 pub fn check<'a, T: HasTokens<'a>>(file: &T) -> Vec<Violation<'a>> {
     if *file.layer() != Layer::L1 {
         return vec![];
     }
 
+    let forbidden = forbidden_symbols_for(file.language());
+
     file.tokens()
         .iter()
-        .filter(|token| is_forbidden_symbol(&token.symbol))
+        .filter(|token| is_forbidden_symbol(&token.symbol, forbidden))
         .map(|token| make_violation(file, token))
         .collect()
 }
 
-fn is_forbidden_symbol(symbol: &str) -> bool {
-    FORBIDDEN_SYMBOLS
+fn is_forbidden_symbol(symbol: &str, forbidden: &[&str]) -> bool {
+    forbidden
         .iter()
-        .any(|&forbidden| symbol == forbidden || symbol.starts_with(&format!("{}::", forbidden)))
+        .any(|&f| symbol == f || symbol.starts_with(&format!("{}::", f)))
 }
 
 fn make_violation<'a, T: HasTokens<'a>>(file: &T, token: &Token<'a>) -> Violation<'a> {
@@ -64,13 +76,14 @@ fn make_violation<'a, T: HasTokens<'a>>(file: &T, token: &Token<'a>) -> Violatio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::layer::Layer;
+    use crate::entities::layer::{Language, Layer};
     use crate::entities::parsed_file::{Token, TokenKind};
     use std::borrow::Cow;
     use std::path::Path;
 
     struct MockFile {
         layer: Layer,
+        language: Language,
         tokens: Vec<Token<'static>>,
         path: &'static Path,
     }
@@ -85,11 +98,15 @@ mod tests {
         fn path(&self) -> &'static Path {
             self.path
         }
+        fn language(&self) -> &Language {
+            &self.language
+        }
     }
 
     fn base_file(layer: Layer) -> MockFile {
         MockFile {
             layer,
+            language: Language::Rust,
             tokens: vec![],
             path: Path::new("01_core/foo.rs"),
         }
@@ -166,5 +183,56 @@ mod tests {
         file.tokens.push(call_token("sqlx::query", 6, 0));
         let violations = check(&file);
         assert!(violations[0].message.contains("sqlx::query"));
+    }
+
+    #[test]
+    fn v4_flags_typescript_file_with_forbidden_symbol() {
+        let path: &'static Path = Path::new("01_core/rules/mod.ts");
+        let file = MockFile {
+            layer: Layer::L1,
+            language: Language::TypeScript,
+            tokens: vec![Token {
+                symbol: Cow::Borrowed("Date.now"),
+                line: 5,
+                column: 0,
+                kind: TokenKind::CallExpression,
+            }],
+            path,
+        };
+        assert_eq!(check(&file).len(), 1);
+    }
+
+    #[test]
+    fn v4_flags_python_file_with_forbidden_symbol() {
+        let path: &'static Path = Path::new("01_core/rules/mod.py");
+        let file = MockFile {
+            layer: Layer::L1,
+            language: Language::Python,
+            tokens: vec![Token {
+                symbol: Cow::Borrowed("os"),
+                line: 3,
+                column: 0,
+                kind: TokenKind::CallExpression,
+            }],
+            path,
+        };
+        assert_eq!(check(&file).len(), 1);
+    }
+
+    #[test]
+    fn v4_unknown_language_returns_no_violations() {
+        let path: &'static Path = Path::new("01_core/rules/mod.txt");
+        let file = MockFile {
+            layer: Layer::L1,
+            language: Language::Unknown,
+            tokens: vec![Token {
+                symbol: Cow::Borrowed("std::fs::read"),
+                line: 1,
+                column: 0,
+                kind: TokenKind::CallExpression,
+            }],
+            path,
+        };
+        assert!(check(&file).is_empty());
     }
 }

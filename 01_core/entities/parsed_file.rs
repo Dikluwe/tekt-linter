@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/violation-types.md
-//! @prompt-hash 28b2c451
+//! @prompt-hash cecd9806
 //! @layer L1
 //! @updated 2026-03-14
 
@@ -13,10 +13,10 @@ use crate::entities::layer::{Language, Layer};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportKind {
-    Use,         // Rust: use crate::...
-    ExternCrate, // Rust: extern crate ...
-    ModDecl,     // Rust: mod foo;
-    EsImport,    // TypeScript/JavaScript: import { X } from '...'
+    Direct,  // import of single module or symbol
+    Glob,    // import of all symbols (*)
+    Alias,   // import with renaming (as)
+    Named,   // import of named subset ({A, B})
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -304,6 +304,9 @@ impl<'a> HasTokens<'a> for ParsedFile<'a> {
     fn path(&self) -> &'a Path {
         self.path
     }
+    fn language(&self) -> &Language {
+        &self.language
+    }
 }
 
 impl<'a> HasHashes<'a> for ParsedFile<'a> {
@@ -460,7 +463,7 @@ mod tests {
         let import = Import {
             path: "reqwest::Client",
             line: 3,
-            kind: ImportKind::Use,
+            kind: ImportKind::Direct,
             target_layer: Layer::Unknown,
             target_subdir: None,
         };
@@ -485,7 +488,7 @@ mod tests {
         f.imports.push(Import {
             path: "crate::shell::api",
             line: 2,
-            kind: ImportKind::Use,
+            kind: ImportKind::Direct,
             target_layer: Layer::L2,
             target_subdir: None,
         });
@@ -499,24 +502,25 @@ mod tests {
         assert_eq!(f.tokens.len(), 1);
     }
 
-    // ── ImportKind::EsImport ──────────────────────────────────────────────────
+    // ── ImportKind variants ───────────────────────────────────────────────────
 
     #[test]
-    fn es_import_kind_is_distinct() {
-        assert_ne!(ImportKind::EsImport, ImportKind::Use);
-        assert_ne!(ImportKind::EsImport, ImportKind::ModDecl);
+    fn import_kind_variants_are_distinct() {
+        assert_ne!(ImportKind::Direct, ImportKind::Glob);
+        assert_ne!(ImportKind::Direct, ImportKind::Named);
+        assert_ne!(ImportKind::Glob, ImportKind::Alias);
     }
 
     #[test]
-    fn import_es_import_kind() {
+    fn import_named_kind() {
         let import = Import {
             path: "../01_core/entities/layer",
             line: 1,
-            kind: ImportKind::EsImport,
+            kind: ImportKind::Named,
             target_layer: Layer::L1,
             target_subdir: Some("entities"),
         };
-        assert_eq!(import.kind, ImportKind::EsImport);
+        assert_eq!(import.kind, ImportKind::Named);
         assert_eq!(import.target_subdir, Some("entities"));
     }
 

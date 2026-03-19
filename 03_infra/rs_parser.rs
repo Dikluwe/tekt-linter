@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/rust.md
-//! @prompt-hash b1f942cf
+//! @prompt-hash df5d900d
 //! @layer L3
 //! @updated 2026-03-18
 
@@ -217,7 +217,16 @@ fn collect_imports<'a>(
             let path = use_declaration_path(node, source);
             let target_layer = resolve_layer(path, config);
             let target_subdir = resolve_subdir(path, config);
-            imports.push(Import { path, line, kind: ImportKind::Use, target_layer, target_subdir });
+            let kind = if path.ends_with("::*") {
+                ImportKind::Glob
+            } else if path.contains(" as ") {
+                ImportKind::Alias
+            } else if path.contains('{') && path.contains('}') {
+                ImportKind::Named
+            } else {
+                ImportKind::Direct
+            };
+            imports.push(Import { path, line, kind, target_layer, target_subdir });
         }
         "extern_crate_declaration" => {
             let line = node.start_position().row + 1;
@@ -228,7 +237,7 @@ fn collect_imports<'a>(
                 .trim();
             let target_layer = resolve_layer(path, config);
             let target_subdir = resolve_subdir(path, config);
-            imports.push(Import { path, line, kind: ImportKind::ExternCrate, target_layer, target_subdir });
+            imports.push(Import { path, line, kind: ImportKind::Direct, target_layer, target_subdir });
         }
         "mod_item" => {
             // Only bare `mod foo;` declarations (no block body)
@@ -243,7 +252,7 @@ fn collect_imports<'a>(
                 imports.push(Import {
                     path,
                     line,
-                    kind: ImportKind::ModDecl,
+                    kind: ImportKind::Direct,
                     target_layer: Layer::Unknown,
                     target_subdir: None,
                 });

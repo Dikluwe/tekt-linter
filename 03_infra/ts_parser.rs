@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/typescript.md
-//! @prompt-hash 2c45e7d3
+//! @prompt-hash 110ac172
 //! @layer L3
 //! @updated 2026-03-19
 
@@ -375,10 +375,11 @@ fn collect_imports<'a>(
                 let line = node.start_position().row + 1;
                 let target_layer = resolve_ts_layer(path_str, file_path, project_root, config);
                 let target_subdir = resolve_ts_subdir(path_str, file_path, project_root, config, &target_layer);
+                let kind = classify_import_statement(node, source);
                 imports.push(Import {
                     path: path_str,
                     line,
-                    kind: ImportKind::EsImport,
+                    kind,
                     target_layer,
                     target_subdir,
                 });
@@ -392,10 +393,11 @@ fn collect_imports<'a>(
                     let line = node.start_position().row + 1;
                     let target_layer = resolve_ts_layer(path_str, file_path, project_root, config);
                     let target_subdir = resolve_ts_subdir(path_str, file_path, project_root, config, &target_layer);
+                    let kind = classify_export_statement(node, source);
                     imports.push(Import {
                         path: path_str,
                         line,
-                        kind: ImportKind::EsImport,
+                        kind,
                         target_layer,
                         target_subdir,
                     });
@@ -410,6 +412,62 @@ fn collect_imports<'a>(
             collect_imports(child, source, file_path, project_root, config, imports);
         }
     }
+}
+
+/// Classifica semanticamente um `import_statement` TypeScript.
+/// Inspeciona os filhos do nó (e `import_clause` aninhado) para determinar o tipo.
+fn classify_import_statement(node: Node, source: &[u8]) -> ImportKind {
+    classify_import_node_recursive(node, source)
+}
+
+fn classify_import_node_recursive(node: Node, source: &[u8]) -> ImportKind {
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            match child.kind() {
+                "namespace_import" => return ImportKind::Glob,
+                "named_imports" => {
+                    // Check if any specifier uses `as` (alias)
+                    for j in 0..child.child_count() {
+                        if let Some(spec) = child.child(j) {
+                            if spec.kind() == "import_specifier" {
+                                for k in 0..spec.child_count() {
+                                    if let Some(kw) = spec.child(k) {
+                                        if kw.kind() == "as" || node_text(kw, source) == "as" {
+                                            return ImportKind::Alias;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    return ImportKind::Named;
+                }
+                "import_clause" => {
+                    // Recurse into import_clause which may contain namespace_import or named_imports
+                    let inner = classify_import_node_recursive(child, source);
+                    if inner != ImportKind::Direct {
+                        return inner;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    ImportKind::Direct
+}
+
+/// Classifica semanticamente um `export_statement` TypeScript com cláusula `from`.
+fn classify_export_statement(node: Node, _source: &[u8]) -> ImportKind {
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            match child.kind() {
+                "export_clause" => return ImportKind::Named,
+                "*" => return ImportKind::Glob,
+                _ => {}
+            }
+        }
+    }
+    ImportKind::Direct
 }
 
 /// Extrai o path string de um import_statement ou export_statement.
@@ -1143,7 +1201,7 @@ mod tests {
         let parsed = parser.parse(&file).unwrap();
         assert_eq!(parsed.imports.len(), 1);
         assert_eq!(parsed.imports[0].target_layer, Layer::L1);
-        assert_eq!(parsed.imports[0].kind, ImportKind::EsImport);
+        assert_eq!(parsed.imports[0].kind, ImportKind::Named);
     }
 
     #[test]

@@ -9,7 +9,7 @@
 **Camada**: L3 (Infra)
 **Padrão**: Adapter over `tree-sitter-rust`
 **Criado em**: 2025-03-13
-**Revisado em**: 2026-03-18 (ADR-0009: movido para parsers/, referência ao template)
+**Revisado em**: 2026-03-18 (ADR-0009 correcção: ImportKind semântico)
 **Arquivos gerados**:
   - 03_infra/rs_parser.rs + test
 
@@ -53,6 +53,11 @@ A resolução de camadas em Rust usa `LayerResolver` baseado em
 Parsers de outras linguagens usam resolução física via `normalize`
 + `resolve_file_layer` conforme documentado em `_template.md`.
 Rust não precisa deste mecanismo porque `crate::` já é absoluto.
+
+**ADR-0009 correcção**: `ImportKind` é semântico, não sintáctico.
+Os nós `use_declaration`, `extern_crate_declaration` e `mod_item`
+de Rust são mapeados para `Direct/Glob/Alias/Named` — nunca para
+variantes específicas de linguagem.
 
 ---
 
@@ -98,8 +103,8 @@ global — paralelismo via rayon é seguro.
 ## Responsabilidades de extracção
 
 Todas as strings extraídas do AST são fatias (`&'a str`) dos bytes
-do buffer do `SourceFile`, obtidas via fronteiras de nó do
-tree-sitter. Nunca usar `.to_string()` para conteúdo do buffer.
+do buffer do `SourceFile`. Nunca usar `.to_string()` para conteúdo
+do buffer.
 
 ### Header cristalino (V1, V5)
 
@@ -111,15 +116,28 @@ tree-sitter. Nunca usar `.to_string()` para conteúdo do buffer.
 
 ### Imports (V3, V9, V10)
 
-| Campo | Como extrair |
-|-------|--------------|
-| `imports` | Nós `use_declaration` e `extern_crate_declaration`. `path` = fatia `&'a str` do buffer. `target_layer` via `LayerResolver` (crate:: é absoluto — sem normalização física necessária). `target_subdir` via `SubdirResolver`. `Layer::Lab` resolvido para imports de `lab/` — V10 usa este valor |
+| Nó AST | `ImportKind` | Notas |
+|--------|-------------|-------|
+| `use_declaration` sem `as` e sem `{` | `Direct` | `use crate::foo` |
+| `use_declaration` com `*` | `Glob` | `use crate::foo::*` |
+| `use_declaration` com `as` | `Alias` | `use std::fs as f` |
+| `use_declaration` com `{...}` | `Named` | `use crate::{A, B}` |
+| `extern_crate_declaration` | `Direct` | `extern crate foo` |
+| `mod_item` sem bloco (`mod foo;`) | `Direct` | declaração de módulo |
+
+Para cada import: `path` = fatia `&'a str` do buffer.
+`target_layer` via `LayerResolver` (crate:: é absoluto).
+`target_subdir` via `SubdirResolver`.
+`Layer::Lab` resolvido para imports de `lab/` — V10 usa este valor.
 
 ### Tokens (V4)
 
 | Campo | Como extrair |
 |-------|--------------|
 | `tokens` | Nós `call_expression` e `macro_invocation` submetidos ao Motor de Duas Fases. `symbol` = `Cow<'a, str>` — Borrowed se direto, Owned se alias resolvido |
+
+V4 usa `file.language()` para seleccionar a lista de símbolos
+proibidos — não usa `ImportKind`.
 
 ### Test coverage (V2)
 
@@ -144,10 +162,6 @@ e `TypeSignature`:
 - Comentários removidos
 - Lifetimes preservados — fazem parte da assinatura pública
 
-Normalização usa fatias do buffer quando possível. Quando collapse
-de whitespace requer nova string, aloca `String` localmente —
-mas isso só afeta campos de tipo internos, não `Token.symbol`.
-
 ### Traits declaradas (V11) — `declared_traits`
 
 Apenas quando `file.layer == Layer::L1` e path contém `"contracts"`.
@@ -161,8 +175,7 @@ pub trait FileProvider { ... }   →  declared_traits = ["FileProvider"]
 trait InternalHelper { ... }     →  ignorado (sem pub)
 ```
 
-Ficheiros em L1 fora de `contracts/` (ex: `entities/`, `rules/`)
-não contribuem para `declared_traits`.
+Ficheiros em L1 fora de `contracts/` não contribuem.
 
 ### Traits implementadas (V11) — `implemented_traits`
 
@@ -170,7 +183,6 @@ Apenas quando `file.layer == Layer::L2 | Layer::L3`.
 
 Para cada nó `impl_item` de nível superior com campo `trait`:
 - Extrair nome simples da trait — último segmento se for path
-  (`crate::contracts::FileProvider` → `"FileProvider"`)
 - Adicionar a `implemented_traits`
 
 ```
@@ -179,33 +191,27 @@ impl LanguageParser for RustParser<R, S> { ... } →  ["FileProvider", "Language
 impl FileWalker { ... }  // sem trait             →  ignorado aqui
 ```
 
-Ficheiros em L1 ou L4 não contribuem para `implemented_traits`.
+Ficheiros em L1 ou L4 não contribuem.
 
 ### Declarações de tipo (V12) — `declarations`
 
 Para todos os arquivos, sem filtro de layer.
-V12 filtra por `layer == L4` internamente — o parser não filtra.
+V12 filtra por `layer == L4` internamente.
 
 | Nó | `DeclarationKind` | Condição |
 |----|------------------|----------|
 | `struct_item` | `Struct` | sempre capturado |
 | `enum_item` | `Enum` | sempre capturado |
 | `impl_item` sem campo `trait` | `Impl` | `impl Type { ... }` |
-| `impl_item` com campo `trait` | **não capturado** | `impl Trait for Type` — adapter, permitido em L4 |
-
-A distinção entre `impl_item` com e sem trait é feita verificando
-se o nó tree-sitter tem o campo `trait` definido.
+| `impl_item` com campo `trait` | **não capturado** | `impl Trait for Type` — adapter |
 
 ---
 
 ## LayerResolver e SubdirResolver
 
-Dois resolvers internos a L3 — funções puras, não expostas a L1:
-
 ### `LayerResolver`
 ```rust
 fn resolve_layer(import_path: &str, config: &CrystallineConfig) -> Layer {
-    // Inspeciona segundo segmento de paths crate:: ou super::
     let segments: Vec<&str> = import_path.splitn(4, "::").collect();
     if segments[0] != "crate" && segments[0] != "super" {
         return Layer::Unknown;
@@ -218,8 +224,8 @@ fn resolve_layer(import_path: &str, config: &CrystallineConfig) -> Layer {
 
 `crate::` é absoluto — não requer normalização física.
 Rust não tem o vector de fuga de paths relativos que afecta
-linguagens como TypeScript. Ver `_template.md` para o algoritmo
-de resolução física obrigatório em outras linguagens.
+linguagens como TypeScript e Python. Ver `_template.md` para o
+algoritmo de resolução física obrigatório em outras linguagens.
 
 ### `SubdirResolver` (ADR-0006)
 ```rust
@@ -228,10 +234,7 @@ fn resolve_subdir<'a>(
     target_layer: &Layer,
     config: &CrystallineConfig,
 ) -> Option<&'a str> {
-    // Só resolve subdirs de L1 — outras camadas retornam None
-    if *target_layer != Layer::L1 {
-        return None;
-    }
+    if *target_layer != Layer::L1 { return None; }
     let segments: Vec<&str> = import_path.splitn(4, "::").collect();
     if segments.get(0).copied() != Some("crate")
         && segments.get(0).copied() != Some("super") {
@@ -243,7 +246,7 @@ fn resolve_subdir<'a>(
 
 `target_subdir` é `Some(subdir)` para imports de L1 —
 independentemente de o subdir estar ou não em `[l1_ports]`.
-V9 em L1 decide se o subdir é válido comparando com `L1Ports`.
+V9 decide.
 
 ---
 
@@ -277,7 +280,7 @@ where
     fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
         // Ordem de extracção:
         // 1. header (prompt_header, prompt_file_exists, current_hash)
-        // 2. imports (LayerResolver + SubdirResolver)
+        // 2. imports (LayerResolver + SubdirResolver + ImportKind semântico)
         // 3. tokens (Motor de Duas Fases — Fase 1 aliases, Fase 2 FQN)
         // 4. has_test_coverage (cfg(test) + adjacência + declaration-only)
         // 5. public_interface + prompt_snapshot (V6)
@@ -285,12 +288,13 @@ where
         // 7. implemented_traits (apenas L2|L3) (V11)
         // 8. declarations — nível superior struct/enum/impl-sem-trait (V12)
         //
-        // SubdirResolver aplicado em cada Import após LayerResolver.
-        // declared_traits e implemented_traits condicionados por layer e subdir.
-        // declarations extraídas para todos os arquivos sem filtro de layer.
-        //
-        // Retorna ParsedFile<'a> com todas as referências apontando
-        // para file.content
+        // ImportKind mapeado semanticamente:
+        //   use X        → Direct
+        //   use X::*     → Glob
+        //   use X as Y   → Alias
+        //   use {A, B}   → Named
+        //   extern crate → Direct
+        //   mod foo;     → Direct
     }
 }
 ```
@@ -300,26 +304,21 @@ where
 ## Restrições
 
 - `parse()` recebe `&'a SourceFile` — proibido consumir ownership
-- Proibido `.to_string()` para strings presentes no buffer —
-  apenas as exceções documentadas em `violation-types.md`
-- `PromptHeader.current_hash` é a única `String` alocada —
-  exceção documentada
-- Fase 1 (aliases) deve preceder Fase 2 (tokens) — ordem incorreta
-  produz FQNs errados para aliases
-- Tabela de aliases é local ao arquivo — não há estado entre chamadas
+- Proibido `.to_string()` para strings presentes no buffer
+- `PromptHeader.current_hash` é a única `String` alocada
+- Fase 1 (aliases) deve preceder Fase 2 (tokens)
 - `SubdirResolver` retorna `None` para camadas que não sejam L1
-- `target_subdir` resolvido para todos os imports de L1,
-  incluindo subdirs não listados em `[l1_ports]` — V9 decide
-- `declared_traits` apenas em L1/contracts/ — filtragem no parser,
-  não em V11
-- `implemented_traits` apenas em L2|L3 — filtragem no parser,
-  não em V11
+- `target_subdir` resolvido para todos os imports de L1 — V9 decide
+- `declared_traits` apenas em L1/contracts/ — filtragem no parser
+- `implemented_traits` apenas em L2|L3 — filtragem no parser
 - `declarations` para todos os arquivos — V12 filtra por layer
 - `impl Trait for Type` não é capturado em `declarations`
-- `PromptReader` e `PromptSnapshotReader` são injetados —
-  o parser nunca os instancia diretamente
+- `PromptReader` e `PromptSnapshotReader` são injetados
 - Erros de `std::io` nunca atravessam para L1 — convertidos
   em `ParseError` antes de retornar
+- **`ImportKind` nunca contém variantes específicas de linguagem**:
+  `use_declaration` mapeia para `Direct/Glob/Alias/Named`,
+  nunca para uma variante "Rust"
 
 ---
 
@@ -341,12 +340,37 @@ Então tokens contém Token { symbol: Cow::Owned("tokio::io::stdin"), .. }
 Dado SourceFile com std::fs::write(...) sem nenhum alias
 Quando parse() for chamado
 Então tokens contém Token { symbol: Cow::Borrowed("std::fs::write"), .. }
-— FQN direto usa referência ao buffer
 
 Dado SourceFile com use crate::shell::api
 Quando parse() for chamado
-Então imports contém Import { target_layer: Layer::L2, target_subdir: None, .. }
-— target_subdir é None para camadas que não L1
+Então imports contém Import {
+    kind: ImportKind::Direct,
+    target_layer: Layer::L2,
+    target_subdir: None,
+    ..
+}
+
+Dado SourceFile com use crate::{A, B}
+Quando parse() for chamado
+Então imports contém Import { kind: ImportKind::Named, .. }
+
+Dado SourceFile com use crate::foo::*
+Quando parse() for chamado
+Então imports contém Import { kind: ImportKind::Glob, .. }
+
+Dado SourceFile com use std::fs as f
+Quando parse() for chamado
+Então imports contém Import { kind: ImportKind::Alias, .. }
+
+Dado SourceFile com extern crate serde
+Quando parse() for chamado
+Então imports contém Import { kind: ImportKind::Direct, .. }
+— extern crate mapeia para Direct, não para variante específica
+
+Dado SourceFile com mod foo; (sem bloco)
+Quando parse() for chamado
+Então imports contém Import { kind: ImportKind::Direct, .. }
+— mod declaration mapeia para Direct
 
 Dado SourceFile com use crate::entities::Layer
 Quando parse() for chamado
@@ -372,7 +396,7 @@ Então imports contém Import {
     target_subdir: Some("internal"),
     ..
 }
-— parser não julga se é porta válida, apenas resolve o subdir
+— parser resolve o subdir, V9 decide se é válido
 
 Dado SourceFile com use reqwest::Client
 Quando parse() for chamado
@@ -381,7 +405,6 @@ Então imports contém Import {
     target_subdir: None,
     ..
 }
-— crate externa: target_layer Unknown, target_subdir None
 
 Dado SourceFile em L1, subdir = "contracts", com:
   pub trait FileProvider { ... }
@@ -389,14 +412,12 @@ Dado SourceFile em L1, subdir = "contracts", com:
   trait InternalHelper { ... }
 Quando parse() for chamado
 Então declared_traits = ["FileProvider", "LanguageParser"]
-E "InternalHelper" não aparece em declared_traits
-— apenas traits públicas de L1/contracts/
+E "InternalHelper" não aparece
 
 Dado SourceFile em L1, subdir = "rules"
-Com pub trait HasImports { ... }
 Quando parse() for chamado
 Então declared_traits = []
-— L1/rules não é subdir de contratos
+— apenas contracts/ contribui
 
 Dado SourceFile em L3 com:
   impl FileProvider for FileWalker { ... }
@@ -404,13 +425,7 @@ Dado SourceFile em L3 com:
   impl FileWalker { ... }
 Quando parse() for chamado
 Então implemented_traits = ["FileProvider", "LanguageParser"]
-E "FileWalker" não aparece em implemented_traits
-— impl sem trait não é registado aqui
-
-Dado SourceFile em L1 com impl HasImports for ParsedFile { ... }
-Quando parse() for chamado
-Então implemented_traits = []
-— L1 não contribui para implemented_traits
+E "FileWalker" não aparece
 
 Dado SourceFile em L4 com:
   struct L3HashRewriter { ... }
@@ -423,12 +438,6 @@ Então declarations contém:
   Declaration { kind: Impl,   name: "L3HashRewriter", .. }
   Declaration { kind: Enum,   name: "OutputMode", .. }
 E NÃO contém Declaration para "HashRewriter for L3HashRewriter"
-— impl com trait não é capturado
-
-Dado SourceFile em L3 com struct FileWalker { ... }
-Quando parse() for chamado
-Então declarations contém Declaration { kind: Struct, name: "FileWalker", .. }
-— declarations extraído para todos os arquivos sem filtro de layer
 
 Dado SourceFile com #[cfg(test)] na AST
 Quando parse() for chamado
@@ -466,9 +475,7 @@ Dado SourceFile com pub use crate::entities::Layer
 Quando parse() for chamado
 Então public_interface.reexports contém "crate::entities::Layer"
 
-Dado dois SourceFiles com mesma interface mas whitespace diferente:
-  pub fn check( file : &ParsedFile ) -> Vec<Violation>
-  pub fn check(file: &ParsedFile) -> Vec<Violation>
+Dado dois SourceFiles com mesma interface mas whitespace diferente
 Quando parse() for chamado em ambos
 Então public_interface é idêntica — normalização correcta
 
@@ -478,7 +485,7 @@ Então prompt_snapshot = Some(PublicInterface) desserializada
 
 Dado prompt sem seção Interface Snapshot
 Quando parse() for chamado
-Então prompt_snapshot = None — V6 não dispara sem baseline
+Então prompt_snapshot = None
 
 Dado SourceFile sintaticamente inválido
 Quando parse() for chamado
@@ -494,7 +501,7 @@ Então retorna Err(ParseError::UnsupportedLanguage { .. })
 
 Dado NullPromptReader e NullSnapshotReader como mocks
 Quando parse() for chamado
-Então nenhum acesso a disco ocorre durante testes de L1
+Então nenhum acesso a disco ocorre durante testes
 ```
 
 ---
@@ -509,6 +516,6 @@ Então nenhum acesso a disco ocorre durante testes de L1
 | 2026-03-14 | ADR-0004: parse() recebe &'a SourceFile, Motor de Duas Fases, zero-copy | rs_parser.rs |
 | 2026-03-14 | Errata Cow: Token.symbol é Cow<'a, str> | rs_parser.rs |
 | 2026-03-15 | ADR-0006: SubdirResolver, Import.target_subdir | rs_parser.rs |
-| 2026-03-16 | ADR-0007: declared_traits, implemented_traits, declarations; ordem de extracção documentada | rs_parser.rs |
-| 2026-03-18 | ADR-0009: movido de rs-parser.md para parsers/rust.md; nota de referência ao _template.md; nota sobre LayerResolver Rust vs resolução física de outras linguagens; TypeKind::Struct/Enum/Trait explicitados na secção de interface pública | rs_parser.rs |
-| 2026-03-19 | Passo 1: extract_type_sig actualizado para cobrir TypeKind::Class/Interface/TypeAlias (arm de retorno vazio — RustParser não emite estes kinds, mas exaustividade é obrigatória) | rs_parser.rs |
+| 2026-03-16 | ADR-0007: declared_traits, implemented_traits, declarations | rs_parser.rs |
+| 2026-03-18 | ADR-0009: movido de rs-parser.md para parsers/rust.md; nota sobre LayerResolver Rust vs resolução física | rs_parser.rs |
+| 2026-03-18 | ADR-0009 correcção: ImportKind semântico — tabela de mapeamento Rust→Direct/Glob/Alias/Named; nota sobre V4 usar file.language(); restrição de agnósticidade adicionada; critérios de ImportKind::Direct/Glob/Alias/Named adicionados | rs_parser.rs |

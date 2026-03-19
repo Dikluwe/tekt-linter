@@ -1,12 +1,12 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/rule-traits.md
-//! @prompt-hash eb8b75e4
+//! @prompt-hash 1b36408c
 //! @layer L1
 //! @updated 2026-03-16
 
 use std::path::Path;
 
-use crate::entities::layer::Layer;
+use crate::entities::layer::{Language, Layer};
 use crate::entities::parsed_file::{Declaration, Import, PromptHeader, PublicInterface, Token};
 
 // ── V1 ────────────────────────────────────────────────────────────────────────
@@ -43,6 +43,7 @@ pub trait HasTokens<'a> {
     fn layer(&self) -> &Layer;
     fn tokens(&self) -> &[Token<'a>];
     fn path(&self) -> &'a Path;
+    fn language(&self) -> &Language;
 }
 
 // ── V5 ────────────────────────────────────────────────────────────────────────
@@ -131,6 +132,7 @@ mod tests {
 
     struct MockV4 {
         layer: Layer,
+        language: Language,
         tokens: Vec<Token<'static>>,
         path: &'static Path,
     }
@@ -138,6 +140,7 @@ mod tests {
         fn layer(&self) -> &Layer { &self.layer }
         fn tokens(&self) -> &[Token<'static>] { &self.tokens }
         fn path(&self) -> &'static Path { self.path }
+        fn language(&self) -> &Language { &self.language }
     }
 
     struct MockV5 {
@@ -210,7 +213,7 @@ mod tests {
             column: 0,
             kind: TokenKind::CallExpression,
         };
-        let m = MockV4 { layer: Layer::L1, tokens: vec![tok], path: Path::new("foo.rs") };
+        let m = MockV4 { layer: Layer::L1, language: Language::Rust, tokens: vec![tok], path: Path::new("foo.rs") };
         assert_eq!(m.tokens().len(), 1);
     }
 
@@ -233,7 +236,7 @@ mod tests {
         let imp = Import {
             path: "crate::entities::Layer",
             line: 3,
-            kind: ImportKind::Use,
+            kind: ImportKind::Direct,
             target_layer: Layer::L1,
             target_subdir: Some("entities"),
         };

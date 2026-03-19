@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash a6c311f2
+//! @prompt-hash 80ce239a
 //! @layer L4
 //! @updated 2026-03-16
 
@@ -26,6 +26,7 @@ use crystalline_lint::infra::prompt_reader::FsPromptReader;
 use crystalline_lint::infra::prompt_snapshot_reader::FsPromptSnapshotReader;
 use crystalline_lint::infra::prompt_walker::FsPromptWalker;
 use crystalline_lint::entities::layer::Language;
+use crystalline_lint::infra::py_parser::PyParser;
 use crystalline_lint::infra::rs_parser::RustParser;
 use crystalline_lint::infra::ts_parser::TsParser;
 use crystalline_lint::infra::snapshot_writer;
@@ -99,6 +100,12 @@ fn main() {
             config.clone(),
             cli.path.clone(),
         ),
+        py: PyParser::new(
+            FsPromptReader { nucleo_root: nucleo_root.clone() },
+            FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+            config.clone(),
+            cli.path.clone(),
+        ),
     };
     let walker = FileWalker::new(cli.path.clone(), config.clone());
 
@@ -147,6 +154,12 @@ fn main() {
                     config.clone(),
                 ),
                 ts: TsParser::new(
+                    FsPromptReader { nucleo_root: nucleo_root.clone() },
+                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    config.clone(),
+                    cli.path.clone(),
+                ),
+                py: PyParser::new(
                     FsPromptReader { nucleo_root: nucleo_root.clone() },
                     FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
                     config.clone(),
@@ -201,6 +214,12 @@ fn main() {
                     config.clone(),
                     cli.path.clone(),
                 ),
+                py: PyParser::new(
+                    FsPromptReader { nucleo_root: nucleo_root.clone() },
+                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    config.clone(),
+                    cli.path.clone(),
+                ),
             };
             let rewalker = FileWalker::new(cli.path.clone(), config);
             let (re_files, re_errors) = collect_walker_results(rewalker.files());
@@ -244,6 +263,7 @@ fn main() {
 struct MultiParser {
     rust: RustParser<FsPromptReader, FsPromptSnapshotReader>,
     ts:   TsParser<FsPromptReader, FsPromptSnapshotReader>,
+    py:   PyParser<FsPromptReader, FsPromptSnapshotReader>,
 }
 
 impl LanguageParser for MultiParser {
@@ -251,6 +271,7 @@ impl LanguageParser for MultiParser {
         match file.language {
             Language::Rust       => self.rust.parse(file),
             Language::TypeScript => self.ts.parse(file),
+            Language::Python     => self.py.parse(file),
             _ => Err(ParseError::UnsupportedLanguage {
                 path: file.path.clone(),
                 language: file.language.clone(),

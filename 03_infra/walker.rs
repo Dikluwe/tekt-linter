@@ -98,20 +98,29 @@ pub fn resolve_file_layer(path: &Path, root: &Path, config: &CrystallineConfig) 
     Layer::Unknown
 }
 
-/// Returns true if a sibling file `<stem>_test.rs` exists in the same directory.
+/// Returns true if a sibling test file exists in the same directory.
+/// Patterns checked:
+/// - Rust:   `<stem>_test.rs`
+/// - Python: `<stem>_test.py` or `test_<stem>.py`
 fn check_adjacent_test(path: &Path) -> bool {
     let stem = match path.file_stem().and_then(|s| s.to_str()) {
         Some(s) => s,
         None => return false,
     };
     // Skip files that are already test files
-    if stem.ends_with("_test") {
+    if stem.ends_with("_test") || stem.starts_with("test_") {
         return false;
     }
-    let test_name = format!("{}_test.rs", stem);
-    path.parent()
-        .map(|dir| dir.join(&test_name).exists())
-        .unwrap_or(false)
+    let dir = match path.parent() {
+        Some(d) => d,
+        None => return false,
+    };
+    // Rust
+    if dir.join(format!("{}_test.rs", stem)).exists() { return true; }
+    // Python
+    if dir.join(format!("{}_test.py", stem)).exists() { return true; }
+    if dir.join(format!("test_{}.py", stem)).exists() { return true; }
+    false
 }
 
 #[cfg(test)]

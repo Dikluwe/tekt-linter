@@ -112,7 +112,7 @@ mod tests {
         Import {
             path,
             line,
-            kind: ImportKind::Use,
+            kind: ImportKind::Direct,
             target_layer: Layer::L1,
             target_subdir: subdir,
         }
@@ -163,7 +163,7 @@ mod tests {
         file.imports.push(Import {
             path: "reqwest::Client",
             line: 2,
-            kind: ImportKind::Use,
+            kind: ImportKind::Direct,
             target_layer: Layer::Unknown,
             target_subdir: None,
         });

@@ -89,7 +89,7 @@ mod tests {
     }
 
     fn import(path: &'static str, line: usize, target_layer: Layer) -> Import<'static> {
-        Import { path, line, kind: ImportKind::Use, target_layer, target_subdir: None }
+        Import { path, line, kind: ImportKind::Direct, target_layer, target_subdir: None }
     }
 
     #[test]

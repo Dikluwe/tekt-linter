@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash a6c311f2
+//! @prompt-hash 80ce239a
 //! @layer L3
 //! @updated 2026-03-13
 
@@ -45,6 +45,10 @@ pub struct CrystallineConfig {
     /// Exemplo: { "@core" = "01_core", "@shell" = "02_shell" }
     #[serde(default)]
     pub ts_aliases: HashMap<String, String>,
+    /// Aliases de package Python — lida de `[py_aliases]`.
+    /// Exemplo: { "core" = "01_core", "shell" = "02_shell" }
+    #[serde(default)]
+    pub py_aliases: HashMap<String, String>,
 }
 
 impl CrystallineConfig {
@@ -106,6 +110,7 @@ impl Default for CrystallineConfig {
             orphan_exceptions: HashMap::new(),
             wiring_exceptions: WiringExceptionsConfig::default(),
             ts_aliases: HashMap::new(),
+            py_aliases: HashMap::new(),
         }
     }
 }
