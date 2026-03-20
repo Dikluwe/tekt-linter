@@ -56,9 +56,10 @@ pub fn check<'a, T: HasTokens<'a>>(file: &T) -> Vec<Violation<'a>> {
 }
 
 fn is_forbidden_symbol(symbol: &str, forbidden: &[&str]) -> bool {
-    forbidden
-        .iter()
-        .any(|&f| symbol == f || symbol.starts_with(&format!("{}::", f)))
+    forbidden.iter().any(|&f| {
+        symbol == f
+            || (symbol.starts_with(f) && symbol[f.len()..].starts_with("::"))
+    })
 }
 
 fn make_violation<'a, T: HasTokens<'a>>(file: &T, token: &Token<'a>) -> Violation<'a> {

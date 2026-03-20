@@ -71,7 +71,11 @@ impl PromptProvider for FsPromptWalker {
 
         if !prompts_dir.exists() {
             return Err(PromptScanError::NucleoUnreadable {
-                reason: format!("{} não existe ou não pode ser lido", prompts_dir.display()),
+                path: prompts_dir.clone(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("{} não existe ou não pode ser lido", prompts_dir.display()),
+                ),
             });
         }
 
@@ -79,7 +83,8 @@ impl PromptProvider for FsPromptWalker {
 
         for result in WalkDir::new(&prompts_dir) {
             let entry = result.map_err(|e| PromptScanError::NucleoUnreadable {
-                reason: e.to_string(),
+                path: prompts_dir.clone(),
+                source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
             })?;
 
             if !entry.file_type().is_file() {
@@ -95,9 +100,13 @@ impl PromptProvider for FsPromptWalker {
                 .path()
                 .strip_prefix(&self.project_root)
                 .map_err(|_| PromptScanError::NucleoUnreadable {
-                    reason: format!(
-                        "não foi possível calcular path relativo de {}",
-                        entry.path().display()
+                    path: entry.path().to_path_buf(),
+                    source: std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!(
+                            "não foi possível calcular path relativo de {}",
+                            entry.path().display()
+                        ),
                     ),
                 })?
                 .to_str()

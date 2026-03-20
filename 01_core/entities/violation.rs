@@ -12,11 +12,11 @@ use std::path::Path;
 /// independentemente de configuração.
 /// Error: violações arquiteturais bloqueantes (V1–V4).
 /// Warning: divergências não bloqueantes por padrão (V5–V6).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ViolationLevel {
-    Fatal,
-    Error,
     Warning,
+    Error,
+    Fatal,
 }
 
 /// ADR-0005: path usa Cow<'a, Path>.

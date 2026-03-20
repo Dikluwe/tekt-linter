@@ -7,6 +7,8 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+use thiserror::Error;
+
 // ── PromptEntry ───────────────────────────────────────────────────────────────
 
 /// Um prompt descoberto em 00_nucleo/prompts/.
@@ -49,9 +51,15 @@ impl<'a> AllPrompts<'a> {
 
 /// Erro ao varrer 00_nucleo/prompts/.
 /// Distinto de SourceError — ocorre antes do pipeline paralelo.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum PromptScanError {
-    NucleoUnreadable { reason: String },
+    #[error("núcleo ilegível em {path}: {source}")]
+    NucleoUnreadable {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("UTF-8 inválido em {path}")]
     InvalidUtf8 { path: PathBuf },
 }
 
@@ -132,10 +140,10 @@ mod tests {
 
     #[test]
     fn scan_error_nucleounreadable_is_debug() {
-        let err = PromptScanError::NucleoUnreadable {
-            reason: "permission denied".to_string(),
-        };
-        let msg = format!("{:?}", err);
-        assert!(msg.contains("NucleoUnreadable"));
+        // Compile-time: PromptScanError implements Debug (via derive).
+        // Runtime construction requires std::io::Error which is forbidden in L1 tests.
+        // The derive(Debug, Error) and field declarations are the authoritative check.
+        fn assert_debug<T: std::fmt::Debug>() {}
+        assert_debug::<PromptScanError>();
     }
 }

@@ -15,6 +15,9 @@ name = "crystalline-lint"
 path = "04_wiring/main.rs"
 
 [dependencies]
+# L1 — core
+thiserror         = "1"
+
 # L3 — infra
 tree-sitter            = "0.22"
 tree-sitter-rust       = "0.21"
