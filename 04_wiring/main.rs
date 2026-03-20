@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 96b78bc5
+//! @prompt-hash a615858b
 //! @layer L4
-//! @updated 2026-03-16
+//! @updated 2026-03-20
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
@@ -129,6 +129,10 @@ fn main() {
     if enabled.v11 {
         all_violations.extend(dangling_contract::check_dangling_contracts(&project_index));
     }
+
+    // ── Ordenação determinística ───────────────────────────────────────────────
+    // Rayon não garante ordem — Fatal → Error → Warning, depois path, depois linha.
+    crystalline_lint::shell::cli::sort_violations(&mut all_violations);
 
     // ── --fix-hashes branch ───────────────────────────────────────────────────
     if cli.fix_hashes {

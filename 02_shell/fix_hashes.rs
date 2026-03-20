@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/fix-hashes.md
-//! @prompt-hash 4ced5c2e
+//! @prompt-hash 929d9c47
 //! @layer L2
-//! @updated 2026-03-13
+//! @updated 2026-03-20
 
 use std::path::{Path, PathBuf};
 
@@ -32,10 +32,12 @@ pub trait HashRewriter {
 
 pub struct FixEntry {
     pub source_path: PathBuf,
-    /// Hash currently written in the file header.
+    /// Hash currently written in the file header. Empty when header is unreadable.
     pub old_hash: String,
     /// Real hash of the L0 prompt file. None if prompt file is missing.
     pub new_hash: Option<String>,
+    /// Set when the file header could not be read. Entry is skipped in execute().
+    pub unreadable_reason: Option<String>,
 }
 
 pub struct FixResult {
@@ -50,14 +52,28 @@ pub struct FixResult {
 
 /// Build fix entries from V5 violations.
 /// Each entry captures the old hash and the real hash (if the prompt exists).
+/// Entries where the file header cannot be read are included with `unreadable_reason` set,
+/// rather than silently discarded.
 pub fn plan(violations: &[Violation<'_>], rewriter: &dyn HashRewriter) -> Vec<FixEntry> {
     violations
         .iter()
         .filter(|v| v.rule_id == "V5")
-        .filter_map(|v| {
-            let (prompt_path, old_hash) = rewriter.read_header(&v.location.path)?;
-            let new_hash = rewriter.compute_hash(&prompt_path);
-            Some(FixEntry { source_path: v.location.path.to_path_buf(), old_hash, new_hash })
+        .map(|v| match rewriter.read_header(&v.location.path) {
+            Some((prompt_path, old_hash)) => {
+                let new_hash = rewriter.compute_hash(&prompt_path);
+                FixEntry {
+                    source_path: v.location.path.to_path_buf(),
+                    old_hash,
+                    new_hash,
+                    unreadable_reason: None,
+                }
+            }
+            None => FixEntry {
+                source_path: v.location.path.to_path_buf(),
+                old_hash: String::new(),
+                new_hash: None,
+                unreadable_reason: Some("could not read file header".to_string()),
+            },
         })
         .collect()
 }
@@ -72,6 +88,10 @@ pub fn execute(
     entries
         .iter()
         .filter_map(|entry| {
+            // Entradas com header ilegível ou prompt ausente não podem ser corrigidas
+            if entry.unreadable_reason.is_some() {
+                return None;
+            }
             let new_hash = entry.new_hash.as_ref()?.clone();
 
             if dry_run {
@@ -99,8 +119,14 @@ pub fn execute(
 // ── Formatters ────────────────────────────────────────────────────────────────
 
 pub fn format_plan(entries: &[FixEntry]) -> String {
-    let fixable: Vec<_> = entries.iter().filter(|e| e.new_hash.is_some()).collect();
-    let unfixable: Vec<_> = entries.iter().filter(|e| e.new_hash.is_none()).collect();
+    let fixable: Vec<_> =
+        entries.iter().filter(|e| e.new_hash.is_some() && e.unreadable_reason.is_none()).collect();
+    let unfixable: Vec<_> = entries
+        .iter()
+        .filter(|e| e.new_hash.is_none() && e.unreadable_reason.is_none())
+        .collect();
+    let unreadable: Vec<_> =
+        entries.iter().filter(|e| e.unreadable_reason.is_some()).collect();
 
     if entries.is_empty() {
         return format!("{}\n", "Nothing to fix".green().bold());
@@ -134,6 +160,22 @@ pub fn format_plan(entries: &[FixEntry]) -> String {
         ));
         for entry in unfixable {
             out.push_str(&format!("  {}\n", entry.source_path.display()));
+        }
+    }
+
+    if !unreadable.is_empty() {
+        out.push('\n');
+        out.push_str(&format!(
+            "{} {} (header unreadable):\n",
+            "Skipped".yellow().bold(),
+            unreadable.len()
+        ));
+        for entry in unreadable {
+            out.push_str(&format!(
+                "  {} — {}\n",
+                entry.source_path.display(),
+                entry.unreadable_reason.as_deref().unwrap_or("unknown"),
+            ));
         }
     }
 
@@ -381,5 +423,16 @@ mod tests {
         };
         let out = format_results(&[result], 0, 0);
         assert!(out.contains("0 drift warnings remaining"));
+    }
+
+    /// Quando read_header devolve None, a entrada deve ser incluída com
+    /// unreadable_reason definido — não silenciosamente descartada.
+    #[test]
+    fn plan_reports_unreadable_header_instead_of_silencing() {
+        let rewriter = MockRewriter::new(None, None, Ok(()));
+        let violations = vec![v5_violation("01_core/unreadable.rs")];
+        let entries = plan(&violations, &rewriter);
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].unreadable_reason.is_some());
     }
 }

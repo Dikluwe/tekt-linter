@@ -3,6 +3,7 @@
 **Camada**: L3 (Infra)
 **Padrão**: Filesystem Scanner
 **Criado em**: 2026-03-14 (ADR-0006)
+**Revisado em**: 2026-03-20 (propagação de erros granular — entrada inacessível é saltada)
 **Arquivos gerados**:
   - 03_infra/prompt_walker.rs + test
 
@@ -20,9 +21,9 @@ Implementa a trait `PromptProvider` declarada em
 
 **Timing:** Invocado sequencialmente em L4 antes do pipeline
 paralelo iniciar. `AllPrompts` é construído uma única vez e
-passado como referência imutável ao longo de toda a execução —
-incluindo durante o Map-Reduce do rayon. Não participa do
-Map-Reduce porque não depende dos arquivos de código.
+passado como referência imutável ao longo de toda a execução.
+Não participa do Map-Reduce porque não depende dos arquivos
+de código.
 
 ---
 
@@ -39,98 +40,103 @@ Map-Reduce porque não depende dos arquivos de código.
   de `00_nucleo/` — não ao projeto inteiro
 - Exemplo: arquivo em `00_nucleo/prompts/rules/v3.md` →
   `relative_path = "prompts/rules/v3.md"`
-- Isso garante comparabilidade direta com `@prompt` headers
-  que declaram `00_nucleo/prompts/rules/v3.md`
 
 **Propagação de erros:**
-- Se `00_nucleo/` não puder ser lido → `PromptScanError::NucleoUnreadable`
-- Se path contiver bytes inválidos UTF-8 → `PromptScanError::InvalidUtf8`
-- Nunca silencia erros — se o nucleo é ilegível, o linter não
-  pode garantir completude de V7
+- Se `00_nucleo/prompts/` não puder ser lido (não existe ou
+  sem permissão de leitura do directório raiz) →
+  `PromptScanError::NucleoUnreadable` — correcto abortar
+- Se uma entrada individual dentro de `prompts/` não for
+  acessível (ficheiro ou subdirectório sem permissão) →
+  entrada saltada silenciosamente, varredura continua.
+  Análogo ao comportamento de `FileWalker` para `SourceError`.
+- Se path contiver bytes inválidos UTF-8 →
+  `PromptScanError::InvalidUtf8` para essa entrada
+
+A distinção é importante: a ausência do directório raiz impede
+qualquer varredura — o linter não pode garantir completude de V7
+e deve falhar. Um ficheiro inacessível dentro de um directório
+legível é um dado em falta, não uma falha de infra.
 
 ---
 
 ## Implementação
 ```rust
 pub struct FsPromptWalker {
-    pub nucleo_root: PathBuf,
+    pub project_root: PathBuf,
     pub orphan_exceptions: HashSet<String>,
+    paths_buffer: std::cell::RefCell<Vec<Box<str>>>,
 }
 
 impl PromptProvider for FsPromptWalker {
     fn scan<'a>(&'a self) -> Result<AllPrompts<'a>, PromptScanError> {
-        let prompts_dir = self.nucleo_root.join("prompts");
+        let prompts_dir = self.project_root.join("00_nucleo").join("prompts");
 
-        let entries: Result<HashSet<PromptEntry<'a>>, PromptScanError> =
-            WalkDir::new(&prompts_dir)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().is_file())
-                .filter(|e| {
-                    e.path().extension()
-                        .and_then(|ext| ext.to_str())
-                        == Some("md")
-                })
-                .filter_map(|e| {
-                    // Path relativo a nucleo_root
-                    let relative = e.path()
-                        .strip_prefix(&self.nucleo_root)
-                        .ok()?
-                        .to_str()
-                        .map(|s| s.to_string())?;
+        if !prompts_dir.exists() {
+            return Err(PromptScanError::NucleoUnreadable {
+                path: prompts_dir.clone(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("{} não existe", prompts_dir.display()),
+                ),
+            });
+        }
 
-                    // Excluir orphan_exceptions
-                    if self.orphan_exceptions.contains(&relative) {
-                        return None;
-                    }
+        let mut entries: HashSet<PromptEntry<'a>> = HashSet::new();
 
-                    // &'a str que vive no walker
-                    // (ver nota sobre lifetime abaixo)
-                    Some(Ok(PromptEntry {
-                        relative_path: self.intern(relative),
-                    }))
-                })
-                .collect();
+        for result in WalkDir::new(&prompts_dir) {
+            // Entradas individuais inacessíveis são saltadas —
+            // apenas a falha do directório raiz propaga como Err.
+            let entry = match result {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
 
-        Ok(AllPrompts { entries: entries? })
+            if !entry.file_type().is_file() {
+                continue;
+            }
+
+            let ext = entry.path().extension().and_then(|e| e.to_str());
+            if ext != Some("md") {
+                continue;
+            }
+
+            let relative = entry
+                .path()
+                .strip_prefix(&self.project_root)
+                .map_err(|_| PromptScanError::NucleoUnreadable {
+                    path: entry.path().to_path_buf(),
+                    source: std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "não foi possível calcular path relativo",
+                    ),
+                })?
+                .to_str()
+                .ok_or_else(|| PromptScanError::InvalidUtf8 {
+                    path: entry.path().to_path_buf(),
+                })?
+                .to_string();
+
+            if self.orphan_exceptions.contains(&relative) {
+                continue;
+            }
+
+            let interned = self.intern(relative);
+            entries.insert(PromptEntry { relative_path: interned });
+        }
+
+        Ok(AllPrompts { entries })
     }
 }
 ```
-
-**Nota sobre lifetime e interning:**
-`PromptEntry.relative_path` é `&'a str` que deve sobreviver
-ao lifetime de `FsPromptWalker`. A implementação usa um
-`Vec<String>` interno ao walker para armazenar os paths
-construídos, e retorna referências a essas strings:
-```rust
-pub struct FsPromptWalker {
-    pub nucleo_root: PathBuf,
-    pub orphan_exceptions: HashSet<String>,
-    // Buffer interno para paths interned
-    paths_buffer: std::cell::RefCell<Vec<String>>,
-}
-
-impl FsPromptWalker {
-    fn intern<'a>(&'a self, path: String) -> &'a str {
-        let mut buf = self.paths_buffer.borrow_mut();
-        buf.push(path);
-        // SAFETY: referência ao último elemento,
-        // Vec não realoca durante scan() pois borrow é exclusivo
-        buf.last().unwrap().as_str()
-    }
-}
-```
-
-Alternativa sem unsafe: usar `Arc<str>` em `PromptEntry`
-e remover o lifetime. Decisão de implementação para L3 —
-o contrato em L1 aceita ambas as abordagens.
 
 ---
 
 ## Restrições
 
 - Implementa `PromptProvider` — retorna `Result<AllPrompts<'a>, PromptScanError>`
-- Nunca silencia erros de leitura do diretório nucleo
+- `NucleoUnreadable` apenas para falha do directório raiz
+- Entradas individuais inacessíveis dentro de `prompts/` são
+  saltadas — não abortam a varredura
 - Exclui `[orphan_exceptions]` antes de retornar — V7 nunca
   vê prompts excluídos
 - Não contém nenhuma regra de violação
@@ -149,24 +155,28 @@ Então AllPrompts.len() == 3
 Dado arquivo prompts/readme.md em orphan_exceptions
 Quando scan() for chamado
 Então AllPrompts não contém "prompts/readme.md"
-— exceção excluída antes de retornar
 
 Dado arquivo em 00_nucleo/prompts/rules/v3.md
 Quando scan() for chamado
 Então AllPrompts contém PromptEntry {
-    relative_path: "prompts/rules/v3.md"
+    relative_path: "00_nucleo/prompts/rules/v3.md"
 }
-— path relativo ao nucleo_root, não ao projeto
 
-Dado 00_nucleo/ com permissão de leitura negada
+Dado 00_nucleo/ com permissão de leitura negada (directório raiz)
 Quando scan() for chamado
 Então retorna Err(PromptScanError::NucleoUnreadable)
-— nunca silencia erro de acesso ao nucleo
+— directório raiz inacessível → abortar
+
+Dado uma entrada individual dentro de prompts/ inacessível
+E o directório raiz 00_nucleo/prompts/ é legível
+Quando scan() for chamado
+Então a entrada é saltada silenciosamente
+E as demais entradas são retornadas normalmente
+— entrada individual inacessível não aborta a varredura
 
 Dado arquivo não-.md em 00_nucleo/prompts/ (ex: .toml)
 Quando scan() for chamado
 Então não aparece em AllPrompts
-— apenas .md são prompts
 
 Dado AllPrompts construído por scan()
 Quando passado como referência imutável ao pipeline rayon
@@ -181,3 +191,4 @@ após construção
 | Data | Motivo | Arquivos afetados |
 |------|--------|-------------------|
 | 2026-03-14 | Criação inicial (ADR-0006) | prompt_walker.rs |
+| 2026-03-20 | Propagação de erros granular: entradas individuais inacessíveis são saltadas em vez de abortar; apenas falha do directório raiz retorna Err; critério adicionado | prompt_walker.rs |

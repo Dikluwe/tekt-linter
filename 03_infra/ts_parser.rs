@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/typescript.md
-//! @prompt-hash e319d0cf
+//! @prompt-hash 92d3a5de
 //! @layer L3
 //! @updated 2026-03-20
 
@@ -704,17 +704,23 @@ fn process_export_statement<'a>(
         return;
     }
 
+    // export default <declaration> — nome pode ser None para exports anónimos
+    let is_default = (0..node.child_count())
+        .filter_map(|i| node.child(i))
+        .any(|c| c.kind() == "default");
+    let default_name: Option<&'a str> = if is_default { Some("default") } else { None };
+
     // export <declaration>
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
             match child.kind() {
-                "function_declaration" => {
-                    if let Some(sig) = extract_fn_sig(child, source) {
+                "function_declaration" | "function_expression" => {
+                    if let Some(sig) = extract_fn_sig(child, source, default_name) {
                         functions.push(sig);
                     }
                 }
-                "class_declaration" => {
-                    if let Some(sig) = extract_class_sig(child, source) {
+                "class_declaration" | "class" => {
+                    if let Some(sig) = extract_class_sig(child, source, default_name) {
                         types.push(sig);
                     }
                 }
@@ -756,8 +762,15 @@ fn find_child_by_kind<'tree>(node: Node<'tree>, kind: &str) -> Option<Node<'tree
     None
 }
 
-fn extract_fn_sig<'a>(node: Node, source: &'a [u8]) -> Option<FunctionSignature<'a>> {
-    let name = node.child_by_field_name("name").map(|n| node_text(n, source))?;
+fn extract_fn_sig<'a>(
+    node: Node,
+    source: &'a [u8],
+    name_fallback: Option<&'a str>,
+) -> Option<FunctionSignature<'a>> {
+    let name = node
+        .child_by_field_name("name")
+        .map(|n| node_text(n, source))
+        .or(name_fallback)?;
     let params = node
         .child_by_field_name("parameters")
         .map(|p| extract_param_types(p, source))
@@ -816,8 +829,15 @@ fn extract_param_types<'a>(params_node: Node, source: &'a [u8]) -> Vec<&'a str> 
     result
 }
 
-fn extract_class_sig<'a>(node: Node, source: &'a [u8]) -> Option<TypeSignature<'a>> {
-    let name = node.child_by_field_name("name").map(|n| node_text(n, source))?;
+fn extract_class_sig<'a>(
+    node: Node,
+    source: &'a [u8],
+    name_fallback: Option<&'a str>,
+) -> Option<TypeSignature<'a>> {
+    let name = node
+        .child_by_field_name("name")
+        .map(|n| node_text(n, source))
+        .or(name_fallback)?;
     let members = node
         .child_by_field_name("body")
         .map(|b| extract_class_members(b, source))
@@ -1636,5 +1656,34 @@ mod tests {
             // Parser descartado aqui — subdirs_buffer deve liberar toda a memória
         }
         // Contrato correcto — teste adicionado para prevenir regressão de Box::leak
+    }
+
+    // ── export default — interface pública ────────────────────────────────────
+
+    #[test]
+    fn export_default_named_function_captured_in_interface() {
+        let parser = make_parser();
+        let file = ts_file("export default function handler(req: Request): Response {}");
+        let parsed = parser.parse(&file).unwrap();
+        let names: Vec<_> = parsed.public_interface.functions.iter().map(|f| f.name).collect();
+        assert!(names.contains(&"handler"), "expected 'handler' in {:?}", names);
+    }
+
+    #[test]
+    fn export_default_anonymous_function_captured_with_default_name() {
+        let parser = make_parser();
+        let file = ts_file("export default function() {}");
+        let parsed = parser.parse(&file).unwrap();
+        let names: Vec<_> = parsed.public_interface.functions.iter().map(|f| f.name).collect();
+        assert!(names.contains(&"default"), "expected 'default' in {:?}", names);
+    }
+
+    #[test]
+    fn export_default_anonymous_class_captured_with_default_name() {
+        let parser = make_parser();
+        let file = ts_file("export default class {}");
+        let parsed = parser.parse(&file).unwrap();
+        let names: Vec<_> = parsed.public_interface.types.iter().map(|t| t.name).collect();
+        assert!(names.contains(&"default"), "expected 'default' in {:?}", names);
     }
 }

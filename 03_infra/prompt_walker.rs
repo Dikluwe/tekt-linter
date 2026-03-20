@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/prompt-walker.md
-//! @prompt-hash b618888c
+//! @prompt-hash 92f07c74
 //! @layer L3
-//! @updated 2026-03-15
+//! @updated 2026-03-20
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -82,10 +82,12 @@ impl PromptProvider for FsPromptWalker {
         let mut entries: HashSet<PromptEntry<'a>> = HashSet::new();
 
         for result in WalkDir::new(&prompts_dir) {
-            let entry = result.map_err(|e| PromptScanError::NucleoUnreadable {
-                path: prompts_dir.clone(),
-                source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
-            })?;
+            // Entrada inacessível individualmente — saltar, não abortar.
+            // Apenas a falha de leitura do directório raiz (tratada acima) justifica Err.
+            let entry = match result {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
 
             if !entry.file_type().is_file() {
                 continue;
@@ -215,5 +217,32 @@ mod tests {
         let all = walker.scan().unwrap();
         // AllPrompts não expõe mutação — acesso concorrente é seguro
         assert_eq!(all.len(), 1);
+    }
+
+    /// Entradas inacessíveis dentro de 00_nucleo/prompts/ devem ser saltadas,
+    /// não abortar o scan. Apenas falha de leitura do directório raiz aborta.
+    #[test]
+    #[cfg(unix)]
+    fn scan_continues_past_inaccessible_subdir() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = TempDir::new().unwrap();
+        let root = setup_nucleo(&tmp, &["00_nucleo/prompts/visible.md"]);
+
+        // Criar subdirectório inacessível (sem permissão de leitura)
+        let locked = root.join("00_nucleo/prompts/locked");
+        fs::create_dir_all(&locked).unwrap();
+        fs::write(locked.join("hidden.md"), b"# hidden").unwrap();
+        fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let walker = FsPromptWalker::new(root, HashSet::new());
+        let result = walker.scan();
+
+        // Restaurar permissões antes de qualquer panic para que TempDir possa limpar
+        let _ = fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755));
+
+        // O scan deve ter sucesso — entrada inacessível é saltada, não aborta
+        let all = result.unwrap();
+        assert!(all.contains("00_nucleo/prompts/visible.md"));
     }
 }

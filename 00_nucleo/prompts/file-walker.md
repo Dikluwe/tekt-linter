@@ -53,23 +53,55 @@ Toda exclusão vem de `config.excluded`.
 
 ### 2. Função `is_ignored`
 ```rust
-fn is_ignored(path: &Path, excluded: &HashMap<String, String>) -> bool {
-    path.components().any(|c| {
+fn is_ignored(
+    path: &Path,
+    root: &Path,
+    excluded_dirs: &HashSet<String>,
+    excluded_files: &HashSet<String>,
+) -> bool {
+    if path.components().any(|c| {
         let name = c.as_os_str().to_str().unwrap_or("");
-        excluded.values().any(|v| v == name)
-    })
+        excluded_dirs.contains(name)
+    }) {
+        return true;
+    }
+    if let Ok(relative) = path.strip_prefix(root) {
+        if let Some(rel_str) = relative.to_str() {
+            let normalized = rel_str.replace('\\', "/");
+            if excluded_files.contains(&normalized) {
+                return true;
+            }
+        }
+    }
+    false
 }
 ```
 
-`excluded` é `&config.excluded` — mapa de `chave → nome_do_diretório`
-declarado em `[excluded]` do toml. Nunca uma lista hardcoded.
+`excluded_dirs` é construído de `config.excluded` (valores) — mapa de
+`chave → nome_do_diretório` declarado em `[excluded]` do toml. Nunca
+uma lista hardcoded.
 
 **Nota:** `is_ignored` compara **componentes de path** (segmentos de
-directório), não o nome completo do ficheiro. Portanto `[excluded]`
-é adequado para **directórios** como `target`, `.git`, `node_modules`.
-Não deve ser usado para excluir ficheiros individuais como `lib.rs`
-— isso excluiria qualquer ficheiro com esse nome em qualquer
-subdirectório do projecto.
+directório) para `excluded_dirs`. Portanto `[excluded]` é adequado
+para **directórios** como `target`, `.git`, `node_modules`. Não deve
+ser usado para excluir ficheiros individuais como `lib.rs` — isso
+excluiria qualquer ficheiro com esse nome em qualquer subdirectório
+do projecto.
+
+### 7. Exclusão de ficheiros individuais — `[excluded_files]`
+
+Distinto de `[excluded]` que opera sobre nomes de directório,
+`[excluded_files]` exclui ficheiros por path relativo à raiz:
+
+```toml
+[excluded_files]
+crate_root = "lib.rs"
+```
+
+`is_ignored` verifica primeiro os directórios (comportamento
+existente) e depois os ficheiros individuais via `strip_prefix`
+contra a raiz do projecto. Paths são normalizados (`\\` → `/`)
+para comparação cross-platform.
 
 ### 3. Leitura segura com propagação de erro
 ```rust
@@ -283,6 +315,22 @@ Dado arquivo com extensão .toml ou .md
 Quando files() for consumido
 Então não aparece no iterator
 — extensão não mapeada é filtrada silenciosamente
+
+Dado excluded_files = { "crate_root": "lib.rs" }
+E arquivo lib.rs na raiz do projecto
+Quando files() for consumido
+Então lib.rs não aparece no iterator
+
+Dado excluded_files = { "crate_root": "lib.rs" }
+E arquivo 01_core/lib.rs (subdirectório)
+Quando files() for consumido
+Então 01_core/lib.rs aparece no iterator com Layer::L1
+— excluded_files é por path relativo exacto, não por nome
+
+Dado excluded_files vazio
+E arquivo lib.rs na raiz
+Quando files() for consumido
+Então lib.rs aparece com Layer::Unknown (sem excluded_files, é alien)
 ```
 
 ---
@@ -296,3 +344,4 @@ Então não aparece no iterator
 | 2026-03-14 | ADR-0004: SourceError, Result, iterator lazy, SourceFile não-Clone | walker.rs |
 | 2026-03-15 | ADR-0006: is_ignored usa config.excluded (zero hardcode), Layer::Unknown não descartado, language_for_path documentado, critérios bar.rs/foo_test.rs/Layer::L2 restaurados | walker.rs |
 | 2026-03-20 | Padrões de teste adjacente TypeScript adicionados (.test.ts, .spec.ts, .test.tsx, .spec.tsx); check_adjacent_test refactored por linguagem via extensão do ficheiro; nota sobre config.excluded ser para directórios, não ficheiros individuais; critérios TypeScript adicionados | walker.rs |
+| 2026-03-20 | ADR-0010: [excluded_files] para exclusão por path relativo; is_ignored actualizado com dois conjuntos (excluded_dirs + excluded_files); critérios adicionados | walker.rs |

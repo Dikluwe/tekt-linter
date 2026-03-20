@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/sarif-formatter.md
-//! @prompt-hash 68e6123d
+//! @prompt-hash 8ce22799
 //! @layer L2
 //! @updated 2026-03-20
 
@@ -247,6 +247,19 @@ fn sarif_rule(
 
 // ── Exit code logic ───────────────────────────────────────────────────────────
 
+/// Ordena violações de forma determinística: Fatal → Error → Warning,
+/// depois por path crescente, depois por linha crescente.
+/// Elimina não-determinismo do pipeline paralelo rayon.
+pub fn sort_violations(violations: &mut Vec<Violation<'_>>) {
+    violations.sort_by(|a, b| {
+        a.level
+            .cmp(&b.level)
+            .reverse()
+            .then_with(|| a.location.path.cmp(&b.location.path))
+            .then_with(|| a.location.line.cmp(&b.location.line))
+    });
+}
+
 pub fn should_fail(violations: &[Violation<'_>], fail_on: &FailLevel) -> bool {
     violations.iter().any(|v| {
         if v.level == ViolationLevel::Fatal {
@@ -277,6 +290,38 @@ mod tests {
                 column: 0,
             },
         }
+    }
+
+    fn make_violation_at(
+        rule_id: &'static str,
+        level: ViolationLevel,
+        path: &'static str,
+        line: usize,
+    ) -> Violation<'static> {
+        Violation {
+            rule_id: rule_id.to_string(),
+            level,
+            message: "test".to_string(),
+            location: Location { path: Cow::Borrowed(Path::new(path)), line, column: 0 },
+        }
+    }
+
+    /// sort_violations: Fatal antes de Error antes de Warning,
+    /// desempate por path, desempate por linha.
+    #[test]
+    fn violations_sorted_fatal_first_then_path_then_line() {
+        let mut v = vec![
+            make_violation_at("V3", ViolationLevel::Warning, "b.rs", 1),
+            make_violation_at("V0", ViolationLevel::Fatal,   "a.rs", 5),
+            make_violation_at("V2", ViolationLevel::Error,   "a.rs", 2),
+            make_violation_at("V1", ViolationLevel::Warning, "a.rs", 1),
+        ];
+        sort_violations(&mut v);
+        assert_eq!(v[0].level, ViolationLevel::Fatal);
+        assert_eq!(v[1].level, ViolationLevel::Error);
+        assert_eq!(v[2].level, ViolationLevel::Warning);
+        assert_eq!(v[2].location.line, 1);   // a.rs:1 antes de b.rs:1
+        assert_eq!(v[3].location.path.as_ref(), Path::new("b.rs"));
     }
 
     #[test]

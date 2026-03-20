@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 96b78bc5
+//! @prompt-hash a615858b
 //! @layer L3
-//! @updated 2026-03-13
+//! @updated 2026-03-20
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -49,6 +49,11 @@ pub struct CrystallineConfig {
     /// Exemplo: { "core" = "01_core", "shell" = "02_shell" }
     #[serde(default)]
     pub py_aliases: HashMap<String, String>,
+    /// Ficheiros individuais excluídos por path relativo à raiz.
+    /// Distinto de `excluded` que opera sobre nomes de directório.
+    /// Exemplo: { "crate_root" = "lib.rs" }
+    #[serde(default)]
+    pub excluded_files: HashMap<String, String>,
 }
 
 impl CrystallineConfig {
@@ -95,7 +100,6 @@ impl Default for CrystallineConfig {
         excluded.insert("vcs".to_string(), ".git".to_string());
         excluded.insert("deps".to_string(), "node_modules".to_string());
         excluded.insert("cargo".to_string(), ".cargo".to_string());
-        excluded.insert("lib_root".to_string(), "lib.rs".to_string());
 
         let mut l1_ports = HashMap::new();
         l1_ports.insert("entities".to_string(), "01_core/entities".to_string());
@@ -111,6 +115,7 @@ impl Default for CrystallineConfig {
             wiring_exceptions: WiringExceptionsConfig::default(),
             ts_aliases: HashMap::new(),
             py_aliases: HashMap::new(),
+            excluded_files: HashMap::new(),
         }
     }
 }
@@ -141,5 +146,11 @@ mod tests {
     fn unknown_module_resolves_to_unknown() {
         let config = CrystallineConfig::default();
         assert_eq!(config.layer_for_module("reqwest"), Layer::Unknown);
+    }
+
+    #[test]
+    fn excluded_files_defaults_to_empty() {
+        let config = CrystallineConfig::default();
+        assert!(config.excluded_files.is_empty());
     }
 }

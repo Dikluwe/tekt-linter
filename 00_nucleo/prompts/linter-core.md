@@ -2,7 +2,7 @@
 
 **Camada**: L1 → L4 (sistema completo)
 **Criado em**: 2025-03-13
-**Revisado em**: 2026-03-19 (ADR-0009: Python, ImportKind semântico, V4 multi-linguagem)
+**Revisado em**: 2026-03-20 (ADR-0010: [excluded_files]; ordenação de violations documentada)
 **Repositório**: https://github.com/Dikluwe/tekt-linter
 
 ---
@@ -40,6 +40,11 @@ Adicionar qualquer linguagem futura requer apenas criar
 `parsers/<lang>.md` e `03_infra/<lang>_parser.rs` — zero toques
 em prompts universais.
 
+**ADR-0010:** `[excluded_files]` para exclusão de ficheiros
+individuais por path relativo à raiz. Distinto de `[excluded]`
+que opera sobre directórios. `lib.rs` na raiz excluído via
+`[excluded_files]` com `@layer L0`.
+
 ---
 
 ## Decisões Arquiteturais
@@ -66,6 +71,14 @@ em prompts universais.
   lifetimes. `Token.symbol: Cow<'a, str>`,
   `Location.path: Cow<'a, Path>`.
 - **Saída**: SARIF 2.1.0 primário, `--format text` para terminal.
+- **Ordenação de violations**: após o pipeline Map-Reduce e as
+  verificações globais (V7, V8, V11), violations são ordenadas
+  em L4 antes de serem passadas ao formatter:
+  1. Por nível: Fatal → Error → Warning
+  2. Dentro do mesmo nível: por path (lexicográfico)
+  3. Dentro do mesmo path: por linha ascendente
+  Esta ordenação garante output determinístico entre runs —
+  rayon não garante ordem de execução entre threads.
 - **Headers canónicos**:
 ```rust
 //! Crystalline Lineage          ← Rust
@@ -106,7 +119,8 @@ em prompts universais.
   `normalize` + `resolve_file_layer`.
 - **L4**: instancia e injeta todos os componentes. Selecciona
   o parser correcto por `file.language`. Orquestra pipeline
-  Map-Reduce via rayon. Zero lógica de negócio.
+  Map-Reduce via rayon. Ordena violations após reduce.
+  Zero lógica de negócio.
 
 ---
 
@@ -215,6 +229,13 @@ build = "target"
 deps  = "node_modules"
 vcs   = ".git"
 cargo = ".cargo"
+
+[excluded_files]
+# Ficheiros individuais excluídos por path relativo à raiz.
+# Distinto de [excluded] que opera sobre nomes de directório.
+# lib.rs é o ponto de reexport da crate — fora da topologia de
+# camadas por razões estruturais do Rust. Ver ADR-0010.
+crate_root = "lib.rs"
 
 [module_layers]
 entities  = "L1"
@@ -361,6 +382,16 @@ let (mut all_violations, project_index) = walker
 if enabled.v7  { all_violations.extend(check_orphans(&project_index, &all_prompts)); }
 if enabled.v8  { all_violations.extend(check_aliens(&project_index)); }
 if enabled.v11 { all_violations.extend(check_dangling_contracts(&project_index)); }
+
+// Ordenação para output determinístico (ADR ausente — decisão de L4)
+// Rayon não garante ordem — ordenar após reduce, antes do formatter.
+// Fatal primeiro, depois Error, depois Warning.
+// Dentro do mesmo nível: por path, depois por linha.
+all_violations.sort_by(|a, b| {
+    a.level.cmp(&b.level).reverse()
+        .then_with(|| a.location.path.cmp(&b.location.path))
+        .then_with(|| a.location.line.cmp(&b.location.line))
+});
 ```
 
 **Garantias de segurança:**
@@ -371,21 +402,33 @@ if enabled.v11 { all_violations.extend(check_dangling_contracts(&project_index))
 - `ProjectIndex::merge` é associativa e comutativa — ordem de
   fusão não afeta resultado
 - `AllPrompts` é imutável durante todo o pipeline paralelo
-- `WiringConfig` é imutável após construção em L4 — partilhado
-  por referência nas threads via `par_bridge`
+- `WiringConfig` é imutável após construção em L4
+- Ordenação final é determinística e independente da ordem
+  de execução do rayon
+
+---
+
+## Novo componente L3: PromptWalker
+
+Varre `00_nucleo/prompts/` sequencialmente antes do pipeline
+paralelo e constrói `AllPrompts`. Implementa trait
+`PromptProvider` declarada em L1. Exclui entradas de
+`[orphan_exceptions]` antes de retornar. Entradas individuais
+inacessíveis dentro de `prompts/` são saltadas — apenas falha
+do directório raiz propaga como `Err`.
 
 ---
 
 ## Conversores de erro no wiring (L4)
 ```rust
-fn source_error_to_violation(err: SourceError) -> Violation<'static> {
+fn source_error_to_violation(err: &SourceError) -> Violation<'static> {
     match err {
         SourceError::Unreadable { path, reason } => Violation {
             rule_id: "V0".to_string(),
             level: ViolationLevel::Fatal,
             message: format!("Arquivo ilegível: {reason}"),
             location: Location {
-                path: Cow::Owned(path),
+                path: Cow::Owned(path.clone()),
                 line: 0,
                 column: 0,
             },
@@ -399,31 +442,19 @@ fn parse_error_to_violation(err: ParseError) -> Violation<'static> {
             rule_id: "PARSE".to_string(),
             level: ViolationLevel::Error,
             message: format!("Erro de sintaxe: {message}"),
-            location: Location {
-                path: Cow::Owned(path),
-                line,
-                column,
-            },
+            location: Location { path: Cow::Owned(path), line, column },
         },
         ParseError::UnsupportedLanguage { path, language } => Violation {
             rule_id: "PARSE".to_string(),
             level: ViolationLevel::Warning,
             message: format!("Linguagem não suportada: {language:?}"),
-            location: Location {
-                path: Cow::Owned(path),
-                line: 0,
-                column: 0,
-            },
+            location: Location { path: Cow::Owned(path), line: 0, column: 0 },
         },
         ParseError::EmptySource { path } => Violation {
             rule_id: "PARSE".to_string(),
             level: ViolationLevel::Warning,
             message: "Arquivo vazio ignorado".to_string(),
-            location: Location {
-                path: Cow::Owned(path),
-                line: 0,
-                column: 0,
-            },
+            location: Location { path: Cow::Owned(path), line: 0, column: 0 },
         },
     }
 }
@@ -443,15 +474,6 @@ Nenhuma condição  → exit 0
 
 ---
 
-## Novo componente L3: PromptWalker
-
-Varre `00_nucleo/prompts/` sequencialmente antes do pipeline
-paralelo e constrói `AllPrompts`. Implementa trait
-`PromptProvider` declarada em L1. Exclui entradas de
-`[orphan_exceptions]` antes de retornar.
-
----
-
 ## Estrutura de arquivos
 ```
 crystalline-lint/
@@ -466,7 +488,7 @@ crystalline-lint/
 │   │   │   ├── _template.md
 │   │   │   ├── rust.md
 │   │   │   ├── typescript.md
-│   │   │   └── python.md              ← novo
+│   │   │   └── python.md
 │   │   ├── contracts/
 │   │   │   ├── file-provider.md
 │   │   │   ├── language-parser.md
@@ -478,7 +500,7 @@ crystalline-lint/
 │   │   │   ├── prompt-header.md      (V1)
 │   │   │   ├── test-file.md          (V2)
 │   │   │   ├── forbidden-import.md   (V3)
-│   │   │   ├── impure-core.md        (V4) ← revisado (multi-linguagem)
+│   │   │   ├── impure-core.md        (V4)
 │   │   │   ├── prompt-drift.md       (V5)
 │   │   │   ├── prompt-stale.md       (V6)
 │   │   │   ├── orphan-prompt.md      (V7)
@@ -499,7 +521,8 @@ crystalline-lint/
 │       ├── 0006-topological-closure.md
 │       ├── 0007-fechamento-comportamental.md
 │       ├── 0008-estrategia-de-distribuicao.md
-│       └── 0009-suporte-typescript.md
+│       ├── 0009-suporte-typescript-python.md
+│       └── 0010-exclusao-ficheiros-individuais.md
 │
 ├── 01_core/
 │   ├── entities/
@@ -538,20 +561,20 @@ crystalline-lint/
 │   ├── walker.rs
 │   ├── rs_parser.rs                  ← @prompt → parsers/rust.md
 │   ├── ts_parser.rs                  ← @prompt → parsers/typescript.md
-│   ├── py_parser.rs                  ← novo (ADR-0009)
+│   ├── py_parser.rs                  ← @prompt → parsers/python.md
 │   ├── prompt_walker.rs
 │   ├── prompt_reader.rs
 │   ├── prompt_snapshot_reader.rs
 │   ├── hash_writer.rs
 │   ├── snapshot_writer.rs
-│   └── config.rs                     ← ts_aliases, py_aliases
+│   └── config.rs                     ← ts_aliases, py_aliases, excluded_files
 │
 ├── 04_wiring/
-│   └── main.rs                       ← PyParser instanciado e despachado
+│   └── main.rs                       ← ordenação de violations após reduce
 │
-├── lib.rs
-├── Cargo.toml                        ← tree-sitter-typescript, tree-sitter-python
-└── crystalline.toml                  ← [py_aliases], python em [languages]
+├── lib.rs                            ← @layer L0, excluído via [excluded_files]
+├── Cargo.toml
+└── crystalline.toml
 ```
 
 ---
@@ -561,6 +584,12 @@ crystalline-lint/
 Dado projeto sem nenhuma violação
 Quando crystalline-lint rodar
 Então exit 0
+
+Dado projeto com violations de níveis mistos
+Quando crystalline-lint rodar com --format text
+Então violations aparecem na ordem: Fatal, Error, Warning
+E dentro do mesmo nível: ordem por path e linha
+E a ordem é idêntica entre runs sucessivos no mesmo projecto
 
 Dado arquivo .rs L1 sem @prompt header
 Quando crystalline-lint rodar
@@ -598,9 +627,13 @@ Dado arquivo ilegível
 Quando crystalline-lint rodar
 Então exit 1 + V0 Fatal
 
-Dado arquivo fora de [layers] e [excluded]
+Dado arquivo fora de [layers] e [excluded] e [excluded_files]
 Quando crystalline-lint rodar
 Então exit 1 + V8 Fatal
+
+Dado lib.rs na raiz em [excluded_files]
+Quando crystalline-lint rodar
+Então lib.rs não dispara V8
 
 Dado trait sem impl em L1/contracts/
 Quando crystalline-lint rodar
@@ -633,5 +666,7 @@ Então exit 0 — o linter passa em sua própria validação
 | 2026-03-14 | ADR-0006: Map-Reduce, V7–V9, ProjectIndex | linter-core.md, main.rs |
 | 2026-03-15 | collect_walker_results(), from_parsed(), SourceError.path() | main.rs |
 | 2026-03-16 | ADR-0007: V10–V12, WiringConfig, check_dangling_contracts | linter-core.md, main.rs |
-| 2026-03-18 | ADR-0009: TsParser, parsers/, ImportKind semântico, V4 multi-linguagem | linter-core.md, main.rs |
-| 2026-03-19 | ADR-0009 Python: PyParser no pipeline, [py_aliases], python em [languages], tree-sitter-python, critérios Python adicionados | linter-core.md, main.rs, crystalline.toml, Cargo.toml |
+| 2026-03-18 | ADR-0009: TsParser, PyParser, parsers/, ImportKind semântico, V4 multi-linguagem | linter-core.md, main.rs |
+| 2026-03-19 | ADR-0009 Python: PyParser no pipeline, [py_aliases], python em [languages] | linter-core.md, main.rs, crystalline.toml, Cargo.toml |
+| 2026-03-20 | ADR-0010: [excluded_files] no crystalline.toml; lib.rs excluído por path relativo; lib.rs na estrutura de ficheiros com nota @layer L0; critério adicionado | linter-core.md, crystalline.toml, config.rs |
+| 2026-03-20 | Ordenação de violations após reduce: Fatal→Error→Warning, por path, por linha; sort_by adicionado ao pipeline; critério de determinismo adicionado; nota no PromptWalker sobre entradas inacessíveis | linter-core.md, main.rs |

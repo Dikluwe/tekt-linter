@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/fix-hashes.md
-//! @prompt-hash 4ced5c2e
+//! @prompt-hash 929d9c47
 //! @layer L2
-//! @updated 2026-03-14
+//! @updated 2026-03-20
 
 use std::path::PathBuf;
 
@@ -27,8 +27,12 @@ pub trait SnapshotRewriter {
 
 pub struct SnapshotEntry {
     pub source_path: PathBuf,
+    /// Empty when unreadable_reason is set.
     pub prompt_path: String,
+    /// Empty when unreadable_reason is set.
     pub new_snapshot: String,
+    /// Set when the file has no parsed record or no prompt header.
+    pub unreadable_reason: Option<String>,
 }
 
 pub struct SnapshotResult {
@@ -41,6 +45,8 @@ pub struct SnapshotResult {
 // ── Core functions ────────────────────────────────────────────────────────────
 
 /// Build snapshot entries from V6 violations + the corresponding ParsedFiles.
+/// Entries where the ParsedFile or PromptHeader cannot be found are included with
+/// `unreadable_reason` set, rather than silently discarded.
 pub fn plan<'a>(
     violations: &[Violation<'a>],
     parsed_files: &[ParsedFile<'a>],
@@ -49,15 +55,31 @@ pub fn plan<'a>(
     violations
         .iter()
         .filter(|v| v.rule_id == "V6")
-        .filter_map(|v| {
-            let parsed = parsed_files.iter().find(|p| p.path == v.location.path.as_ref())?;
-            let header = parsed.prompt_header.as_ref()?;
+        .map(|v| {
+            let Some(parsed) = parsed_files.iter().find(|p| p.path == v.location.path.as_ref())
+            else {
+                return SnapshotEntry {
+                    source_path: v.location.path.to_path_buf(),
+                    prompt_path: String::new(),
+                    new_snapshot: String::new(),
+                    unreadable_reason: Some("no parsed file found for violation path".to_string()),
+                };
+            };
+            let Some(header) = parsed.prompt_header.as_ref() else {
+                return SnapshotEntry {
+                    source_path: v.location.path.to_path_buf(),
+                    prompt_path: String::new(),
+                    new_snapshot: String::new(),
+                    unreadable_reason: Some("file has no @prompt header".to_string()),
+                };
+            };
             let new_snapshot = rewriter.serialize_snapshot(&parsed.public_interface);
-            Some(SnapshotEntry {
+            SnapshotEntry {
                 source_path: v.location.path.to_path_buf(),
                 prompt_path: header.prompt_path.to_string(),
                 new_snapshot,
-            })
+                unreadable_reason: None,
+            }
         })
         .collect()
 }
@@ -70,22 +92,26 @@ pub fn execute(
 ) -> Vec<SnapshotResult> {
     entries
         .iter()
-        .map(|entry| {
+        .filter_map(|entry| {
+            // Entradas com unreadable_reason não podem ser actualizadas — saltar
+            if entry.unreadable_reason.is_some() {
+                return None;
+            }
             if dry_run {
-                return SnapshotResult {
+                return Some(SnapshotResult {
                     source_path: entry.source_path.clone(),
                     prompt_path: entry.prompt_path.clone(),
                     success: true,
                     error: None,
-                };
+                });
             }
             let outcome = rewriter.write_snapshot(&entry.prompt_path, &entry.new_snapshot);
-            SnapshotResult {
+            Some(SnapshotResult {
                 source_path: entry.source_path.clone(),
                 prompt_path: entry.prompt_path.clone(),
                 success: outcome.is_ok(),
                 error: outcome.err(),
-            }
+            })
         })
         .collect()
 }
@@ -93,22 +119,47 @@ pub fn execute(
 // ── Formatters ────────────────────────────────────────────────────────────────
 
 pub fn format_plan(entries: &[SnapshotEntry]) -> String {
+    let actionable: Vec<_> = entries.iter().filter(|e| e.unreadable_reason.is_none()).collect();
+    let unreadable: Vec<_> = entries.iter().filter(|e| e.unreadable_reason.is_some()).collect();
+
     if entries.is_empty() {
         return format!("{}\n", "Nothing to update".green().bold());
     }
-    let mut out = format!(
-        "{} {} {}:\n",
-        "Would update snapshot in".cyan().bold(),
-        entries.len(),
-        if entries.len() == 1 { "file" } else { "files" }
-    );
-    for entry in entries {
+
+    let mut out = String::new();
+
+    if !actionable.is_empty() {
         out.push_str(&format!(
-            "  {:<45} → {}\n",
-            entry.source_path.display(),
-            entry.prompt_path
+            "{} {} {}:\n",
+            "Would update snapshot in".cyan().bold(),
+            actionable.len(),
+            if actionable.len() == 1 { "file" } else { "files" }
         ));
+        for entry in &actionable {
+            out.push_str(&format!(
+                "  {:<45} → {}\n",
+                entry.source_path.display(),
+                entry.prompt_path
+            ));
+        }
     }
+
+    if !unreadable.is_empty() {
+        out.push('\n');
+        out.push_str(&format!(
+            "{} {} (no parsed record or header):\n",
+            "Skipped".yellow().bold(),
+            unreadable.len()
+        ));
+        for entry in unreadable {
+            out.push_str(&format!(
+                "  {} — {}\n",
+                entry.source_path.display(),
+                entry.unreadable_reason.as_deref().unwrap_or("unknown"),
+            ));
+        }
+    }
+
     out
 }
 
@@ -300,4 +351,15 @@ mod tests {
         assert!(out.contains("0 stale warnings remaining"));
     }
 
+    /// Quando não existe ParsedFile correspondente a uma violação V6, a entrada
+    /// deve ser incluída com unreadable_reason definido — não silenciosamente descartada.
+    #[test]
+    fn plan_reports_missing_parsed_file_instead_of_silencing() {
+        let rewriter = MockRewriter::new(Ok(()));
+        let violations = vec![v6_violation("01_core/ghost.rs")];
+        // Nenhum ParsedFile para o path da violação
+        let entries = plan(&violations, &[], &rewriter);
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].unreadable_reason.is_some());
+    }
 }

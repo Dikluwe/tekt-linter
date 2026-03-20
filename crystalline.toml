@@ -21,7 +21,13 @@ build    = "target"
 deps     = "node_modules"
 vcs      = ".git"
 cargo    = ".cargo"
-lib_root = "lib.rs"
+
+[excluded_files]
+# Ficheiros individuais excluídos por path relativo à raiz do projecto.
+# Distinto de [excluded] que opera sobre nomes de directório.
+# lib.rs é o ponto de reexport da crate — fora da topologia de camadas
+# por razões estruturais do Rust. Ver ADR-0010.
+crate_root = "lib.rs"
 
 # Rust module name → layer (used by LayerResolver for crate:: imports)
 [module_layers]

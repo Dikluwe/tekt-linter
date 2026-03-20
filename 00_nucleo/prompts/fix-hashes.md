@@ -2,12 +2,12 @@
 
 **Camada**: L2 + L3 (Shell + Infra)
 **Criado em**: 2025-03-13
-**Revisado em**: 2025-03-13
+**Revisado em**: 2026-03-20 (plan() reporta falhas de leitura em vez de silenciar)
 **Arquivos gerados**:
   - 02_shell/fix_hashes.rs
-  - 02_shell/update_snapshot.rs        ← novo (V6)
+  - 02_shell/update_snapshot.rs
   - 03_infra/hash_writer.rs + test
-  - 03_infra/snapshot_writer.rs + test ← novo (V6)
+  - 03_infra/snapshot_writer.rs + test
 
 ---
 
@@ -40,11 +40,12 @@ crystalline-lint --fix-hashes [--dry-run] [PATH]
 1. Executa pipeline normal de análise
 2. Filtra violations com `rule_id == "V5"`
 3. Para cada violation V5:
-   - Lê `@prompt` path do header do arquivo fonte
-   - Calcula SHA256[0..8] do prompt referenciado
-   - Substitui `//! @prompt-hash <old>` por `//! @prompt-hash <new>`
+   - Tenta ler `@prompt` path e `@prompt-hash` actual do header
+   - Se leitura falha → registar como não-corrigível com razão
+   - Se leitura ok → calcular SHA256[0..8] do prompt referenciado
+   - Reescreve `//! @prompt-hash <old>` por `//! @prompt-hash <new>`
    - Reescreve arquivo atomicamente (write to temp + rename)
-4. Reporta quantos arquivos foram corrigidos
+4. Reporta ficheiros corrigidos, não-corrigíveis e razões
 5. Re-executa análise para confirmar zero V5
 
 ---
@@ -68,21 +69,71 @@ crystalline-lint --update-snapshot [--dry-run] [PATH]
 
 ---
 
-## Contrato L2 — SnapshotWriter (novo)
+## Estrutura de dados — `FixEntry`
+
 ```rust
-/// L2-defined contract para leitura e escrita de snapshots em prompts.
-/// L3 provê a implementação concreta.
-/// L4 cria o adapter — L2 nunca importa L3 diretamente.
+pub struct FixEntry {
+    pub source_path: PathBuf,
+    /// Hash actualmente escrito no header do ficheiro.
+    /// Vazio se unreadable_reason está preenchido.
+    pub old_hash: String,
+    /// Real hash do ficheiro de prompt L0.
+    /// None se o ficheiro de prompt não existe (não corrigível).
+    pub new_hash: Option<String>,
+    /// None se o header foi lido com sucesso.
+    /// Some(reason) se read_header falhou — entrada não corrigível
+    /// com razão explícita. Nunca descartar silenciosamente.
+    pub unreadable_reason: Option<String>,
+}
+```
+
+---
+
+## Contrato L2 — `plan()` em `fix_hashes`
+
+`plan()` não descarta entradas silenciosamente. Se `read_header`
+retorna `None` para um ficheiro (header malformado, ficheiro
+modificado entre análise e execução, permissões), a entrada é
+incluída com `unreadable_reason` preenchido.
+
+```rust
+pub fn plan(violations: &[Violation<'_>], rewriter: &dyn HashRewriter) -> Vec<FixEntry> {
+    violations
+        .iter()
+        .filter(|v| v.rule_id == "V5")
+        .map(|v| {
+            match rewriter.read_header(&v.location.path) {
+                None => FixEntry {
+                    source_path: v.location.path.to_path_buf(),
+                    old_hash: String::new(),
+                    new_hash: None,
+                    unreadable_reason: Some(format!(
+                        "não foi possível ler o header de '{}'",
+                        v.location.path.display()
+                    )),
+                },
+                Some((prompt_path, old_hash)) => FixEntry {
+                    source_path: v.location.path.to_path_buf(),
+                    old_hash,
+                    new_hash: rewriter.compute_hash(&prompt_path),
+                    unreadable_reason: None,
+                },
+            }
+        })
+        .collect()
+}
+```
+
+O mesmo princípio aplica-se a `update_snapshot::plan` — falhas
+de leitura são reportadas, não descartadas.
+
+---
+
+## Contrato L2 — `SnapshotRewriter` (novo)
+```rust
 pub trait SnapshotWriter {
-    /// Lê a interface pública atual do arquivo fonte.
-    /// Retorna None se o arquivo não pode ser lido.
     fn read_interface(&self, source_path: &Path) -> Option<PublicInterface>;
-
-    /// Serializa PublicInterface para JSON compacto.
     fn serialize(&self, interface: &PublicInterface) -> String;
-
-    /// Reescreve atomicamente a seção Interface Snapshot no prompt.
-    /// Cria a seção se não existir. Atualiza @updated no header.
     fn write_snapshot(
         &self,
         prompt_path: &str,
@@ -99,27 +150,19 @@ pub trait SnapshotWriter {
 Would fix 3 files:
   02_shell/cli.rs           00000000 → a3f8c2d1
   03_infra/walker.rs        00000000 → b9e4f7a2
-  01_core/entities/layer.rs 00000000 → c1d2e3f4
+
+Cannot fix 1 file (header unreadable):
+  01_core/entities/layer.rs  — não foi possível ler o header
 
 # --fix-hashes
-Fixed 3 files:
+Fixed 2 files:
   02_shell/cli.rs           → a3f8c2d1
   03_infra/walker.rs        → b9e4f7a2
-  01_core/entities/layer.rs → c1d2e3f4
+
+Cannot fix 1 file (header unreadable):
+  01_core/entities/layer.rs  — não foi possível ler o header
+
 Re-running analysis... ✅ 0 drift warnings remaining
-
-# --update-snapshot --dry-run
-Would update 2 prompts:
-  00_nucleo/prompts/rules/forbidden-import.md
-    +fn check_v2, -fn validate
-  00_nucleo/prompts/contracts/file-provider.md
-    +struct SourceFile.layer
-
-# --update-snapshot
-Updated 2 prompts:
-  00_nucleo/prompts/rules/forbidden-import.md
-  00_nucleo/prompts/contracts/file-provider.md
-Re-running analysis... ✅ 0 stale warnings remaining
 ```
 
 ---
@@ -129,10 +172,9 @@ Re-running analysis... ✅ 0 stale warnings remaining
 - L3 usa escrita atômica em ambos os comandos — temp file + rename
 - L1 não é modificado por nenhum dos comandos
 - Se `--dry-run`, nenhum arquivo é tocado
-- Se prompt referenciado não existe, arquivo é reportado como
-  não corrigível e não é modificado
-- `--fix-hashes` e `--update-snapshot` não podem rodar juntos —
-  cada um valida e reporta independentemente
+- `plan()` nunca descarta entradas com `filter_map` — usa `map`
+  e captura falhas em `unreadable_reason`
+- `--fix-hashes` e `--update-snapshot` não podem rodar juntos
 
 ---
 
@@ -144,29 +186,26 @@ Quando --fix-hashes rodar
 Então header é atualizado com SHA256[0..8] real
 E re-análise retorna zero V5
 
-Dado arquivo com interface pública alterada desde o snapshot
-Quando --update-snapshot rodar
-Então seção Interface Snapshot no prompt é atualizada
-E @updated no header do prompt é atualizado para hoje
-E re-análise retorna zero V6
+Dado violation V5 para ficheiro cujo header não pode ser lido
+Quando plan() for chamado
+Então entries.len() == 1
+E entries[0].unreadable_reason == Some(...)
+— falha reportada, não descartada silenciosamente
+
+Dado violation V5 para ficheiro com header válido
+Quando plan() for chamado com MockRewriter que retorna None de read_header
+Então entries.len() == 1
+E entries[0].unreadable_reason é Some com mensagem explicativa
 
 Dado --fix-hashes --dry-run
 Quando rodar
 Então nenhum arquivo é modificado
 E output mostra mudanças que seriam feitas
-
-Dado --update-snapshot --dry-run
-Quando rodar
-Então nenhum arquivo é modificado
-E output mostra delta de interface que seria registrado
+E output mostra entradas não-corrigíveis com razão
 
 Dado falha de escrita no meio do processo
 Quando qualquer comando de mutação rodar
 Então arquivo original permanece intacto (escrita atômica)
-
-Dado prompt sem seção Interface Snapshot
-Quando --update-snapshot rodar
-Então seção é criada no final do prompt, antes do Histórico
 
 Dado projeto sem nenhum V5
 Quando --fix-hashes rodar
@@ -184,7 +223,5 @@ Então output: "Nothing to update"
 | Data | Motivo | Arquivos afetados |
 |------|--------|-------------------|
 | 2025-03-13 | Criação inicial | fix_hashes.rs, hash_writer.rs |
-| 2025-03-13 | V6: adicionado --update-snapshot, SnapshotWriter, update_snapshot.rs, snapshot_writer.rs | fix_hashes.md, update_snapshot.rs, snapshot_writer.rs |
-```
-
----
+| 2025-03-13 | V6: adicionado --update-snapshot, SnapshotWriter, update_snapshot.rs, snapshot_writer.rs | fix_hashes.md |
+| 2026-03-20 | plan() corrigido: filter_map → map com unreadable_reason; falhas de read_header reportadas em vez de silenciadas; FixEntry ganha campo unreadable_reason; critérios adicionados | fix_hashes.rs, update_snapshot.rs |

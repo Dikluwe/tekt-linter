@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
 //! @prompt-hash 44f1f602
-//! @layer L1
-//! @updated 2026-03-13
+//! @layer L0
+//! @updated 2026-03-20
 
 // ── L1: Core ─────────────────────────────────────────────────────────────────
 #[path = "01_core/entities/mod.rs"]

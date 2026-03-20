@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/file-walker.md
-//! @prompt-hash c0f7a84e
+//! @prompt-hash b60b4c20
 //! @layer L3
 //! @updated 2026-03-20
 
@@ -27,21 +27,28 @@ impl FileWalker {
 impl FileProvider for FileWalker {
     fn files(&self) -> impl Iterator<Item = Result<SourceFile, SourceError>> {
         let root = self.root.clone();
-        // Build excluded set once (O(1) lookup) before the iterator.
-        // Separate from config clone so filter_entry can capture it by move.
-        let excluded: HashSet<String> = self.config.excluded.values().cloned().collect();
+        // Build two sets once (O(1) lookup) before the iterator.
+        // Separate from config clone so filter_entry can capture them by move.
+        let excluded_dirs: HashSet<String> =
+            self.config.excluded.values().cloned().collect();
+        let excluded_files: HashSet<String> =
+            self.config.excluded_files.values().cloned().collect();
         let config = self.config.clone();
+        // root is moved into filter_entry; root2 is moved into map.
+        let root2 = root.clone();
 
         WalkDir::new(&root)
             .into_iter()
-            .filter_entry(move |e| !is_ignored(e.path(), &excluded))
+            .filter_entry(move |e| {
+                !is_ignored(e.path(), &root, &excluded_dirs, &excluded_files)
+            })
             .filter_map(|entry| entry.ok())
             .filter(|e| e.file_type().is_file())
             .filter(|e| language_for_path(e.path()).is_some())
             .map(move |entry| {
                 let path = entry.path().to_path_buf();
                 let language = language_for_path(&path).expect("filtered above");
-                let layer = resolve_file_layer(&path, &root, &config);
+                let layer = resolve_file_layer(&path, &root2, &config);
                 let has_adjacent_test = check_adjacent_test(&path);
 
                 match std::fs::read_to_string(&path) {
@@ -52,13 +59,33 @@ impl FileProvider for FileWalker {
     }
 }
 
-/// Retorna true se algum componente do path está na lista de excluídos.
-/// `excluded` é construído de `config.excluded` — zero valores hardcoded (ADR-0006).
-fn is_ignored(path: &Path, excluded: &HashSet<String>) -> bool {
-    path.components().any(|c| {
+/// Retorna true se o path deve ser ignorado.
+///
+/// Verifica primeiro `excluded_dirs` (componentes de path — para directórios)
+/// e depois `excluded_files` (path relativo exacto — para ficheiros individuais).
+/// `excluded_dirs` é construído de `config.excluded` — zero valores hardcoded (ADR-0006).
+/// `excluded_files` é construído de `config.excluded_files` — exclusão por path relativo (ADR-0010).
+fn is_ignored(
+    path: &Path,
+    root: &Path,
+    excluded_dirs: &HashSet<String>,
+    excluded_files: &HashSet<String>,
+) -> bool {
+    if path.components().any(|c| {
         let name = c.as_os_str().to_str().unwrap_or("");
-        excluded.contains(name)
-    })
+        excluded_dirs.contains(name)
+    }) {
+        return true;
+    }
+    if let Ok(relative) = path.strip_prefix(root) {
+        if let Some(rel_str) = relative.to_str() {
+            let normalized = rel_str.replace('\\', "/");
+            if excluded_files.contains(&normalized) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Map file extension to Language.
@@ -309,5 +336,38 @@ mod tests {
         let foo_spec_ts = dir.path().join("foo.spec.ts");
         std::fs::write(&foo_spec_ts, "it('x', () => {});").unwrap();
         assert!(!check_adjacent_test(&foo_spec_ts));
+    }
+
+    // ── Critérios ADR-0010: excluded_files ────────────────────────────────────
+
+    #[test]
+    fn excluded_files_prevents_specific_file() {
+        // Dado excluded_files = { "crate_root": "lib.rs" } e lib.rs na raiz
+        // Então lib.rs não aparece no iterator
+        let dir = setup_project();
+        write_file(dir.path(), "lib.rs", "pub mod foo;");
+        write_file(dir.path(), "01_core/foo.rs", "fn foo() {}");
+        let mut config = CrystallineConfig::default();
+        config.excluded_files.insert("crate_root".to_string(), "lib.rs".to_string());
+        let walker = FileWalker::new(dir.path().to_path_buf(), config);
+        let files = collect_ok(&walker);
+        assert_eq!(files.len(), 1);
+        assert!(files[0].path.ends_with("foo.rs"));
+    }
+
+    #[test]
+    fn excluded_files_does_not_affect_same_name_in_subdir() {
+        // Dado excluded_files = { "crate_root": "lib.rs" }
+        // E lib.rs na raiz E 01_core/lib.rs num subdirectório
+        // Então apenas 01_core/lib.rs aparece — excluded_files é path relativo exacto
+        let dir = setup_project();
+        write_file(dir.path(), "lib.rs", "pub mod foo;");
+        write_file(dir.path(), "01_core/lib.rs", "pub mod bar;");
+        let mut config = CrystallineConfig::default();
+        config.excluded_files.insert("crate_root".to_string(), "lib.rs".to_string());
+        let walker = FileWalker::new(dir.path().to_path_buf(), config);
+        let files = collect_ok(&walker);
+        assert_eq!(files.len(), 1);
+        assert!(files[0].path.to_str().unwrap().contains("01_core"));
     }
 }

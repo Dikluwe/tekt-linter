@@ -361,6 +361,10 @@ sobre os `call_expression` do AST.
 | Nó AST | Resultado | `TypeKind` |
 |--------|-----------|------------|
 | `function_declaration` com `export` | `FunctionSignature` | — |
+| `export default function` (com nome) | `FunctionSignature` | — |
+| `export default function` (anónima)  | `FunctionSignature` com `name = "default"` | — |
+| `export default class` (com nome)    | `TypeSignature` | `Class` |
+| `export default class` (anónima)     | `TypeSignature` com `name = "default"` | `Class` |
 | `lexical_declaration` com `export` e tipo função | `FunctionSignature` | — |
 | `class_declaration` com `export` | `TypeSignature` | `Class` |
 | `interface_declaration` com `export` | `TypeSignature` | `Interface` |
@@ -370,7 +374,9 @@ sobre os `call_expression` do AST.
 | `export_statement` `{ X }` sem `from` | `reexports` | — |
 
 **`FunctionSignature`:**
-- `name`: identificador da função — `&'a str` do buffer
+- `name`: identificador da função — `&'a str` do buffer.
+  Para `export default function` sem nome (função anónima),
+  usar a string literal `"default"` como identificador.
 - `params`: tipos dos parâmetros normalizados (whitespace colapsado)
 - `return_type`: tipo de retorno se explícito, `None` se omitido
   ou `void`
@@ -644,6 +650,32 @@ Então public_interface.types contém TypeSignature {
 }
 
 Dado SourceFile com:
+  export default function check(file: ParsedFile): Violation[] { return []; }
+Quando parse() for chamado
+Então public_interface.functions contém FunctionSignature {
+    name: "check",
+    ..
+}
+
+Dado SourceFile com:
+  export default function(file: ParsedFile): Violation[] { return []; }
+(função anónima)
+Quando parse() for chamado
+Então public_interface.functions contém FunctionSignature {
+    name: "default",
+    ..
+}
+
+Dado SourceFile com:
+  export default class FileWalker {}
+Quando parse() for chamado
+Então public_interface.types contém TypeSignature {
+    name: "FileWalker",
+    kind: TypeKind::Class,
+    ..
+}
+
+Dado SourceFile com:
   export interface LanguageParser { parse(file: SourceFile): ParsedFile }
 Quando parse() for chamado
 Então public_interface.types contém TypeSignature {
@@ -730,3 +762,4 @@ Então nenhum Box::leak foi produzido
 | 2026-03-18 | Criação inicial (ADR-0009) | ts_parser.rs |
 | 2026-03-18 | ADR-0009 correcção: ImportKind semântico — tabela de mapeamento TS→Direct/Glob/Alias/Named; EsImport removido; nota sobre V4 usar file.language(); restrição de agnósticidade adicionada; critérios de ImportKind adicionados | ts_parser.rs |
 | 2026-03-20 | ADR-0005 conformidade: Box::leak removido de resolve_ts_subdir; substituído por buffer interno intern_subdir() com mesmo padrão de FsPromptWalker; subdirs_buffer adicionado à struct; restrição explícita contra Box::leak adicionada; critério de memória adicionado; classify_export_statement corrigido: export* detectado por ausência de export_clause, não por nó "*" | ts_parser.rs |
+| 2026-03-20 | export default: function e class com e sem nome capturados em public_interface; name = "default" para formas anónimas | ts_parser.rs |
