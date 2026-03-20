@@ -21,11 +21,24 @@
 
 ## Status
 
-`PROPOSTO`
+`IMPLEMENTADO`
 
 ## Data
 
 2026-03-14
+
+## Estado de Implementação
+
+Todos os quatro eixos materializados:
+
+| Eixo | Componente | Estado |
+|------|-----------|--------|
+| Fail-Fast | `SourceError` propagado, V0 Fatal activo | ✅ |
+| Pipeline paralelo | `rayon` em `main.rs`, Map-Reduce funcional | ✅ |
+| Zero-copy | Lifetimes `<'a>` em toda a IR, `Cow<'a, str>` em `Token.symbol` (errata aplicada) | ✅ |
+| FQN | `RustParser` com Motor de Duas Fases, aliases resolvidos | ✅ |
+
+337 testes passando, zero violations no próprio projecto.
 
 ---
 

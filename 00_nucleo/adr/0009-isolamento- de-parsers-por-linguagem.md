@@ -1,7 +1,21 @@
 # ⚖️ ADR-0009: Suporte TypeScript
 
-**Status**: `PROPOSTO`
+**Status**: `IMPLEMENTADO`
 **Data**: 2026-03-18
+
+## Estado de Implementação
+
+| Componente | Estado |
+|-----------|--------|
+| `TsParser` em `ts_parser.rs` com testes | ✅ |
+| `PyParser` em `py_parser.rs` com testes | ✅ |
+| `ImportKind` semântico: `Direct/Glob/Alias/Named` | ✅ |
+| V4 multi-linguagem: `forbidden_symbols_for(language)` | ✅ |
+| `MultiParser` em `main.rs` despacha por `file.language` | ✅ |
+| `CrystallineConfig` com `ts_aliases` e `py_aliases` | ✅ |
+| `Cargo.toml` com `tree-sitter-typescript` e `tree-sitter-python` | ✅ |
+
+337 testes passando, zero violations no próprio projecto.
 
 ---
 

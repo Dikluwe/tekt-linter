@@ -1,6 +1,6 @@
 # ⚖️ ADR-0006: Fechamento Topológico e Proteção de Encapsulamento
 
-**Status**: `PROPOSTO`
+**Status**: `IMPLEMENTADO`
 **Data**: 2026-03-14
 
 ---
@@ -22,11 +22,27 @@
 
 ## Status
 
-`PROPOSTO`
+`IMPLEMENTADO`
 
 ## Data
 
 2026-03-14
+
+## Estado de Implementação
+
+| Componente | Estado |
+|-----------|--------|
+| V7 (`orphan_prompt.rs`) implementado com testes | ✅ |
+| V8 (`alien_file.rs`) implementado com testes | ✅ |
+| V9 (`pub_leak.rs`) implementado com testes | ✅ |
+| `ProjectIndex` Map-Reduce funcional | ✅ |
+| `FsPromptWalker` constrói `AllPrompts` | ✅ |
+| `L1Ports` injectado em `run_checks` | ✅ |
+| `Import.target_subdir` populado pelo parser | ✅ |
+| `crystalline.toml` com `[excluded]`, `[l1_ports]`, `[orphan_exceptions]` | ✅ |
+| Verificação pós-reduce em `main.rs` executa V7, V8 e V11 sobre o índice global | ✅ |
+
+337 testes passando, zero violations no próprio projecto.
 
 ---
 
