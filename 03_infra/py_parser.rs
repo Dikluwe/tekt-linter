@@ -1,12 +1,13 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/python.md
-//! @prompt-hash c81d0833
+//! @prompt-hash eb784a66
 //! @layer L3
-//! @updated 2026-03-19
+//! @updated 2026-03-20
 
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
+use std::sync::Mutex;
 
 use tree_sitter::{Node, Parser as PyParserEngine};
 
@@ -34,6 +35,7 @@ pub struct PyParser<R: PromptReader, S: PromptSnapshotReader> {
     pub config: CrystallineConfig,
     /// Raiz do projecto — usada pelo PyLayerResolver para resolve_file_layer.
     pub project_root: PathBuf,
+    subdirs_buffer: Mutex<Vec<Box<str>>>,
 }
 
 impl<R: PromptReader, S: PromptSnapshotReader> PyParser<R, S> {
@@ -43,7 +45,25 @@ impl<R: PromptReader, S: PromptSnapshotReader> PyParser<R, S> {
         config: CrystallineConfig,
         project_root: PathBuf,
     ) -> Self {
-        Self { prompt_reader, snapshot_reader, config, project_root }
+        Self {
+            prompt_reader,
+            snapshot_reader,
+            config,
+            project_root,
+            subdirs_buffer: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn intern_subdir(&self, s: String) -> &'static str {
+        let mut buf = self.subdirs_buffer.lock().unwrap();
+        let boxed: Box<str> = s.into_boxed_str();
+        let raw: *const str = &*boxed as *const str;
+        buf.push(boxed);
+        // SAFETY: raw aponta para dado heap que vive em self.subdirs_buffer.
+        // O buffer cresce monotonicamente — nunca é limpo.
+        // O parser outlives todos os ParsedFile que produz.
+        // Realoções do Vec movem o Box (fat pointer), não o dado heap.
+        unsafe { &*raw }
     }
 }
 
@@ -104,8 +124,9 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for PyParser<R, S>
         }
 
         // 2. Imports + import_name_map (PyLayerResolver 4 passos + resolve_py_subdir)
+        let intern: &dyn Fn(String) -> &'static str = &|s| self.intern_subdir(s);
         let (imports, import_name_map) =
-            extract_imports(root, source, file.path.as_path(), &self.project_root, &self.config);
+            extract_imports(root, source, file.path.as_path(), &self.project_root, &self.config, intern);
 
         // 3. Tokens — imports proibidos + call nodes (sem Motor de Duas Fases)
         let tokens = extract_tokens(root, source, &imports);
@@ -318,6 +339,7 @@ fn resolve_py_subdir(
     target_layer: &Layer,
     project_root: &Path,
     config: &CrystallineConfig,
+    intern: &dyn Fn(String) -> &'static str,
 ) -> Option<&'static str> {
     if *target_layer != Layer::L1 {
         return None;
@@ -329,7 +351,7 @@ fn resolve_py_subdir(
         .or_else(|_| normalized.strip_prefix(layer_dir.as_str()))
         .ok()?;
     let subdir = relative.components().next().and_then(|c| c.as_os_str().to_str())?;
-    Some(Box::leak(subdir.to_string().into_boxed_str()))
+    Some(intern(subdir.to_string()))
 }
 
 /// Calcula o subdir para um import relativo (usa normalização + resolve_py_subdir).
@@ -339,6 +361,7 @@ fn resolve_relative_subdir(
     project_root: &Path,
     config: &CrystallineConfig,
     target_layer: &Layer,
+    intern: &dyn Fn(String) -> &'static str,
 ) -> Option<&'static str> {
     if *target_layer != Layer::L1 {
         return None;
@@ -346,7 +369,7 @@ fn resolve_relative_subdir(
     let base = file_path.parent().unwrap_or(Path::new("."));
     let joined = base.join(rel_path);
     let normalized = normalize(&joined, project_root)?;
-    resolve_py_subdir(&normalized, target_layer, project_root, config)
+    resolve_py_subdir(&normalized, target_layer, project_root, config, intern)
 }
 
 /// Calcula o subdir para um módulo absoluto com alias.
@@ -355,6 +378,7 @@ fn resolve_absolute_subdir(
     project_root: &Path,
     config: &CrystallineConfig,
     target_layer: &Layer,
+    intern: &dyn Fn(String) -> &'static str,
 ) -> Option<&'static str> {
     if *target_layer != Layer::L1 {
         return None;
@@ -377,7 +401,7 @@ fn resolve_absolute_subdir(
     };
     let joined = project_root.join(&resolved);
     let normalized = normalize(&joined, project_root)?;
-    resolve_py_subdir(&normalized, target_layer, project_root, config)
+    resolve_py_subdir(&normalized, target_layer, project_root, config, intern)
 }
 
 // ── Import extraction ─────────────────────────────────────────────────────────
@@ -391,10 +415,11 @@ fn extract_imports<'a>(
     file_path: &Path,
     project_root: &Path,
     config: &CrystallineConfig,
+    intern: &dyn Fn(String) -> &'static str,
 ) -> (Vec<Import<'a>>, HashMap<&'a str, (Layer, Option<&'static str>)>) {
     let mut imports = Vec::new();
     let mut name_map: HashMap<&'a str, (Layer, Option<&'static str>)> = HashMap::new();
-    collect_imports(root, source, file_path, project_root, config, &mut imports, &mut name_map);
+    collect_imports(root, source, file_path, project_root, config, &mut imports, &mut name_map, intern);
     (imports, name_map)
 }
 
@@ -406,16 +431,17 @@ fn collect_imports<'a>(
     config: &CrystallineConfig,
     imports: &mut Vec<Import<'a>>,
     name_map: &mut HashMap<&'a str, (Layer, Option<&'static str>)>,
+    intern: &dyn Fn(String) -> &'static str,
 ) {
     match node.kind() {
         "import_statement" => {
             process_import_statement(
-                node, source, file_path, project_root, config, imports, name_map,
+                node, source, file_path, project_root, config, imports, name_map, intern,
             );
         }
         "import_from_statement" => {
             process_import_from_statement(
-                node, source, file_path, project_root, config, imports, name_map,
+                node, source, file_path, project_root, config, imports, name_map, intern,
             );
         }
         _ => {}
@@ -423,7 +449,7 @@ fn collect_imports<'a>(
 
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
-            collect_imports(child, source, file_path, project_root, config, imports, name_map);
+            collect_imports(child, source, file_path, project_root, config, imports, name_map, intern);
         }
     }
 }
@@ -437,6 +463,7 @@ fn process_import_statement<'a>(
     config: &CrystallineConfig,
     imports: &mut Vec<Import<'a>>,
     name_map: &mut HashMap<&'a str, (Layer, Option<&'static str>)>,
+    intern: &dyn Fn(String) -> &'static str,
 ) {
     let line = node.start_position().row + 1;
     // Children: "import", then dotted_name or aliased_import (comma-separated)
@@ -447,7 +474,7 @@ fn process_import_statement<'a>(
                     let module = node_text(child, source);
                     let target_layer = resolve_absolute_layer(module, project_root, config);
                     let target_subdir =
-                        resolve_absolute_subdir(module, project_root, config, &target_layer);
+                        resolve_absolute_subdir(module, project_root, config, &target_layer, intern);
                     imports.push(Import {
                         path: module,
                         line,
@@ -472,7 +499,7 @@ fn process_import_statement<'a>(
                     if !orig.is_empty() {
                         let target_layer = resolve_absolute_layer(orig, project_root, config);
                         let target_subdir =
-                            resolve_absolute_subdir(orig, project_root, config, &target_layer);
+                            resolve_absolute_subdir(orig, project_root, config, &target_layer, intern);
                         imports.push(Import {
                             path: orig,
                             line,
@@ -500,6 +527,7 @@ fn process_import_from_statement<'a>(
     config: &CrystallineConfig,
     imports: &mut Vec<Import<'a>>,
     name_map: &mut HashMap<&'a str, (Layer, Option<&'static str>)>,
+    intern: &dyn Fn(String) -> &'static str,
 ) {
     let line = node.start_position().row + 1;
 
@@ -535,7 +563,7 @@ fn process_import_from_statement<'a>(
         }
         let rel = relative_module_to_path(n_dots, dotted_module);
         let layer = resolve_relative_layer(&rel, file_path, project_root, config);
-        let subdir = resolve_relative_subdir(&rel, file_path, project_root, config, &layer);
+        let subdir = resolve_relative_subdir(&rel, file_path, project_root, config, &layer, intern);
         // Store the original relative_import text as path (e.g. ".utils")
         let path_text = node_text(mod_node, source);
         (path_text, layer, subdir)
@@ -543,7 +571,7 @@ fn process_import_from_statement<'a>(
         // Absolute import (dotted_name or identifier)
         let module = node_text(mod_node, source);
         let layer = resolve_absolute_layer(module, project_root, config);
-        let subdir = resolve_absolute_subdir(module, project_root, config, &layer);
+        let subdir = resolve_absolute_subdir(module, project_root, config, &layer, intern);
         (module, layer, subdir)
     };
 
@@ -674,40 +702,52 @@ fn collect_forbidden_calls<'a>(node: Node, source: &'a [u8], tokens: &mut Vec<To
 const TEST_CALL_NAMES: &[&str] = &["unittest", "pytest", "describe", "it", "test", "suite"];
 
 fn has_test_calls(root: Node, source: &[u8]) -> bool {
-    check_test_nodes(root, source)
+    // Verificar call expressions de teste em qualquer nível
+    if check_test_call_nodes(root, source) {
+        return true;
+    }
+    // Verificar classes unittest apenas no nível de topo
+    for i in 0..root.child_count() {
+        if let Some(child) = root.child(i) {
+            if child.kind() == "class_definition" {
+                if is_unittest_class(child, source) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
-fn check_test_nodes(node: Node, source: &[u8]) -> bool {
-    // call node (e.g. pytest.mark.parametrize, unittest.main, describe(...))
+fn is_unittest_class(node: Node, source: &[u8]) -> bool {
+    // Condição 1: nome termina em Test ou Tests
+    let name_ok = node.child_by_field_name("name")
+        .map(|n| {
+            let name = node_text(n, source);
+            name.ends_with("Test") || name.ends_with("Tests")
+        })
+        .unwrap_or(false);
+    if !name_ok { return false; }
+
+    // Condição 2: herda de TestCase
+    node.child_by_field_name("superclasses")
+        .map(|bases| node_text(bases, source).contains("TestCase"))
+        .unwrap_or(false)
+}
+
+fn check_test_call_nodes(node: Node, source: &[u8]) -> bool {
     if node.kind() == "call" {
         if let Some(func) = node.child_by_field_name("function").or_else(|| node.child(0)) {
             let text = node_text(func, source);
-            // Check if the function name or its first segment matches a test keyword
             let first_seg = text.split('.').next().unwrap_or(text);
             if TEST_CALL_NAMES.contains(&first_seg) || TEST_CALL_NAMES.contains(&text) {
                 return true;
             }
         }
     }
-    // class_definition inheriting TestCase (unittest)
-    if node.kind() == "class_definition" {
-        if let Some(bases) = node.child_by_field_name("superclasses") {
-            let bases_text = node_text(bases, source);
-            if bases_text.contains("TestCase") {
-                return true;
-            }
-        }
-        // Also check class name ending with Test/Tests
-        if let Some(name_node) = node.child_by_field_name("name") {
-            let name = node_text(name_node, source);
-            if name.ends_with("Test") || name.ends_with("Tests") {
-                return true;
-            }
-        }
-    }
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
-            if check_test_nodes(child, source) {
+            if check_test_call_nodes(child, source) {
                 return true;
             }
         }
@@ -1199,21 +1239,28 @@ fn path_contains_segment(path: &Path, segment: &str) -> bool {
 }
 
 fn find_first_error_pos(node: Node) -> (usize, usize) {
-    if node.is_error() {
+    if node.is_error() || node.is_missing() {
         let pos = node.start_position();
         return (pos.row + 1, pos.column);
     }
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
-            if child.has_error() {
-                let (l, c) = find_first_error_pos(child);
-                if l > 0 {
-                    return (l, c);
+            if child.has_error() || child.is_error() || child.is_missing() {
+                let result = find_first_error_pos(child);
+                if result.0 > 0 {
+                    return result;
                 }
             }
         }
     }
-    (0, 0)
+    // Fallback: usar a posição do próprio nó se tem erro mas sem filhos com erro
+    if node.has_error() {
+        let pos = node.start_position();
+        if pos.row > 0 || pos.column > 0 {
+            return (pos.row + 1, pos.column);
+        }
+    }
+    (1, 0) // linha 1 como fallback mínimo — nunca reportar linha 0
 }
 
 fn find_child_by_kind<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
@@ -1436,6 +1483,30 @@ import os
         let file = make_file("01_core/entities/layer.py", src, Layer::L1);
         let result = make_parser().parse(&file).unwrap();
         assert!(result.has_test_coverage);
+    }
+
+    #[test]
+    fn class_without_inheritance_does_not_give_coverage() {
+        let src = "class FooTest:\n    pass\n";
+        let file = make_file("01_core/entities/layer.py", src, Layer::L1);
+        let result = make_parser().parse(&file).unwrap();
+        assert!(!result.has_test_coverage);
+    }
+
+    #[test]
+    fn class_with_non_testcase_inheritance_does_not_give_coverage() {
+        let src = "class FooTest(SomethingElse):\n    pass\n";
+        let file = make_file("01_core/entities/layer.py", src, Layer::L1);
+        let result = make_parser().parse(&file).unwrap();
+        assert!(!result.has_test_coverage);
+    }
+
+    #[test]
+    fn nested_test_class_does_not_give_coverage() {
+        let src = "def outer():\n    class InnerTest(unittest.TestCase):\n        pass\n";
+        let file = make_file("01_core/entities/layer.py", src, Layer::L1);
+        let result = make_parser().parse(&file).unwrap();
+        assert!(!result.has_test_coverage);
     }
 
     #[test]

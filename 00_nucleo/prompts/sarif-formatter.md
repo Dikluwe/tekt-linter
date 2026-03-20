@@ -3,7 +3,7 @@
 **Camada**: L2 (Shell)
 **Padrão**: CLI Controller e Presenter
 **Criado em**: 2025-03-13
-**Revisado em**: 2026-03-16 (ADR-0007: V10, V11, V12)
+**Revisado em**: 2026-03-20 (from_cli: contains → split para evitar falso positivo v1/v11/v12)
 
 ---
 
@@ -109,6 +109,7 @@ internamente antes de consultar o nível SARIF.*
 ---
 
 ## EnabledChecks
+
 ```rust
 pub struct EnabledChecks {
     pub v1: bool,
@@ -127,24 +128,43 @@ pub struct EnabledChecks {
 
 impl EnabledChecks {
     pub fn from_cli(checks: &str, no_drift: bool, no_stale: bool) -> Self {
-        let lower = checks.to_lowercase();
+        // Parsing por token exacto após split — evita falso positivo onde
+        // "v11".contains("v1") == true e "v12".contains("v1") == true.
+        // Exemplo: --checks v11 NÃO deve activar v1 nem v2.
+        let tokens: std::collections::HashSet<&str> = checks
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        let has = |id: &str| -> bool {
+            // "all" activa todas as verificações
+            tokens.contains("all") || tokens.contains(id)
+        };
+
         Self {
-            v1:  lower.contains("v1"),
-            v2:  lower.contains("v2"),
-            v3:  lower.contains("v3"),
-            v4:  lower.contains("v4"),
-            v5:  lower.contains("v5") && !no_drift,
-            v6:  lower.contains("v6") && !no_stale,
-            v7:  lower.contains("v7"),
-            v8:  lower.contains("v8"),
-            v9:  lower.contains("v9"),
-            v10: lower.contains("v10"),
-            v11: lower.contains("v11"),
-            v12: lower.contains("v12"),
+            v1:  has("v1"),
+            v2:  has("v2"),
+            v3:  has("v3"),
+            v4:  has("v4"),
+            v5:  has("v5") && !no_drift,
+            v6:  has("v6") && !no_stale,
+            v7:  has("v7"),
+            v8:  has("v8"),
+            v9:  has("v9"),
+            v10: has("v10"),
+            v11: has("v11"),
+            v12: has("v12"),
         }
     }
 }
 ```
+
+**Semântica de `--checks`:**
+- Valor padrão: `"v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12"` (ou `"all"`)
+- Cada token é comparado **exactamente** após trim — `"v1"` ≠ `"v11"`
+- Tokens desconhecidos são silenciosamente ignorados
+- `--checks v11,v12` activa apenas V11 e V12 — não activa V1 nem V2
 
 **Nota sobre V7, V8 e V11 no pipeline:**
 V7, V8 e V11 são verificados na fase global pós-reduce, não por
@@ -223,9 +243,36 @@ Então v1 = true, v2 = false, v3 = true, v4 = false,
      v5 = false, v6 = false, v7 = false, v8 = false,
      v9 = true, v10 = true, v11 = false, v12 = false
 
+Dado --checks v11
+Quando EnabledChecks::from_cli() for chamado
+Então v11 = true
+E v1 = false, v2 = false
+— "v11" não contém "v1" semanticamente; tokens exactos evitam falso positivo
+
+Dado --checks v12
+Quando EnabledChecks::from_cli() for chamado
+Então v12 = true
+E v1 = false, v2 = false
+— "v12" não activa "v1" nem "v2"
+
+Dado --checks v11,v12
+Quando EnabledChecks::from_cli() for chamado
+Então v11 = true, v12 = true
+E v1 = false, v2 = false, v3 = false
+
 Dado --checks all (padrão)
 Quando EnabledChecks::from_cli() for chamado
 Então v1..v12 = true (exceto v5 se --no-drift, v6 se --no-stale)
+
+Dado --checks com token com espaços: "v1, v3, v9"
+Quando EnabledChecks::from_cli() for chamado
+Então v1 = true, v3 = true, v9 = true
+— trim() aplicado a cada token
+
+Dado token desconhecido: --checks v1,v99
+Quando EnabledChecks::from_cli() for chamado
+Então v1 = true
+E sem panic — token desconhecido ignorado silenciosamente
 
 Dado Vec<Violation> com apenas V10 Fatal
 Quando should_fail() for chamado com --fail-on error
@@ -248,3 +295,4 @@ Então SARIF driver.rules contém exatamente 13 entradas (V0 a V12)
 | 2026-03-14 | ADR-0004: V0 na tabela SARIF, EnabledChecks atualizado | cli.rs |
 | 2026-03-15 | ADR-0006: V7, V8, V9 nas flags, tabela SARIF, EnabledChecks, nota sobre V7/V8 na fase global vs V9 por arquivo | cli.rs |
 | 2026-03-16 | ADR-0007: V10, V11, V12 na tabela SARIF e EnabledChecks; nota Fatal para V10; nota V11 na fase global; V10/V12 em run_checks por arquivo; critérios V10–V12 adicionados | cli.rs |
+| 2026-03-20 | from_cli: substituído lower.contains("vN") por split(',') com comparação exacta de token; elimina falso positivo onde --checks v11 activava v1 e v2; critérios de isolamento v11/v12 adicionados; trim() documentado; token desconhecido ignorado silenciosamente | cli.rs |

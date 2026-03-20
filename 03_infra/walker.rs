@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/file-walker.md
-//! @prompt-hash 9fe7dbb3
+//! @prompt-hash c0f7a84e
 //! @layer L3
-//! @updated 2026-03-16
+//! @updated 2026-03-20
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -100,27 +100,38 @@ pub fn resolve_file_layer(path: &Path, root: &Path, config: &CrystallineConfig) 
 
 /// Returns true if a sibling test file exists in the same directory.
 /// Patterns checked:
-/// - Rust:   `<stem>_test.rs`
-/// - Python: `<stem>_test.py` or `test_<stem>.py`
+/// - Rust:       `<stem>_test.rs`
+/// - TypeScript: `<stem>.test.ts`, `<stem>.spec.ts`, `<stem>.test.tsx`, `<stem>.spec.tsx`
+/// - Python:     `<stem>_test.py` or `test_<stem>.py`
 fn check_adjacent_test(path: &Path) -> bool {
     let stem = match path.file_stem().and_then(|s| s.to_str()) {
         Some(s) => s,
         None => return false,
     };
-    // Skip files that are already test files
-    if stem.ends_with("_test") || stem.starts_with("test_") {
-        return false;
-    }
     let dir = match path.parent() {
         Some(d) => d,
         None => return false,
     };
-    // Rust
-    if dir.join(format!("{}_test.rs", stem)).exists() { return true; }
-    // Python
-    if dir.join(format!("{}_test.py", stem)).exists() { return true; }
-    if dir.join(format!("test_{}.py", stem)).exists() { return true; }
-    false
+
+    match path.extension().and_then(|e| e.to_str()) {
+        Some("rs") => {
+            if stem.ends_with("_test") { return false; }
+            dir.join(format!("{}_test.rs", stem)).exists()
+        }
+        Some("ts") | Some("tsx") => {
+            if stem.contains(".test") || stem.contains(".spec") { return false; }
+            dir.join(format!("{}.test.ts",  stem)).exists()
+                || dir.join(format!("{}.spec.ts",  stem)).exists()
+                || dir.join(format!("{}.test.tsx", stem)).exists()
+                || dir.join(format!("{}.spec.tsx", stem)).exists()
+        }
+        Some("py") => {
+            if stem.ends_with("_test") || stem.starts_with("test_") { return false; }
+            dir.join(format!("{}_test.py", stem)).exists()
+                || dir.join(format!("test_{}.py", stem)).exists()
+        }
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -228,5 +239,51 @@ mod tests {
         let dir = setup_project();
         write_file(dir.path(), "01_core/bar.rs", "fn bar() {}");
         assert!(!check_adjacent_test(&dir.path().join("01_core/bar.rs")));
+    }
+
+    #[test]
+    fn ts_adjacent_test_detected_for_test_ts() {
+        let dir = tempfile::tempdir().unwrap();
+        let foo_ts = dir.path().join("foo.ts");
+        let foo_test_ts = dir.path().join("foo.test.ts");
+        std::fs::write(&foo_ts, "export const x = 1;").unwrap();
+        std::fs::write(&foo_test_ts, "test('x', () => {});").unwrap();
+        assert!(check_adjacent_test(&foo_ts));
+    }
+
+    #[test]
+    fn ts_adjacent_spec_ts_detected() {
+        let dir = tempfile::tempdir().unwrap();
+        let foo_ts = dir.path().join("foo.ts");
+        let foo_spec_ts = dir.path().join("foo.spec.ts");
+        std::fs::write(&foo_ts, "export const x = 1;").unwrap();
+        std::fs::write(&foo_spec_ts, "it('x', () => {});").unwrap();
+        assert!(check_adjacent_test(&foo_ts));
+    }
+
+    #[test]
+    fn tsx_adjacent_test_tsx_detected() {
+        let dir = tempfile::tempdir().unwrap();
+        let foo_tsx = dir.path().join("foo.tsx");
+        let foo_test_tsx = dir.path().join("foo.test.tsx");
+        std::fs::write(&foo_tsx, "export const C = () => <div/>;").unwrap();
+        std::fs::write(&foo_test_tsx, "test('C', () => {});").unwrap();
+        assert!(check_adjacent_test(&foo_tsx));
+    }
+
+    #[test]
+    fn ts_no_adjacent_test_when_none_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let bar_ts = dir.path().join("bar.ts");
+        std::fs::write(&bar_ts, "export const y = 2;").unwrap();
+        assert!(!check_adjacent_test(&bar_ts));
+    }
+
+    #[test]
+    fn ts_test_file_itself_returns_false() {
+        let dir = tempfile::tempdir().unwrap();
+        let foo_test_ts = dir.path().join("foo.test.ts");
+        std::fs::write(&foo_test_ts, "test('x', () => {});").unwrap();
+        assert!(!check_adjacent_test(&foo_test_ts));
     }
 }

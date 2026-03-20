@@ -684,18 +684,28 @@ fn node_has_child_kind(node: Node, kind: &str) -> bool {
 }
 
 fn find_first_error_pos(node: Node) -> (usize, usize) {
-    if node.is_error() {
+    if node.is_error() || node.is_missing() {
         let pos = node.start_position();
         return (pos.row + 1, pos.column);
     }
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
-            if child.has_error() {
-                return find_first_error_pos(child);
+            if child.has_error() || child.is_error() || child.is_missing() {
+                let result = find_first_error_pos(child);
+                if result.0 > 0 {
+                    return result;
+                }
             }
         }
     }
-    (0, 0)
+    // Fallback: usar a posição do próprio nó se tem erro mas sem filhos com erro
+    if node.has_error() {
+        let pos = node.start_position();
+        if pos.row > 0 || pos.column > 0 {
+            return (pos.row + 1, pos.column);
+        }
+    }
+    (1, 0) // linha 1 como fallback mínimo — nunca reportar linha 0
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

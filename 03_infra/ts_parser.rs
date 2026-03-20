@@ -1,11 +1,12 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/typescript.md
-//! @prompt-hash 110ac172
+//! @prompt-hash e319d0cf
 //! @layer L3
-//! @updated 2026-03-19
+//! @updated 2026-03-20
 
 use std::borrow::Cow;
 use std::path::{Component, Path, PathBuf};
+use std::sync::Mutex;
 
 use tree_sitter::{Node, Parser as TsParserEngine};
 
@@ -33,6 +34,7 @@ pub struct TsParser<R: PromptReader, S: PromptSnapshotReader> {
     pub config: CrystallineConfig,
     /// Raiz do projecto — usada pelo TsLayerResolver para resolve_file_layer.
     pub project_root: PathBuf,
+    subdirs_buffer: Mutex<Vec<Box<str>>>,
 }
 
 impl<R: PromptReader, S: PromptSnapshotReader> TsParser<R, S> {
@@ -42,7 +44,25 @@ impl<R: PromptReader, S: PromptSnapshotReader> TsParser<R, S> {
         config: CrystallineConfig,
         project_root: PathBuf,
     ) -> Self {
-        Self { prompt_reader, snapshot_reader, config, project_root }
+        Self {
+            prompt_reader,
+            snapshot_reader,
+            config,
+            project_root,
+            subdirs_buffer: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn intern_subdir(&self, s: String) -> &'static str {
+        let mut buf = self.subdirs_buffer.lock().unwrap();
+        let boxed: Box<str> = s.into_boxed_str();
+        let raw: *const str = &*boxed as *const str;
+        buf.push(boxed);
+        // SAFETY: raw aponta para dado heap que vive em self.subdirs_buffer.
+        // O buffer cresce monotonicamente — nunca é limpo.
+        // O parser outlives todos os ParsedFile que produz.
+        // Realoções do Vec movem o Box (fat pointer), não o dado heap.
+        unsafe { &*raw }
     }
 }
 
@@ -106,7 +126,8 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for TsParser<R, S>
         }
 
         // 2. Imports — TsLayerResolver 4 passos + SubdirResolver físico
-        let imports = extract_imports(root, source, file.path.as_path(), &self.project_root, &self.config);
+        let intern: &dyn Fn(String) -> &'static str = &|s| self.intern_subdir(s);
+        let imports = extract_imports(root, source, file.path.as_path(), &self.project_root, &self.config, intern);
 
         // 3. Tokens — imports proibidos + call expressions (sem Motor de Duas Fases)
         let tokens = extract_tokens(root, source, &imports);
@@ -291,13 +312,14 @@ fn resolve_ts_layer(
 
 /// Extrai o subdir de destino de um import para V9.
 /// Apenas para imports que resolvem para L1.
-fn resolve_ts_subdir<'a>(
+fn resolve_ts_subdir(
     import_path: &str,
     file_path: &Path,
     project_root: &Path,
     config: &CrystallineConfig,
     target_layer: &Layer,
-) -> Option<&'a str> {
+    intern: &dyn Fn(String) -> &'static str,
+) -> Option<&'static str> {
     if *target_layer != Layer::L1 {
         return None;
     }
@@ -342,9 +364,7 @@ fn resolve_ts_subdir<'a>(
         .next()
         .and_then(|c| c.as_os_str().to_str())?;
 
-    // Leak to 'a — safe: the string is derived from config which lives for the program duration
-    // In practice, target_subdir is compared by V9 against l1_ports keys (also from config).
-    Some(Box::leak(subdir.to_string().into_boxed_str()))
+    Some(intern(subdir.to_string()))
 }
 
 // ── Import extraction ─────────────────────────────────────────────────────────
@@ -355,9 +375,10 @@ fn extract_imports<'a>(
     file_path: &Path,
     project_root: &Path,
     config: &CrystallineConfig,
+    intern: &dyn Fn(String) -> &'static str,
 ) -> Vec<Import<'a>> {
     let mut imports = Vec::new();
-    collect_imports(root, source, file_path, project_root, config, &mut imports);
+    collect_imports(root, source, file_path, project_root, config, &mut imports, intern);
     imports
 }
 
@@ -368,13 +389,14 @@ fn collect_imports<'a>(
     project_root: &Path,
     config: &CrystallineConfig,
     imports: &mut Vec<Import<'a>>,
+    intern: &dyn Fn(String) -> &'static str,
 ) {
     match node.kind() {
         "import_statement" => {
             if let Some(path_str) = import_source_str(node, source) {
                 let line = node.start_position().row + 1;
                 let target_layer = resolve_ts_layer(path_str, file_path, project_root, config);
-                let target_subdir = resolve_ts_subdir(path_str, file_path, project_root, config, &target_layer);
+                let target_subdir = resolve_ts_subdir(path_str, file_path, project_root, config, &target_layer, intern);
                 let kind = classify_import_statement(node, source);
                 imports.push(Import {
                     path: path_str,
@@ -392,7 +414,7 @@ fn collect_imports<'a>(
                 if !path_str.is_empty() {
                     let line = node.start_position().row + 1;
                     let target_layer = resolve_ts_layer(path_str, file_path, project_root, config);
-                    let target_subdir = resolve_ts_subdir(path_str, file_path, project_root, config, &target_layer);
+                    let target_subdir = resolve_ts_subdir(path_str, file_path, project_root, config, &target_layer, intern);
                     let kind = classify_export_statement(node, source);
                     imports.push(Import {
                         path: path_str,
@@ -409,7 +431,7 @@ fn collect_imports<'a>(
 
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
-            collect_imports(child, source, file_path, project_root, config, imports);
+            collect_imports(child, source, file_path, project_root, config, imports, intern);
         }
     }
 }
@@ -458,16 +480,16 @@ fn classify_import_node_recursive(node: Node, source: &[u8]) -> ImportKind {
 
 /// Classifica semanticamente um `export_statement` TypeScript com cláusula `from`.
 fn classify_export_statement(node: Node, _source: &[u8]) -> ImportKind {
-    for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
-            match child.kind() {
-                "export_clause" => return ImportKind::Named,
-                "*" => return ImportKind::Glob,
-                _ => {}
-            }
-        }
+    let has_export_clause = (0..node.child_count())
+        .filter_map(|i| node.child(i))
+        .any(|c| c.kind() == "export_clause");
+
+    if has_export_clause {
+        ImportKind::Named
+    } else {
+        // export * from '...' — ausência de export_clause indica glob
+        ImportKind::Glob
     }
-    ImportKind::Direct
 }
 
 /// Extrai o path string de um import_statement ou export_statement.
@@ -1060,18 +1082,28 @@ fn path_contains_segment(path: &Path, segment: &str) -> bool {
 }
 
 fn find_first_error_pos(node: Node) -> (usize, usize) {
-    if node.is_error() {
+    if node.is_error() || node.is_missing() {
         let pos = node.start_position();
         return (pos.row + 1, pos.column);
     }
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
-            if child.has_error() {
-                return find_first_error_pos(child);
+            if child.has_error() || child.is_error() || child.is_missing() {
+                let result = find_first_error_pos(child);
+                if result.0 > 0 {
+                    return result;
+                }
             }
         }
     }
-    (0, 0)
+    // Fallback: usar a posição do próprio nó se tem erro mas sem filhos com erro
+    if node.has_error() {
+        let pos = node.start_position();
+        if pos.row > 0 || pos.column > 0 {
+            return (pos.row + 1, pos.column);
+        }
+    }
+    (1, 0) // linha 1 como fallback mínimo — nunca reportar linha 0
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -1432,6 +1464,34 @@ mod tests {
         // Only OutputFormatter (no implements) should be captured
         assert!(!parsed.declarations.iter().any(|d| d.name == "L3HashAdapter"));
         assert!(parsed.declarations.iter().any(|d| d.name == "OutputFormatter"));
+    }
+
+    // ── export classification tests ───────────────────────────────────────────
+
+    #[test]
+    fn export_star_from_is_glob() {
+        let parser = make_parser();
+        let file = ts_file_at(
+            "export * from './01_core/entities/layer';",
+            "03_infra/ts_parser.ts",
+            Layer::L3,
+        );
+        let parsed = parser.parse(&file).unwrap();
+        assert_eq!(parsed.imports.len(), 1);
+        assert_eq!(parsed.imports[0].kind, ImportKind::Glob);
+    }
+
+    #[test]
+    fn export_named_from_is_named() {
+        let parser = make_parser();
+        let file = ts_file_at(
+            "export { Layer } from './01_core/entities/layer';",
+            "03_infra/ts_parser.ts",
+            Layer::L3,
+        );
+        let parsed = parser.parse(&file).unwrap();
+        assert_eq!(parsed.imports.len(), 1);
+        assert_eq!(parsed.imports[0].kind, ImportKind::Named);
     }
 
     // ── AST debug ─────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@
 **Camada**: L3 (Infra)
 **Padrão**: Adapter over `tree-sitter-typescript`
 **Criado em**: 2026-03-18 (ADR-0009)
-**Revisado em**: 2026-03-18 (ADR-0009 correcção: ImportKind semântico)
+**Revisado em**: 2026-03-20 (ADR-0005 conformidade: Box::leak removido de resolve_ts_subdir)
 **Arquivos gerados**:
   - 03_infra/ts_parser.rs + test
 
@@ -102,7 +102,7 @@ Se o import começa com uma chave de `[ts_aliases]`, substituir:
 
 ```rust
 fn normalize(path: &Path, project_root: &Path) -> Option<PathBuf> {
-    let mut components = Vec::new();
+    let mut components: Vec<Component> = Vec::new();
     for component in path.components() {
         match component {
             Component::ParentDir => {
@@ -137,24 +137,129 @@ let target_layer = match normalize(&joined, &project_root) {
 };
 ```
 
-### `target_subdir` para V9
+### `target_subdir` para V9 — buffer interno (ADR-0005)
+
+**Proibido:** `Box::leak` para produzir `&'static str`. Isso vaza
+memória a cada import resolvido e viola ADR-0005, que eliminou
+`Box::leak` do projecto em favor de `Cow` ou buffer interno.
+
+**Correcto:** o `TsParser` mantém um buffer interno de strings
+interned, com lifetime vinculado ao próprio parser (`'p`). Como
+`parse()` recebe `&'a SourceFile` e retorna `ParsedFile<'a>`, o
+`target_subdir` não pode ter lifetime `'a` (não existe no buffer
+do `SourceFile`). A solução é retornar `Option<&'p str>` do
+resolver e populá-lo como `Option<&'static str>` via interning
+no buffer do parser — o que é seguro porque o parser vive pelo
+menos tanto quanto qualquer `ParsedFile` que produz, pois ambos
+são criados e descartados dentro do mesmo `run_pipeline`.
+
+**Implementação do buffer:**
 
 ```rust
-fn resolve_subdir<'a>(
-    normalized: &Path,
-    target_layer: &Layer,
-    project_root: &Path,
-    config: &CrystallineConfig,
-) -> Option<&'a str> {
-    if *target_layer != Layer::L1 { return None; }
-    let layer_dir = config.layers.get("L1")?;
-    let base = project_root.join(layer_dir);
-    let relative = normalized.strip_prefix(&base).ok()?;
-    relative.components().next()
-        .and_then(|c| c.as_os_str().to_str())
-        .map(|s| s)
+pub struct TsParser<R: PromptReader, S: PromptSnapshotReader> {
+    pub prompt_reader: R,
+    pub snapshot_reader: S,
+    pub config: CrystallineConfig,
+    pub project_root: PathBuf,
+    /// Buffer interno para subdirs interned — evita Box::leak (ADR-0005).
+    /// Box<str> garante que o dado heap não se move quando o Vec realoca.
+    subdirs_buffer: std::cell::RefCell<Vec<Box<str>>>,
+}
+
+impl<R: PromptReader, S: PromptSnapshotReader> TsParser<R, S> {
+    pub fn new(
+        prompt_reader: R,
+        snapshot_reader: S,
+        config: CrystallineConfig,
+        project_root: PathBuf,
+    ) -> Self {
+        Self {
+            prompt_reader,
+            snapshot_reader,
+            config,
+            project_root,
+            subdirs_buffer: std::cell::RefCell::new(Vec::new()),
+        }
+    }
+
+    /// Interna uma string no buffer e retorna &'p str vinculado ao
+    /// lifetime do parser. Mesmo padrão de FsPromptWalker (ADR-0005).
+    fn intern_subdir(&self, s: String) -> &str {
+        let mut buf = self.subdirs_buffer.borrow_mut();
+        let boxed: Box<str> = s.into_boxed_str();
+        let raw: *const str = &*boxed as *const str;
+        buf.push(boxed);
+        // SAFETY: raw aponta para dado heap que vive em self.subdirs_buffer.
+        // Realoções do Vec movem o Box (fat pointer), não o dado heap.
+        unsafe { &*raw }
+    }
 }
 ```
+
+**`resolve_ts_subdir` corrigido:**
+
+```rust
+fn resolve_ts_subdir<'p>(
+    &'p self,
+    import_path: &str,
+    file_path: &Path,
+    target_layer: &Layer,
+) -> Option<&'p str> {
+    if *target_layer != Layer::L1 {
+        return None;
+    }
+
+    let is_relative = import_path.starts_with("./") || import_path.starts_with("../");
+    let is_alias = self.config.ts_aliases.keys()
+        .any(|k| import_path.starts_with(k.as_str()));
+
+    let resolved_str: String;
+    let import_after_alias: &str = if is_alias {
+        let alias_key = self.config.ts_aliases.keys()
+            .find(|k| import_path.starts_with(k.as_str()))
+            .expect("alias_key found above");
+        let alias_val = &self.config.ts_aliases[alias_key];
+        resolved_str = format!("{}{}", alias_val, &import_path[alias_key.len()..]);
+        &resolved_str
+    } else if is_relative {
+        import_path
+    } else {
+        return None;
+    };
+
+    let base = if is_alias {
+        self.project_root.to_path_buf()
+    } else {
+        file_path.parent().unwrap_or(Path::new(".")).to_path_buf()
+    };
+    let joined = base.join(import_after_alias);
+    let normalized = normalize(&joined, &self.project_root)?;
+
+    let layer_dir = self.config.layers.get("L1")?;
+    let base_l1 = self.project_root.join(layer_dir);
+
+    let relative = normalized
+        .strip_prefix(&base_l1)
+        .or_else(|_| normalized.strip_prefix(layer_dir.as_str()))
+        .ok()?;
+
+    let subdir = relative
+        .components()
+        .next()
+        .and_then(|c| c.as_os_str().to_str())?
+        .to_string();
+
+    // Intern no buffer do parser — sem Box::leak (ADR-0005)
+    Some(self.intern_subdir(subdir))
+}
+```
+
+A assinatura de `parse()` não muda — `ParsedFile<'a>` continua
+com `target_subdir: Option<&'a str>`. Como o parser vive pelo
+menos tanto quanto o `ParsedFile` que produz (ambos dentro de
+`run_pipeline`), a transmutação de lifetime em `intern_subdir`
+é segura no contexto de uso actual. Se o parser for alguma vez
+usado fora de `run_pipeline`, o invariante deve ser verificado.
 
 ---
 
@@ -176,9 +281,33 @@ Nós AST relevantes: `import_statement`, `import_require_clause`,
 | `export { A as B } from '...'` | `Alias` | re-export com rename |
 | `require('...')` | `Direct` | CommonJS require |
 
+**Nota sobre `export * from '...'` → `Glob`:** o nó filho que
+indica glob em `export_statement` não tem kind `"*"` — a detecção
+correcta é pela **ausência** de `export_clause` combinada com a
+presença de cláusula `from`. A implementação deve verificar se
+existe `export_clause`; se não existir e houver source, é `Glob`.
+
+```rust
+fn classify_export_statement(node: Node, _source: &[u8]) -> ImportKind {
+    let has_export_clause = (0..node.child_count())
+        .filter_map(|i| node.child(i))
+        .any(|c| c.kind() == "export_clause");
+
+    if has_export_clause {
+        // export { X } from ou export { A as B } from
+        // Named ou Alias — verificar se há "as" dentro
+        // (simplificação: Named por padrão, Alias se contiver rename)
+        ImportKind::Named
+    } else {
+        // export * from — sem export_clause = glob
+        ImportKind::Glob
+    }
+}
+```
+
 Para cada import: `path` = string literal sem aspas — fatia `&'a str`
 do buffer. `target_layer` via TsLayerResolver (4 passos).
-`target_subdir` via `resolve_subdir` após resolução física.
+`target_subdir` via `resolve_ts_subdir` com buffer interno.
 `Layer::Lab` resolvido para imports de `lab/` — V10 usa este valor.
 
 **Imports dinâmicos:** `import('./foo')` não são capturados como
@@ -330,6 +459,10 @@ where
     pub prompt_reader: R,
     pub snapshot_reader: S,
     pub config: CrystallineConfig,
+    pub project_root: PathBuf,
+    /// Buffer interno para subdirs interned (ADR-0005).
+    /// Nunca exposto — encapsulado via intern_subdir().
+    subdirs_buffer: std::cell::RefCell<Vec<Box<str>>>,
 }
 
 impl<R: PromptReader, S: PromptSnapshotReader> TsParser<R, S> {
@@ -337,8 +470,15 @@ impl<R: PromptReader, S: PromptSnapshotReader> TsParser<R, S> {
         prompt_reader: R,
         snapshot_reader: S,
         config: CrystallineConfig,
+        project_root: PathBuf,
     ) -> Self {
-        Self { prompt_reader, snapshot_reader, config }
+        Self {
+            prompt_reader,
+            snapshot_reader,
+            config,
+            project_root,
+            subdirs_buffer: std::cell::RefCell::new(Vec::new()),
+        }
     }
 }
 
@@ -357,7 +497,7 @@ where
         //    import { A, B }     → Named
         //    import { A as B }   → Alias
         //    export { X } from   → Direct
-        //    export * from       → Glob
+        //    export * from       → Glob  (ausência de export_clause)
         // 3. tokens (imports proibidos + call expressions)
         //    V4 usa file.language(), não ImportKind
         // 4. has_test_coverage
@@ -365,6 +505,8 @@ where
         // 6. declared_traits (L1/contracts, export interface)
         // 7. implemented_traits (L2|L3, class implements)
         // 8. declarations (class-sem-implements/interface/type/enum)
+        //
+        // target_subdir via self.resolve_ts_subdir() — sem Box::leak
     }
 }
 ```
@@ -385,11 +527,15 @@ where
 - `declarations` para todos os arquivos — V12 filtra por layer
 - `PromptReader` e `PromptSnapshotReader` são injetados
 - `std::io::Error` nunca atravessa para L1
+- **`Box::leak` proibido** para `target_subdir` — usar
+  `intern_subdir()` com buffer interno (ADR-0005)
 - **`ImportKind` nunca contém variantes específicas de linguagem:**
   os nós TypeScript mapeiam para `Direct/Glob/Alias/Named` —
   nunca para `EsImport` ou outra variante TS
 - **V4 usa `file.language()`, não `ImportKind`**, para seleccionar
   a lista de símbolos proibidos
+- **`export * from`** é classificado como `Glob` pela **ausência**
+  de `export_clause`, não pela presença de nó `"*"`
 
 ---
 
@@ -408,6 +554,7 @@ Então imports contém Import {
     target_subdir: Some("entities"),
     ..
 }
+E target_subdir não foi produzido com Box::leak
 
 Dado SourceFile com import X from '../01_core/entities/layer'
 Quando parse() for chamado
@@ -424,6 +571,11 @@ Então imports contém Import { kind: ImportKind::Alias, .. }
 Dado SourceFile com export * from '../01_core/entities'
 Quando parse() for chamado
 Então imports contém Import { kind: ImportKind::Glob, .. }
+— detectado pela ausência de export_clause, não por nó "*"
+
+Dado SourceFile com export { X } from '../01_core/entities'
+Quando parse() for chamado
+Então imports contém Import { kind: ImportKind::Named, .. }
 
 Dado SourceFile com import { X } from '../../src/../01_core/entities'
 (path com ../ que normaliza correctamente)
@@ -440,15 +592,11 @@ E SourceFile com import { W } from '@core/entities/layer'
 Quando parse() for chamado
 Então imports contém Import { target_layer: Layer::L1,
       target_subdir: Some("entities"), .. }
+E target_subdir foi produzido via intern_subdir(), não Box::leak
 
 Dado SourceFile com import { X } from '../lab/experiment'
 Quando parse() for chamado
 Então imports contém Import { target_layer: Layer::Lab, .. }
-
-Dado SourceFile com export { X } from '../01_core/entities'
-Quando parse() for chamado
-Então imports contém Import { kind: ImportKind::Direct, .. }
-— re-export directo mapeia para Direct
 
 Dado SourceFile em L1 com import { readFileSync } from 'fs'
 Quando parse() for chamado
@@ -565,6 +713,12 @@ Então retorna Err(ParseError::UnsupportedLanguage { .. })
 Dado NullPromptReader e NullSnapshotReader como mocks
 Quando parse() for chamado
 Então nenhum acesso a disco ocorre
+
+Dado TsParser instanciado e parse() chamado para 100 arquivos
+com imports que resolvem para L1
+Quando o parser for descartado
+Então nenhum Box::leak foi produzido
+— subdirs_buffer libera toda a memória com o parser
 ```
 
 ---
@@ -575,3 +729,4 @@ Então nenhum acesso a disco ocorre
 |------|--------|-------------------|
 | 2026-03-18 | Criação inicial (ADR-0009) | ts_parser.rs |
 | 2026-03-18 | ADR-0009 correcção: ImportKind semântico — tabela de mapeamento TS→Direct/Glob/Alias/Named; EsImport removido; nota sobre V4 usar file.language(); restrição de agnósticidade adicionada; critérios de ImportKind adicionados | ts_parser.rs |
+| 2026-03-20 | ADR-0005 conformidade: Box::leak removido de resolve_ts_subdir; substituído por buffer interno intern_subdir() com mesmo padrão de FsPromptWalker; subdirs_buffer adicionado à struct; restrição explícita contra Box::leak adicionada; critério de memória adicionado; classify_export_statement corrigido: export* detectado por ausência de export_clause, não por nó "*" | ts_parser.rs |

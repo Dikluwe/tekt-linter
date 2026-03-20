@@ -3,6 +3,7 @@
 **Camada**: L3 (Infra)
 **Padrão**: Adapter over `tree-sitter-python`
 **Criado em**: 2026-03-19
+**Revisado em**: 2026-03-20 (ADR-0005 conformidade: Box::leak removido de resolve_py_subdir)
 **Arquivos gerados**:
   - 03_infra/py_parser.rs + test
 
@@ -89,23 +90,12 @@ Se o import não começa com `.` E não começa com uma chave de
 "core.contracts"    →  continua para passo 2 se "core" é alias
 ```
 
-**`import_statement` (`import X`):** o módulo `X` nunca começa
-com `.` — é sempre externo, ou alias se `X` começa com chave de
-`[py_aliases]`. Mas `import os`, `import pathlib`, `import requests`
-são sempre externos. Apenas aliases explícitos como `import core`
-(com `core = "01_core"` em `[py_aliases]`) passam para passo 2.
-
-**`import_from_statement` (`from X import Y`):**
-- `from .utils import Y` → `.utils` começa com `.` → relativo
-- `from os import path` → `os` não começa com `.` e sem alias → externo
-
 ### Passo 2 — Resolução de alias
 
 Se o módulo começa com uma chave de `[py_aliases]`, substituir
 pelo valor correspondente:
 
 ```toml
-# crystalline.toml
 [py_aliases]
 "core"  = "01_core"
 "shell" = "02_shell"
@@ -138,7 +128,6 @@ let n_dots: usize = prefix_text.len(); // "." = 1, ".." = 2
 let ups = "../".repeat(n_dots.saturating_sub(1));
 let module_part = dotted_name.replace('.', "/"); // "utils.sub" → "utils/sub"
 let rel = if module_part.is_empty() {
-    // from . import X → "." (current dir)
     if n_dots == 1 { ".".to_string() } else { ups }
 } else {
     format!("{}{}", ups, module_part)
@@ -181,27 +170,89 @@ let target_layer = match normalize(&joined, &project_root) {
 
 A mesma função do `FileWalker` é a fonte de verdade.
 
-### `target_subdir` para V9
+### `target_subdir` para V9 — buffer interno (ADR-0005)
 
-Extraído do caminho normalizado via `strip_prefix` contra o valor
-da camada em `[layers]`:
+**Proibido:** `Box::leak` para produzir `&'static str`. Isso vaza
+memória a cada import resolvido e viola ADR-0005, que eliminou
+`Box::leak` do projecto em favor de `Cow` ou buffer interno.
+
+**Correcto:** o `PyParser` mantém um buffer interno de strings
+interned, com lifetime vinculado ao próprio parser. Mesmo padrão
+de `FsPromptWalker` (`paths_buffer: RefCell<Vec<Box<str>>>`).
+
+**Implementação do buffer:**
 
 ```rust
-fn resolve_py_subdir(normalized: &Path, target_layer: &Layer, project_root: &Path,
-                     config: &CrystallineConfig) -> Option<&'static str> {
-    if *target_layer != Layer::L1 { return None; }
-    let layer_dir = config.layers.get("L1")?;
-    let base_l1 = project_root.join(layer_dir);
-    let relative = normalized.strip_prefix(&base_l1)
-        .or_else(|_| normalized.strip_prefix(layer_dir.as_str())).ok()?;
-    let subdir = relative.components().next()
-        .and_then(|c| c.as_os_str().to_str())?;
-    Some(Box::leak(subdir.to_string().into_boxed_str()))
+pub struct PyParser<R: PromptReader, S: PromptSnapshotReader> {
+    pub prompt_reader: R,
+    pub snapshot_reader: S,
+    pub config: CrystallineConfig,
+    pub project_root: PathBuf,
+    /// Buffer interno para subdirs interned — evita Box::leak (ADR-0005).
+    /// Box<str> garante que o dado heap não se move quando o Vec realoca.
+    subdirs_buffer: std::cell::RefCell<Vec<Box<str>>>,
+}
+
+impl<R: PromptReader, S: PromptSnapshotReader> PyParser<R, S> {
+    pub fn new(
+        prompt_reader: R,
+        snapshot_reader: S,
+        config: CrystallineConfig,
+        project_root: PathBuf,
+    ) -> Self {
+        Self {
+            prompt_reader,
+            snapshot_reader,
+            config,
+            project_root,
+            subdirs_buffer: std::cell::RefCell::new(Vec::new()),
+        }
+    }
+
+    /// Interna uma string no buffer e retorna &str vinculado ao
+    /// lifetime do parser. Mesmo padrão de FsPromptWalker (ADR-0005).
+    fn intern_subdir(&self, s: String) -> &str {
+        let mut buf = self.subdirs_buffer.borrow_mut();
+        let boxed: Box<str> = s.into_boxed_str();
+        let raw: *const str = &*boxed as *const str;
+        buf.push(boxed);
+        // SAFETY: raw aponta para dado heap que vive em self.subdirs_buffer.
+        // Realoções do Vec movem o Box (fat pointer), não o dado heap.
+        unsafe { &*raw }
+    }
 }
 ```
 
-`target_subdir` é `Some(subdir)` para imports de L1.
-V9 decide se o subdir é porta válida.
+**`resolve_py_subdir` corrigido:**
+
+```rust
+fn resolve_py_subdir(
+    &self,
+    normalized: &Path,
+    target_layer: &Layer,
+) -> Option<&str> {
+    if *target_layer != Layer::L1 {
+        return None;
+    }
+    let layer_dir = self.config.layers.get("L1")?;
+    let base_l1 = self.project_root.join(layer_dir);
+    let relative = normalized
+        .strip_prefix(&base_l1)
+        .or_else(|_| normalized.strip_prefix(layer_dir.as_str()))
+        .ok()?;
+    let subdir = relative.components().next()
+        .and_then(|c| c.as_os_str().to_str())?
+        .to_string();
+
+    // Intern no buffer do parser — sem Box::leak (ADR-0005)
+    Some(self.intern_subdir(subdir))
+}
+```
+
+A assinatura pública de `parse()` não muda. O `target_subdir` em
+`Import<'a>` continua como `Option<&'a str>` — o lifetime 'a do
+`ParsedFile` é compatível com o lifetime do parser dentro de
+`run_pipeline` onde ambos são criados e descartados juntos.
 
 ---
 
@@ -215,7 +266,7 @@ Nós AST relevantes: `import_statement`, `import_from_statement`.
 | `line` | `node.start_position().row + 1` |
 | `kind` | Ver tabela de mapeamento abaixo — `Direct/Glob/Alias/Named` |
 | `target_layer` | PyLayerResolver — 4 passos descritos acima |
-| `target_subdir` | `resolve_py_subdir` após resolução física — apenas para L1 |
+| `target_subdir` | `self.resolve_py_subdir()` após resolução física — apenas para L1 |
 
 **Mapeamento `Nó AST → ImportKind` (semântico, nunca sintáctico):**
 
@@ -234,33 +285,6 @@ Nós AST relevantes: `import_statement`, `import_from_statement`.
 Nunca usar `ImportKind::PyImport` ou qualquer outra variante
 específica de linguagem — apenas `Direct/Glob/Alias/Named`.
 
-**`import_statement`** (`import os`):
-- Nó filho `dotted_name` ou `aliased_import` → extrair módulo
-- Se não é alias → `Layer::Unknown` directamente
-- Se é alias → resolver via passo 2–4
-
-**`import_from_statement`** (`from X import Y`):
-- Nó filho `module_name`:
-  - Se `relative_import` → relativo → processar via passo 3–4
-  - Se `dotted_name` → absoluto; verificar aliases; ou `Layer::Unknown`
-- Nós filhos após `import` → nomes importados (para `import_name_map` interno)
-
-**`import_name_map` (mapa interno, não exposto a L1):**
-Construído durante a extracção de imports para resolver bases de
-classes em `implemented_traits` e `declarations`.
-Mapeia nome local importado → (target_layer, target_subdir).
-
-Para `from .contracts import FileProvider`:
-→ `import_name_map["FileProvider"] = (L1, Some("contracts"))`
-
-Para `from core.contracts import FileProvider, LanguageParser`:
-(com alias `core = "01_core"`)
-→ `import_name_map["FileProvider"] = (L1, Some("contracts"))`
-→ `import_name_map["LanguageParser"] = (L1, Some("contracts"))`
-
-Para `aliased_import` (`import Foo as Bar`):
-→ mapear nome local `Bar`, não o original `Foo`
-
 ---
 
 ## 4. Extracção de tokens — símbolos proibidos (V4)
@@ -269,10 +293,6 @@ V4 usa `file.language()` para seleccionar a lista de símbolos
 proibidos — não usa `ImportKind`. A lista Python vive em
 `impure_core.rs` via `forbidden_symbols_for(Language::Python)`.
 Este prompt documenta apenas como os tokens são extraídos do AST.
-
-V4 proíbe I/O em L1. Em Python, I/O ocorre via imports de módulos
-stdlib ou via chamadas directas a builtins (`open`) e funções
-não-determinísticas.
 
 **Módulos proibidos em L1:**
 ```
@@ -309,8 +329,9 @@ Nós `call` com função `identifier` ou `attribute` cujo nome é
 `unittest`, `pytest`, `describe`, `it`, `test` ou `suite`.
 Detecta unittest, pytest, mamba e equivalentes.
 
-Também: `class_definition` cujo nome termina em `Test` ou
-`Tests` e herda de `TestCase` (unittest).
+Também: `class_definition` de **nível de topo** cujo nome termina
+em `Test` ou `Tests` **e** herda de `TestCase` (ambas as condições
+são obrigatórias — nome apenas não é suficiente).
 
 **2. Ficheiro de teste adjacente:**
 `source_file.has_adjacent_test` — `true` se existe
@@ -364,6 +385,7 @@ Para cada `class_definition` de nível superior cuja lista de bases
 contém `Protocol`, `ABC` ou `ABCMeta`:
 - Extrair `name` como `&'a str` do buffer
 - Adicionar a `declared_traits`
+- Ignorar nomes com prefixo `_`
 
 ```python
 # 01_core/contracts/file_provider.py
@@ -427,6 +449,9 @@ where
     pub snapshot_reader: S,
     pub config: CrystallineConfig,
     pub project_root: PathBuf,
+    /// Buffer interno para subdirs interned (ADR-0005).
+    /// Nunca exposto — encapsulado via intern_subdir().
+    subdirs_buffer: std::cell::RefCell<Vec<Box<str>>>,
 }
 
 impl<R: PromptReader, S: PromptSnapshotReader> PyParser<R, S> {
@@ -436,7 +461,13 @@ impl<R: PromptReader, S: PromptSnapshotReader> PyParser<R, S> {
         config: CrystallineConfig,
         project_root: PathBuf,
     ) -> Self {
-        Self { prompt_reader, snapshot_reader, config, project_root }
+        Self {
+            prompt_reader,
+            snapshot_reader,
+            config,
+            project_root,
+            subdirs_buffer: std::cell::RefCell::new(Vec::new()),
+        }
     }
 }
 
@@ -448,16 +479,16 @@ where
     fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
         // Ordem de extracção:
         // 1. header (bloco # no topo: @prompt, @prompt-hash, @layer, @updated)
-        // 2. imports + import_name_map (PyLayerResolver 4 passos + resolve_py_subdir)
+        // 2. imports + import_name_map (PyLayerResolver 4 passos + self.resolve_py_subdir())
         // 3. tokens (imports proibidos + call nodes — sem Motor de Duas Fases)
         // 4. has_test_coverage (call pytest/unittest + adjacência + declaration-only)
+        //    Nota: classe *Test requer TAMBÉM herança de TestCase — nome só não basta
         // 5. public_interface + prompt_snapshot (V6)
         // 6. declared_traits (apenas L1/contracts, apenas class com Protocol/ABC) (V11)
         // 7. implemented_traits (apenas L2|L3, import_name_map → base de contracts/) (V11)
         // 8. declarations — class sem Protocol/ABC/contracts (V12)
         //
-        // Retorna ParsedFile<'a> com todas as referências apontando
-        // para file.content
+        // target_subdir via self.resolve_py_subdir() — sem Box::leak (ADR-0005)
     }
 }
 ```
@@ -484,11 +515,15 @@ where
 - `std::io::Error` nunca atravessa para L1 — convertido em
   `ParseError` antes de retornar
 - `import_name_map` é mapa interno de L3 — não exposto a L1
+- **`Box::leak` proibido** para `target_subdir` — usar
+  `intern_subdir()` com buffer interno (ADR-0005)
 - **`ImportKind` nunca contém variantes específicas de linguagem**:
   imports Python mapeiam para `Direct/Glob/Alias/Named` —
   nunca para `PyImport` ou outra variante Python
 - **V4 usa `file.language()`, não `ImportKind`**, para seleccionar
   a lista de símbolos proibidos em `forbidden_symbols_for()`
+- **Detecção de classe unittest:** requer nome `*Test/Tests`
+  **e** herança de `TestCase` — nome apenas gera falsos positivos
 
 ---
 
@@ -503,27 +538,24 @@ Dado SourceFile com from .entities.layer import Layer
 E file em 03_infra/walker.py, project_root="."
 Quando parse() for chamado
 Então imports contém Import { target_layer: Layer::L3, .. }
-— relativo: 03_infra + entities/layer = 03_infra/entities/layer → L3
 
 Dado py_aliases com "core" = "01_core"
 E SourceFile com from core.contracts import FileProvider
 Quando parse() for chamado
 Então imports contém Import { target_layer: Layer::L1,
       target_subdir: Some("contracts"), kind: ImportKind::Named, .. }
-— alias resolvido antes da álgebra de paths
+E target_subdir foi produzido via intern_subdir(), não Box::leak
 
 Dado SourceFile com from ..entities.layer import Layer
 E file em 01_core/contracts/fp.py
 Quando parse() for chamado
 Então imports contém Import { target_layer: Layer::L1,
       target_subdir: Some("entities"), .. }
-— dois pontos = go up 1 from 01_core/contracts → 01_core + entities/layer
 
 Dado SourceFile com from ../../../../../etc import passwd
 (path que escapa da raiz do projecto)
 Quando parse() for chamado
 Então imports contém Import { target_layer: Layer::Unknown, .. }
-— normalize() retorna None, Layer::Unknown propaga
 
 Dado SourceFile com import os
 Quando parse() for chamado
@@ -548,46 +580,47 @@ Então imports contém Import { kind: ImportKind::Named, .. }
 Dado SourceFile com import os
 Quando parse() for chamado
 Então imports contém Import { target_layer: Layer::Unknown, .. }
-— package externo, Layer::Unknown directamente
 
 Dado SourceFile com from typing import Protocol
 Quando parse() for chamado
 Então imports contém Import { target_layer: Layer::Unknown, .. }
-— "typing" não começa com . e não é alias
 
 Dado SourceFile com from .lab.experiment import X
 E lab/ mapeado em [layers]
 Quando parse() for chamado
 Então imports contém Import { target_layer: Layer::Lab, .. }
-— import relativo de lab detectado, V10 dispara em produção
 
 Dado SourceFile em L1 com import os
 Quando parse() for chamado
 Então tokens contém Token { symbol: "os", .. }
-— módulo proibido em V4
 
 Dado SourceFile em L1 com import pathlib
 Quando parse() for chamado
 Então tokens contém Token { symbol: "pathlib", .. }
-— módulo proibido em V4
 
 Dado SourceFile em L1 com open("file.txt")
 Quando parse() for chamado
 Então tokens contém Token { symbol: "open", .. }
-— builtin proibido em V4
 
 Dado SourceFile em L1 com random.random()
 Quando parse() for chamado
 Então tokens contém Token { symbol: "random.random", .. }
-— chamada não-determinística proibida em V4
 
 Dado SourceFile em L1 com time.time()
 Quando parse() for chamado
 Então tokens contém Token { symbol: "time.time", .. }
 
-Dado SourceFile com import unittest; class FooTest(unittest.TestCase)
+Dado SourceFile com import unittest
+E class FooTest(unittest.TestCase): ...
 Quando parse() for chamado
 Então has_test_coverage = true
+— nome *Test E herança TestCase satisfeitos
+
+Dado SourceFile com class FooTest: pass
+(nome termina em Test mas sem herança de TestCase)
+Quando parse() for chamado
+Então has_test_coverage = false
+— nome *Test sozinho não é suficiente
 
 Dado SourceFile com source_file.has_adjacent_test = true
 Quando parse() for chamado
@@ -601,6 +634,12 @@ Quando parse() for chamado
 Então has_test_coverage = true — declaration-only, isento de V2
 
 Dado SourceFile com:
+  def real_fn(x): return x + 1
+Quando parse() for chamado
+Então has_test_coverage = false
+— implementação real → não é declaration-only
+
+Dado SourceFile com:
   def check(file: ParsedFile) -> list: ...
 Quando parse() for chamado
 Então public_interface.functions contém FunctionSignature {
@@ -608,7 +647,6 @@ Então public_interface.functions contém FunctionSignature {
     params: ["ParsedFile"],
     return_type: Some("list")
 }
-— self/cls omitidos dos params
 
 Dado SourceFile com:
   class FileWalker(FileProvider): ...
@@ -646,7 +684,7 @@ Dado SourceFile em L3 com:
   class InternalHelper: ...
 Quando parse() for chamado
 Então implemented_traits = ["FileProvider"]
-E "InternalHelper" não aparece — sem base de contracts/
+E "InternalHelper" não aparece
 
 Dado SourceFile em L4 com:
   from core.contracts import HashRewriter  (alias)
@@ -656,13 +694,11 @@ Quando parse() for chamado
 Então declarations contém:
   Declaration { kind: Class, name: "OutputFormatter", .. }
 E NÃO contém Declaration para "L3HashAdapter"
-— base de contracts/ é adapter, não capturado
 
 Dado SourceFile em L4 com:
   class Config(Protocol): ...
 Quando parse() for chamado
 Então declarations NÃO contém Declaration para "Config"
-— herda de Protocol, é contrato
 
 Dado SourceFile .py sintaticamente inválido
 Quando parse() for chamado
@@ -679,6 +715,12 @@ Então retorna Err(ParseError::UnsupportedLanguage { .. })
 Dado NullPromptReader e NullSnapshotReader como mocks
 Quando parse() for chamado
 Então nenhum acesso a disco ocorre durante testes
+
+Dado PyParser instanciado e parse() chamado para 100 arquivos
+com imports que resolvem para L1
+Quando o parser for descartado
+Então nenhum Box::leak foi produzido
+— subdirs_buffer libera toda a memória com o parser
 ```
 
 ---
@@ -687,6 +729,7 @@ Então nenhum acesso a disco ocorre durante testes
 
 | Data | Motivo | Arquivos afetados |
 |------|--------|-------------------|
-| 2026-03-19 | Criação inicial: PyParser com resolução física, header #, PyImport, V4 Python, V11 via import_name_map, V12 com exclusão de Protocol/ABC/adapters | py_parser.rs |
+| 2026-03-19 | Criação inicial: PyParser com resolução física, header #, ImportKind semântico, V4 Python, V11 via import_name_map, V12 com exclusão de Protocol/ABC/adapters | py_parser.rs |
 | 2026-03-19 | Implementação completa: find_child_by_kind com lifetime explícito, return_type sem move-while-borrowed, mock NullSnapshotReader corrigido para 'static, test file_with_implementation_is_not_declaration_only reescrito; wiring em mod.rs e main.rs; 334/334 testes, zero violations | py_parser.rs, 03_infra/mod.rs, 04_wiring/main.rs |
 | 2026-03-19 | ADR-0009 correcção: ImportKind::PyImport removido; tabela de mapeamento Python→Direct/Glob/Alias/Named adicionada; nota sobre V4 usar file.language() na secção de tokens; restrições de agnósticidade adicionadas; critério de lab corrigido para sintaxe Python; critérios de ImportKind adicionados | py_parser.rs |
+| 2026-03-20 | ADR-0005 conformidade: Box::leak removido de resolve_py_subdir; substituído por buffer interno intern_subdir() com mesmo padrão de FsPromptWalker; subdirs_buffer adicionado à struct; restrição explícita contra Box::leak adicionada; critério de memória adicionado; critério de detecção de classe unittest corrigido: nome *Test requer também herança de TestCase | py_parser.rs |

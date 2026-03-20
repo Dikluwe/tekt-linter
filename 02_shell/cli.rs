@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/sarif-formatter.md
-//! @prompt-hash 5f68f7cf
+//! @prompt-hash 68e6123d
 //! @layer L2
-//! @updated 2026-03-14
+//! @updated 2026-03-20
 
 use std::path::PathBuf;
 
@@ -108,20 +108,29 @@ pub struct EnabledChecks {
 
 impl EnabledChecks {
     pub fn from_cli(checks: &str, no_drift: bool, no_stale: bool) -> Self {
-        let lower = checks.to_lowercase();
+        let tokens: std::collections::HashSet<&str> = checks
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        let has = |id: &str| -> bool {
+            tokens.contains("all") || tokens.contains(id)
+        };
+
         Self {
-            v1: lower.contains("v1"),
-            v2: lower.contains("v2"),
-            v3: lower.contains("v3"),
-            v4: lower.contains("v4"),
-            v5: lower.contains("v5") && !no_drift,
-            v6: lower.contains("v6") && !no_stale,
-            v7: lower.contains("v7"),
-            v8: lower.contains("v8"),
-            v9: lower.contains("v9"),
-            v10: lower.contains("v10"),
-            v11: lower.contains("v11"),
-            v12: lower.contains("v12"),
+            v1:  has("v1"),
+            v2:  has("v2"),
+            v3:  has("v3"),
+            v4:  has("v4"),
+            v5:  has("v5") && !no_drift,
+            v6:  has("v6") && !no_stale,
+            v7:  has("v7"),
+            v8:  has("v8"),
+            v9:  has("v9"),
+            v10: has("v10"),
+            v11: has("v11"),
+            v12: has("v12"),
         }
     }
 }
@@ -389,5 +398,38 @@ mod tests {
         let checks = EnabledChecks::from_cli("v1,v2,v3,v4,v5,v6", false, true);
         assert!(!checks.v6);
         assert!(checks.v5);
+    }
+
+    #[test]
+    fn checks_v11_does_not_activate_v1_or_v2() {
+        let checks = EnabledChecks::from_cli("v11", false, false);
+        assert!(checks.v11);
+        assert!(!checks.v1);
+        assert!(!checks.v2);
+    }
+
+    #[test]
+    fn checks_v12_does_not_activate_v1_or_v2() {
+        let checks = EnabledChecks::from_cli("v12", false, false);
+        assert!(checks.v12);
+        assert!(!checks.v1);
+        assert!(!checks.v2);
+    }
+
+    #[test]
+    fn checks_v11_and_v12_together() {
+        let checks = EnabledChecks::from_cli("v11,v12", false, false);
+        assert!(checks.v11);
+        assert!(checks.v12);
+        assert!(!checks.v1);
+        assert!(!checks.v2);
+    }
+
+    #[test]
+    fn checks_with_spaces_around_tokens() {
+        let checks = EnabledChecks::from_cli("v1, v3", false, false);
+        assert!(checks.v1);
+        assert!(checks.v3);
+        assert!(!checks.v2);
     }
 }
