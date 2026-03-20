@@ -986,4 +986,104 @@ fn main() {}",
     fn trait_last_segment_simple_name() {
         assert_eq!(trait_last_segment("PromptReader"), "PromptReader");
     }
+
+    // ── ImportKind mapping — critérios ADR-0009 ────────────────────────────────
+
+    #[test]
+    fn use_statement_without_as_or_braces_is_direct() {
+        // use crate::shell::api → ImportKind::Direct
+        let parser = make_parser();
+        let file = source_file("use crate::shell::cli;\nfn foo() {}");
+        let parsed = parser.parse(&file).unwrap();
+        let imp = parsed.imports.iter().find(|i| i.path.contains("shell"));
+        assert!(imp.is_some(), "should have import for crate::shell::cli");
+        assert_eq!(imp.unwrap().kind, ImportKind::Direct);
+    }
+
+    #[test]
+    fn use_star_maps_to_glob() {
+        // use crate::entities::* → ImportKind::Glob
+        let parser = make_parser();
+        let file = source_file("use crate::entities::*;\nfn foo() {}");
+        let parsed = parser.parse(&file).unwrap();
+        let imp = parsed.imports.iter().find(|i| i.path.contains("entities"));
+        assert!(imp.is_some(), "should have import for crate::entities::*");
+        assert_eq!(imp.unwrap().kind, ImportKind::Glob);
+    }
+
+    #[test]
+    fn use_with_as_maps_to_alias() {
+        // use std::fs as fs_io → ImportKind::Alias
+        let parser = make_parser();
+        let file = source_file("use std::fs as fs_io;\nfn foo() {}");
+        let parsed = parser.parse(&file).unwrap();
+        let imp = parsed.imports.iter().find(|i| i.path.contains("fs"));
+        assert!(imp.is_some(), "should have import for std::fs as fs_io");
+        assert_eq!(imp.unwrap().kind, ImportKind::Alias);
+    }
+
+    #[test]
+    fn use_with_braces_maps_to_named() {
+        // use crate::entities::{Layer, Language} → ImportKind::Named
+        let parser = make_parser();
+        let file = source_file("use crate::entities::{Layer, Language};\nfn foo() {}");
+        let parsed = parser.parse(&file).unwrap();
+        let imp = parsed.imports.iter().find(|i| i.path.contains("entities"));
+        assert!(imp.is_some(), "should have import for crate::entities::{{...}}");
+        assert_eq!(imp.unwrap().kind, ImportKind::Named);
+    }
+
+    #[test]
+    fn extern_crate_maps_to_direct() {
+        // extern crate serde → ImportKind::Direct (não variante específica de linguagem)
+        let parser = make_parser();
+        let file = source_file("extern crate serde;\nfn foo() {}");
+        let parsed = parser.parse(&file).unwrap();
+        let imp = parsed.imports.iter().find(|i| i.path.contains("serde"));
+        assert!(imp.is_some(), "extern crate serde should produce an Import");
+        assert_eq!(imp.unwrap().kind, ImportKind::Direct);
+    }
+
+    #[test]
+    fn mod_declaration_maps_to_direct() {
+        // mod foo; (sem bloco) → ImportKind::Direct
+        let parser = make_parser();
+        let file = source_file("mod helpers;\nfn bar() {}");
+        let parsed = parser.parse(&file).unwrap();
+        let imp = parsed.imports.iter().find(|i| i.path.contains("helpers"));
+        assert!(imp.is_some(), "mod declaration should produce an Import");
+        assert_eq!(imp.unwrap().kind, ImportKind::Direct);
+    }
+
+    #[test]
+    fn import_to_l1_has_target_subdir() {
+        // use crate::entities::Layer → target_subdir = Some("entities")
+        let parser = make_parser();
+        let file = source_file("use crate::entities::Layer;\nfn foo() {}");
+        let parsed = parser.parse(&file).unwrap();
+        let imp = parsed.imports.iter().find(|i| i.target_layer == Layer::L1);
+        assert!(imp.is_some(), "crate::entities should resolve to L1");
+        assert_eq!(imp.unwrap().target_subdir, Some("entities"));
+    }
+
+    #[test]
+    fn syntax_error_reports_nonzero_line() {
+        // Fonte sintaticamente inválida com erro na linha 2 → line > 0
+        // (SyntaxError { line } deve ser ≥ 1 — nunca linha 0)
+        let parser = make_parser();
+        // Segunda linha é completamente inválida em Rust
+        let file = source_file("fn valid() {}\n} } } invalid @ @ @");
+        match parser.parse(&file) {
+            Err(ParseError::SyntaxError { line, .. }) => {
+                assert!(line > 0, "SyntaxError.line should be > 0, got {}", line);
+            }
+            Ok(_) => {
+                // tree-sitter é error-tolerant; se não detectou SyntaxError,
+                // o parser pode não implementar esta verificação.
+                // Marcar como falha para forçar revisão.
+                panic!("expected ParseError::SyntaxError for syntactically invalid source, got Ok");
+            }
+            Err(other) => panic!("expected SyntaxError, got {:?}", other),
+        }
+    }
 }

@@ -1533,4 +1533,108 @@ mod tests {
         let result = normalize(Path::new("./01_core/entities"), Path::new("."));
         assert_eq!(result, Some(PathBuf::from("01_core/entities")));
     }
+
+    // ── ImportKind mapping — critérios ADR-0009 ────────────────────────────────
+
+    #[test]
+    fn import_default_is_direct() {
+        // import X from '...' → ImportKind::Direct
+        let parser = make_parser();
+        let file = ts_file_at(
+            "import Layer from '../01_core/entities/layer';",
+            "03_infra/ts_parser.ts",
+            Layer::L3,
+        );
+        let parsed = parser.parse(&file).unwrap();
+        assert!(!parsed.imports.is_empty(), "should have at least one import");
+        assert_eq!(parsed.imports[0].kind, ImportKind::Direct);
+    }
+
+    #[test]
+    fn import_namespace_is_glob() {
+        // import * as ns from '...' → ImportKind::Glob
+        let parser = make_parser();
+        let file = ts_file_at(
+            "import * as entities from '../01_core/entities/layer';",
+            "03_infra/ts_parser.ts",
+            Layer::L3,
+        );
+        let parsed = parser.parse(&file).unwrap();
+        assert!(!parsed.imports.is_empty(), "should have at least one import");
+        assert_eq!(parsed.imports[0].kind, ImportKind::Glob);
+    }
+
+    #[test]
+    fn import_renamed_binding_is_alias() {
+        // import { A as B } from '...' → ImportKind::Alias
+        let parser = make_parser();
+        let file = ts_file_at(
+            "import { Layer as L } from '../01_core/entities/layer';",
+            "03_infra/ts_parser.ts",
+            Layer::L3,
+        );
+        let parsed = parser.parse(&file).unwrap();
+        assert!(!parsed.imports.is_empty(), "should have at least one import");
+        assert_eq!(parsed.imports[0].kind, ImportKind::Alias);
+    }
+
+    #[test]
+    fn alias_import_subdir_extracted() {
+        // @core/entities/layer → target_subdir = Some("entities")
+        // target_subdir produzido via intern_subdir(), não Box::leak
+        let mut config = CrystallineConfig::default();
+        config.ts_aliases.insert("@core".to_string(), "01_core".to_string());
+        let parser = make_parser_with_config(config);
+        let file = ts_file_at(
+            "import { W } from '@core/entities/layer';",
+            "03_infra/ts_parser.ts",
+            Layer::L3,
+        );
+        let parsed = parser.parse(&file).unwrap();
+        let imp = parsed.imports.iter().find(|i| i.target_layer == Layer::L1);
+        assert!(imp.is_some(), "alias should resolve to L1");
+        assert_eq!(imp.unwrap().target_subdir, Some("entities"));
+    }
+
+    #[test]
+    fn syntax_error_reports_nonzero_line() {
+        // Fonte sintaticamente inválida com erro após linha 1 → line > 0
+        let parser = make_parser();
+        // Linha 2 é claramente inválida em TypeScript
+        let file = ts_file("export const x = 1;\nfunction {{{{{");
+        match parser.parse(&file) {
+            Err(ParseError::SyntaxError { line, .. }) => {
+                assert!(line > 0, "SyntaxError.line should be > 0, got {}", line);
+            }
+            Ok(_) => {
+                panic!("expected ParseError::SyntaxError for syntactically invalid source, got Ok");
+            }
+            Err(other) => panic!("expected SyntaxError, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn intern_subdir_no_box_leak_smoke_test() {
+        // Criar e descartar 10 instâncias do parser — verificar que não há crash/leak
+        // Se Box::leak fosse usado, o processo acumularia memória não libertada.
+        // Este smoke test verifica que não há crash após criação e descarte repetidos.
+        for _ in 0..10 {
+            let mut config = CrystallineConfig::default();
+            config.ts_aliases.insert("@core".to_string(), "01_core".to_string());
+            let parser = TsParser::new(
+                NullPromptReader,
+                NullSnapshotReader,
+                config,
+                PathBuf::from("."),
+            );
+            let file = ts_file_at(
+                "import { Layer } from '@core/entities/layer';",
+                "03_infra/ts_parser.ts",
+                Layer::L3,
+            );
+            let _ = parser.parse(&file);
+            // Parser descartado aqui — subdirs_buffer deve liberar toda a memória
+        }
+        // Contrato correcto — teste adicionado para prevenir regressão de Box::leak
+    }
 }

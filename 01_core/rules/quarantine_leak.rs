@@ -170,4 +170,21 @@ mod tests {
         file.imports.push(lab_import(9));
         assert_eq!(check(&file).len(), 2);
     }
+
+    // ── Critério adicional: V10 não cobre imports não-lab (esses são V3) ───────
+
+    #[test]
+    fn l2_importing_l3_is_not_v10() {
+        // Dado arquivo L2 com Import { target_layer: Layer::L3, .. }
+        // Então retorna vec![] — V3 cobre isso, não V10
+        let mut file = base_file(Layer::L2);
+        file.imports.push(Import {
+            path: "crate::infra::db",
+            line: 5,
+            kind: ImportKind::Direct,
+            target_layer: Layer::L3,
+            target_subdir: None,
+        });
+        assert!(check(&file).is_empty(), "L2→L3 deve ser V3, não V10");
+    }
 }

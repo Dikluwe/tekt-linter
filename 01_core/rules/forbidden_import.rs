@@ -153,4 +153,51 @@ mod tests {
         assert!(violations[0].message.contains("L3"));
         assert!(violations[0].message.contains("crate::infra::db"));
     }
+
+    // ── Critérios adicionais: V3 deve funcionar identicamente para qualquer ImportKind
+
+    #[test]
+    fn l2_importing_l3_with_named_kind_is_violation() {
+        // Import { kind: ImportKind::Named, target_layer: L3 } em L2 → Violation V3
+        // V3 não usa ImportKind na sua lógica — proíbe por layer, não por kind
+        let mut file = base_file(Layer::L2);
+        file.imports.push(Import {
+            path: "crate::infra::db",
+            line: 4,
+            kind: ImportKind::Named,
+            target_layer: Layer::L3,
+            target_subdir: None,
+        });
+        let violations = check(&file);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, "V3");
+    }
+
+    #[test]
+    fn l2_importing_l3_with_glob_kind_is_violation() {
+        // Import { kind: ImportKind::Glob, target_layer: L3 } em L2 → Violation V3
+        let mut file = base_file(Layer::L2);
+        file.imports.push(Import {
+            path: "crate::infra::*",
+            line: 5,
+            kind: ImportKind::Glob,
+            target_layer: Layer::L3,
+            target_subdir: None,
+        });
+        assert_eq!(check(&file).len(), 1);
+    }
+
+    #[test]
+    fn l2_importing_l3_with_alias_kind_is_violation() {
+        // Import { kind: ImportKind::Alias, target_layer: L3 } em L2 → Violation V3
+        let mut file = base_file(Layer::L2);
+        file.imports.push(Import {
+            path: "crate::infra::db as db_infra",
+            line: 6,
+            kind: ImportKind::Alias,
+            target_layer: Layer::L3,
+            target_subdir: None,
+        });
+        assert_eq!(check(&file).len(), 1);
+    }
 }

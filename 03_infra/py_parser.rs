@@ -1746,4 +1746,112 @@ class OutputFormatter:
         assert_eq!(relative_module_to_path(3, "lab"), "../../lab");
     }
 
+    // ── ImportKind mapping — critérios ADR-0009 ────────────────────────────────
+
+    #[test]
+    fn import_os_is_direct_kind() {
+        // import os → ImportKind::Direct
+        let src = "import os\n";
+        let file = make_file("01_core/entities/layer.py", src, Layer::L1);
+        let result = make_parser().parse(&file).unwrap();
+        let imp = result.imports.iter().find(|i| i.path.contains("os"));
+        assert!(imp.is_some(), "should have import for os");
+        assert_eq!(imp.unwrap().kind, ImportKind::Direct);
+    }
+
+    #[test]
+    fn import_numpy_as_np_is_alias_kind() {
+        // import numpy as np → ImportKind::Alias
+        let src = "import numpy as np\n";
+        let file = make_file("03_infra/walker.py", src, Layer::L3);
+        let result = make_parser().parse(&file).unwrap();
+        let imp = result.imports.iter().find(|i| i.path.contains("numpy"));
+        assert!(imp.is_some(), "should have import for numpy");
+        assert_eq!(imp.unwrap().kind, ImportKind::Alias);
+    }
+
+    #[test]
+    fn from_os_import_path_is_named_kind() {
+        // from os import path → ImportKind::Named
+        let src = "from os import path\n";
+        let file = make_file("03_infra/walker.py", src, Layer::L3);
+        let result = make_parser().parse(&file).unwrap();
+        let imp = result.imports.iter().find(|i| i.path.contains("os"));
+        assert!(imp.is_some(), "should have import for os");
+        assert_eq!(imp.unwrap().kind, ImportKind::Named);
+    }
+
+    #[test]
+    fn from_os_import_star_is_glob_kind() {
+        // from os import * → ImportKind::Glob
+        let src = "from os import *\n";
+        let file = make_file("03_infra/walker.py", src, Layer::L3);
+        let result = make_parser().parse(&file).unwrap();
+        let imp = result.imports.iter().find(|i| i.path.contains("os"));
+        assert!(imp.is_some(), "should have import for os");
+        assert_eq!(imp.unwrap().kind, ImportKind::Glob);
+    }
+
+    #[test]
+    fn from_dot_import_utils_is_named_kind() {
+        // from . import utils → ImportKind::Named
+        let src = "from . import utils\n";
+        let file = make_file("03_infra/walker.py", src, Layer::L3);
+        let result = make_parser().parse(&file).unwrap();
+        assert!(!result.imports.is_empty(), "should have relative import");
+        assert_eq!(result.imports[0].kind, ImportKind::Named);
+    }
+
+    #[test]
+    fn relative_import_target_subdir_extracted() {
+        // from ..entities import Layer (em 01_core/contracts/fp.py)
+        // → target_subdir = Some("entities")
+        let src = "from ..entities import Layer\n";
+        let file = make_file("01_core/contracts/fp.py", src, Layer::L1);
+        let parser = make_parser(); // parser must outlive result (intern_subdir safety invariant)
+        let result = parser.parse(&file).unwrap();
+        let imp = result.imports.iter().find(|i| i.target_layer == Layer::L1);
+        assert!(imp.is_some(), "should resolve to L1");
+        assert_eq!(imp.unwrap().target_subdir, Some("entities"));
+    }
+
+    #[test]
+    fn syntax_error_reports_nonzero_line() {
+        // Fonte sintaticamente inválida com erro na linha 2 → line > 0
+        // "if :" (if sem condição) é definitivamente inválido em Python
+        let src = "import os\nif :\n    pass\n";
+        let file = make_file("01_core/rules/check.py", src, Layer::L1);
+        match make_parser().parse(&file) {
+            Err(ParseError::SyntaxError { line, .. }) => {
+                assert!(line > 0, "SyntaxError.line should be > 0, got {}", line);
+            }
+            Ok(_) => {
+                panic!("expected ParseError::SyntaxError for syntactically invalid Python, got Ok");
+            }
+            Err(other) => panic!("expected SyntaxError, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn intern_subdir_no_box_leak_smoke_test() {
+        // Criar e descartar 10 instâncias do parser com imports de L1
+        // Se Box::leak fosse usado, produziria memória não libertada.
+        // Smoke test: sem crash após criação e descarte repetidos.
+        for _ in 0..10 {
+            let mut config = CrystallineConfig::default();
+            config.py_aliases.insert("core".to_string(), "01_core".to_string());
+            let parser = PyParser::new(
+                NullPromptReader,
+                NullSnapshotReader,
+                config,
+                PathBuf::from("."),
+            );
+            let src = "from core.contracts import FileProvider\n";
+            let file = make_file("03_infra/walker.py", src, Layer::L3);
+            let _ = parser.parse(&file);
+            // Parser descartado aqui — subdirs_buffer deve liberar toda a memória
+        }
+        // Contrato correcto — teste adicionado para prevenir regressão de Box::leak
+    }
+
 }

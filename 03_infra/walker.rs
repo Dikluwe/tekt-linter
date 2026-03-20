@@ -286,4 +286,28 @@ mod tests {
         std::fs::write(&foo_test_ts, "test('x', () => {});").unwrap();
         assert!(!check_adjacent_test(&foo_test_ts));
     }
+
+    // ── Critérios adicionais do prompt file-walker.md ─────────────────────────
+
+    #[test]
+    fn tsx_adjacent_spec_tsx_detected() {
+        // Dado diretório com foo.tsx e foo.spec.tsx
+        // Então SourceFile para foo.tsx tem has_adjacent_test = true
+        let dir = tempfile::tempdir().unwrap();
+        let foo_tsx = dir.path().join("foo.tsx");
+        let foo_spec_tsx = dir.path().join("foo.spec.tsx");
+        std::fs::write(&foo_tsx, "export const C = () => <div/>;").unwrap();
+        std::fs::write(&foo_spec_tsx, "it('C', () => {});").unwrap();
+        assert!(check_adjacent_test(&foo_tsx));
+    }
+
+    #[test]
+    fn ts_spec_file_itself_returns_false() {
+        // Dado arquivo foo.spec.ts (já é ficheiro de teste)
+        // Então has_adjacent_test = false — ele é o teste, não o ficheiro testado
+        let dir = tempfile::tempdir().unwrap();
+        let foo_spec_ts = dir.path().join("foo.spec.ts");
+        std::fs::write(&foo_spec_ts, "it('x', () => {});").unwrap();
+        assert!(!check_adjacent_test(&foo_spec_ts));
+    }
 }

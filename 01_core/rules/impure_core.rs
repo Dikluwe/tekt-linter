@@ -59,6 +59,7 @@ fn is_forbidden_symbol(symbol: &str, forbidden: &[&str]) -> bool {
     forbidden.iter().any(|&f| {
         symbol == f
             || (symbol.starts_with(f) && symbol[f.len()..].starts_with("::"))
+            || (symbol.starts_with(f) && symbol[f.len()..].starts_with('.'))
     })
 }
 
@@ -235,5 +236,88 @@ mod tests {
             path,
         };
         assert!(check(&file).is_empty());
+    }
+
+    // ── Critérios adicionais do prompt impure-core.md (TypeScript/Python) ─────
+
+    #[test]
+    fn v4_typescript_fs_symbol_in_l1_is_violation() {
+        // language = TypeScript, token "fs" em L1 → Violation V4
+        // (símbolo simples — testa correspondência exacta, não só prefixo)
+        let path: &'static Path = Path::new("01_core/rules/mod.ts");
+        let file = MockFile {
+            layer: Layer::L1,
+            language: Language::TypeScript,
+            tokens: vec![Token {
+                symbol: Cow::Borrowed("fs"),
+                line: 5,
+                column: 0,
+                kind: TokenKind::CallExpression,
+            }],
+            path,
+        };
+        let violations = check(&file);
+        assert_eq!(violations.len(), 1, "\"fs\" deve ser proibido em TypeScript L1");
+        assert_eq!(violations[0].rule_id, "V4");
+    }
+
+    #[test]
+    fn v4_typescript_math_random_in_l1_is_violation() {
+        // language = TypeScript, token "Math.random" em L1 → Violation V4
+        let path: &'static Path = Path::new("01_core/rules/mod.ts");
+        let file = MockFile {
+            layer: Layer::L1,
+            language: Language::TypeScript,
+            tokens: vec![Token {
+                symbol: Cow::Borrowed("Math.random"),
+                line: 8,
+                column: 0,
+                kind: TokenKind::CallExpression,
+            }],
+            path,
+        };
+        let violations = check(&file);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_id, "V4");
+    }
+
+    #[test]
+    fn v4_python_open_in_l1_is_violation() {
+        // language = Python, token "open" em L1 → Violation V4 (builtin de I/O)
+        let path: &'static Path = Path::new("01_core/rules/mod.py");
+        let file = MockFile {
+            layer: Layer::L1,
+            language: Language::Python,
+            tokens: vec![Token {
+                symbol: Cow::Borrowed("open"),
+                line: 12,
+                column: 0,
+                kind: TokenKind::CallExpression,
+            }],
+            path,
+        };
+        let violations = check(&file);
+        assert_eq!(violations.len(), 1, "\"open\" builtin deve ser proibido em Python L1");
+        assert_eq!(violations[0].rule_id, "V4");
+    }
+
+    #[test]
+    fn v4_python_subprocess_run_in_l1_is_violation() {
+        // language = Python, token "subprocess.run" em L1 → Violation V4
+        // (is_forbidden_symbol verifica prefixo com "." para submódulos)
+        let path: &'static Path = Path::new("01_core/rules/mod.py");
+        let file = MockFile {
+            layer: Layer::L1,
+            language: Language::Python,
+            tokens: vec![Token {
+                symbol: Cow::Borrowed("subprocess.run"),
+                line: 7,
+                column: 0,
+                kind: TokenKind::CallExpression,
+            }],
+            path,
+        };
+        let violations = check(&file);
+        assert_eq!(violations.len(), 1, "\"subprocess.run\" deve ser proibido em Python L1");
     }
 }

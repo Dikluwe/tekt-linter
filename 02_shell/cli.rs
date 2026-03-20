@@ -432,4 +432,101 @@ mod tests {
         assert!(checks.v3);
         assert!(!checks.v2);
     }
+
+    // ── Critérios adicionais do prompt sarif-formatter.md ─────────────────────
+
+    #[test]
+    fn checks_all_activates_all_v1_to_v12() {
+        // Dado --checks all → todos v1..v12 = true
+        let checks = EnabledChecks::from_cli("all", false, false);
+        assert!(checks.v1);
+        assert!(checks.v2);
+        assert!(checks.v3);
+        assert!(checks.v4);
+        assert!(checks.v5);
+        assert!(checks.v6);
+        assert!(checks.v7);
+        assert!(checks.v8);
+        assert!(checks.v9);
+        assert!(checks.v10);
+        assert!(checks.v11);
+        assert!(checks.v12);
+    }
+
+    #[test]
+    fn checks_unknown_token_silently_ignored() {
+        // Dado --checks v1,v99 → v1=true, sem panic — token desconhecido ignorado
+        let checks = EnabledChecks::from_cli("v1,v99", false, false);
+        assert!(checks.v1);
+        assert!(!checks.v2);
+        // sem panic — este teste já valida isso ao completar
+    }
+
+    #[test]
+    fn sarif_v7_warning_level() {
+        // Dado Vec<Violation> com V7 warning
+        // Quando format_sarif() for chamado
+        // Então SARIF contém resultado com ruleId "V7" e level "warning"
+        let v = vec![make_violation("V7", ViolationLevel::Warning)];
+        let out = format_sarif(&v);
+        let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(parsed["runs"][0]["results"][0]["ruleId"], "V7");
+        assert_eq!(parsed["runs"][0]["results"][0]["level"], "warning");
+    }
+
+    #[test]
+    fn sarif_v8_fatal_mapped_to_error() {
+        // V8 é Fatal — SARIF 2.1.0 não tem "fatal", deve ser mapeado para "error"
+        let v = vec![make_violation("V8", ViolationLevel::Fatal)];
+        let out = format_sarif(&v);
+        let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(parsed["runs"][0]["results"][0]["ruleId"], "V8");
+        assert_eq!(parsed["runs"][0]["results"][0]["level"], "error");
+    }
+
+    #[test]
+    fn sarif_v10_fatal_mapped_to_error() {
+        // V10 Fatal mapeado para "error" no SARIF — idêntico ao tratamento de V0 e V8
+        let v = vec![make_violation("V10", ViolationLevel::Fatal)];
+        let out = format_sarif(&v);
+        let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(parsed["runs"][0]["results"][0]["ruleId"], "V10");
+        assert_eq!(parsed["runs"][0]["results"][0]["level"], "error");
+    }
+
+    #[test]
+    fn sarif_v11_error_level() {
+        // Dado Vec<Violation> com V11 error
+        let v = vec![make_violation("V11", ViolationLevel::Error)];
+        let out = format_sarif(&v);
+        let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(parsed["runs"][0]["results"][0]["ruleId"], "V11");
+        assert_eq!(parsed["runs"][0]["results"][0]["level"], "error");
+    }
+
+    #[test]
+    fn sarif_v12_warning_level() {
+        // Dado Vec<Violation> com V12 warning
+        let v = vec![make_violation("V12", ViolationLevel::Warning)];
+        let out = format_sarif(&v);
+        let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(parsed["runs"][0]["results"][0]["ruleId"], "V12");
+        assert_eq!(parsed["runs"][0]["results"][0]["level"], "warning");
+    }
+
+    #[test]
+    fn should_fail_on_fatal_regardless_of_fail_on_setting() {
+        // Fatal bloqueia CI incondicionalmente — mesmo com --fail-on error
+        let v = vec![make_violation("V10", ViolationLevel::Fatal)];
+        assert!(should_fail(&v, &FailLevel::Error));
+    }
+
+    #[test]
+    fn sarif_driver_rules_has_13_entries() {
+        // SARIF driver.rules deve conter exatamente 13 entradas (V0 a V12)
+        let out = format_sarif(&[]);
+        let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let rules = parsed["runs"][0]["tool"]["driver"]["rules"].as_array().unwrap();
+        assert_eq!(rules.len(), 13, "expected 13 rules (V0 to V12), got {}", rules.len());
+    }
 }
