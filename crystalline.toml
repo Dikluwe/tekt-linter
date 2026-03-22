@@ -82,3 +82,13 @@ V9  = { level = "error" }
 V10 = { level = "fatal" }
 V11 = { level = "error" }
 V12 = { level = "warning" }
+V13 = { level = "error" }
+V14 = { level = "error" }
+
+[l1_allowed_external]
+# Pacotes externos explicitamente autorizados em L1.
+# L1 é fechada por defeito — qualquer externo não listado é Error (V14).
+# thiserror: derive(Error) para tipos de erro de domínio (L1).
+rust       = ["thiserror"]
+typescript = []
+python     = []

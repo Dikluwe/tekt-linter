@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/violation-types.md
-//! @prompt-hash cecd9806
+//! @prompt-hash 60cef948
 //! @layer L1
-//! @updated 2026-03-14
+//! @updated 2026-03-22
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -34,6 +34,21 @@ pub struct Import<'a> {
     /// Some("internal") se import aponta para subdir não-porta.
     /// Usado por V9 para detectar imports fora das portas de L1.  (ADR-0006)
     pub target_subdir: Option<&'a str>,
+}
+
+// ── ModuleDecl (ADR-0013) ─────────────────────────────────────────────────────
+
+/// Declaração de módulo: `mod foo;`
+/// Inclui foo.rs como submódulo do mesmo crate.
+/// Apenas Rust produz entradas não vazias neste campo.
+/// Separado de `imports` para distinguir estrutura de dependência — ADR-0013.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleDecl<'a> {
+    /// Nome do módulo: "foo" de `mod foo;`
+    pub name: &'a str,
+    /// Camada de foo.rs conforme a camada do ficheiro declarante.
+    pub target_layer: Layer,
+    pub line: usize,
 }
 
 // ── Token ─────────────────────────────────────────────────────────────────────
@@ -101,6 +116,21 @@ pub enum DeclarationKind {
     /// type_alias_declaration (type X = ...).
     /// Sempre proibido em L4.
     TypeAlias,
+}
+
+// ── StaticDeclaration (V13) ───────────────────────────────────────────────────
+
+/// Declaração static de nível superior.
+/// Populada pelo RustParser para todos os arquivos.
+/// V13 filtra por layer == L1 internamente.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaticDeclaration<'a> {
+    pub name: &'a str,
+    /// Texto bruto do tipo declarado (para detecção de tokens).
+    pub type_text: &'a str,
+    /// true se declarado como `static mut`
+    pub is_mut: bool,
+    pub line: usize,
 }
 
 // ── WiringConfig (V12) ────────────────────────────────────────────────────────
@@ -254,8 +284,8 @@ pub struct PromptHeader<'a> {
 // Direção correta: entities → contracts (nunca entities → rules)
 
 use crate::entities::rule_traits::{
-    HasCoverage, HasHashes, HasImports, HasPromptFilesystem,
-    HasPublicInterface, HasPubLeak, HasTokens, HasWiringPurity,
+    HasCoverage, HasHashes, HasImports, HasModuleDecls, HasPromptFilesystem,
+    HasPublicInterface, HasPubLeak, HasStaticDeclarations, HasTokens, HasWiringPurity,
 };
 
 impl<'a> HasPromptFilesystem<'a> for ParsedFile<'a> {
@@ -357,6 +387,20 @@ impl<'a> HasWiringPurity<'a> for ParsedFile<'a> {
     }
 }
 
+impl<'a> HasStaticDeclarations<'a> for ParsedFile<'a> {
+    fn layer(&self) -> &Layer { &self.layer }
+    fn static_declarations(&self) -> &[StaticDeclaration<'a>] {
+        &self.static_declarations
+    }
+    fn path(&self) -> &'a Path { self.path }
+}
+
+impl<'a> HasModuleDecls<'a> for ParsedFile<'a> {
+    fn module_decls(&self) -> &[ModuleDecl<'a>] {
+        &self.module_decls
+    }
+}
+
 // ── ParsedFile ────────────────────────────────────────────────────────────────
 
 /// Intermediate representation consumed by all V1–V6 rules.
@@ -401,6 +445,14 @@ pub struct ParsedFile<'a> {
     /// For V12: top-level struct/enum/impl-without-trait declarations.
     /// Populated by L3 (RustParser) for all files — V12 filters by layer == L4 internally.
     pub declarations: Vec<Declaration<'a>>,
+
+    /// For V13: top-level static declarations.
+    /// Populated by L3 (RustParser) for all files — V13 filters by layer == L1 internally.
+    pub static_declarations: Vec<StaticDeclaration<'a>>,
+
+    /// For future structural rules: `mod foo;` declarations — only Rust.
+    /// Separated from `imports` to distinguish dependency vs module structure — ADR-0013.
+    pub module_decls: Vec<ModuleDecl<'a>>,
 }
 
 #[cfg(test)]
@@ -424,6 +476,8 @@ mod tests {
             declared_traits: vec![],
             implemented_traits: vec![],
             declarations: vec![],
+            static_declarations: vec![],
+            module_decls: vec![],
         }
     }
 
@@ -563,6 +617,28 @@ mod tests {
         let d = Declaration { kind: DeclarationKind::Impl, name: "L3HashRewriter", line: 10 };
         assert_eq!(d.name, "L3HashRewriter");
         assert_eq!(d.line, 10);
+    }
+
+    // ── ModuleDecl (ADR-0013) ─────────────────────────────────────────────────
+
+    #[test]
+    fn module_decl_fields_accessible() {
+        let decl = ModuleDecl { name: "foo", target_layer: Layer::L1, line: 3 };
+        assert_eq!(decl.name, "foo");
+        assert_eq!(decl.target_layer, Layer::L1);
+        assert_eq!(decl.line, 3);
+    }
+
+    #[test]
+    fn module_decl_clone_and_eq() {
+        let d = ModuleDecl { name: "rules", target_layer: Layer::L1, line: 7 };
+        assert_eq!(d.clone(), d);
+    }
+
+    #[test]
+    fn module_decls_field_empty_by_default() {
+        let f = base_file();
+        assert!(f.module_decls.is_empty());
     }
 
     // ── TypeKind / type_kind_str ──────────────────────────────────────────────

@@ -2,12 +2,12 @@
 //! @prompt 00_nucleo/prompts/contracts/rule-traits.md
 //! @prompt-hash 1b36408c
 //! @layer L1
-//! @updated 2026-03-16
+//! @updated 2026-03-22
 
 use std::path::Path;
 
 use crate::entities::layer::{Language, Layer};
-use crate::entities::parsed_file::{Declaration, Import, PromptHeader, PublicInterface, Token};
+use crate::entities::parsed_file::{Declaration, Import, ModuleDecl, PromptHeader, PublicInterface, StaticDeclaration, Token};
 
 // ── V1 ────────────────────────────────────────────────────────────────────────
 
@@ -70,6 +70,24 @@ pub trait HasPublicInterface<'a> {
 pub trait HasPubLeak<'a> {
     fn layer(&self) -> &Layer;
     fn imports(&self) -> &[Import<'a>];
+    fn path(&self) -> &'a Path;
+}
+
+// ── ModuleDecls (ADR-0013) ────────────────────────────────────────────────────
+
+/// Para regras que inspeccionam estrutura de módulos (futura).
+/// Declarada agora para fechar o modelo — ADR-0013.
+/// TypeScript e Python produzem sempre `vec![]`.
+pub trait HasModuleDecls<'a> {
+    fn module_decls(&self) -> &[ModuleDecl<'a>];
+}
+
+// ── V13 ───────────────────────────────────────────────────────────────────────
+
+/// Para V13 — verifica static declarations mutáveis em L1.
+pub trait HasStaticDeclarations<'a> {
+    fn layer(&self) -> &Layer;
+    fn static_declarations(&self) -> &[StaticDeclaration<'a>];
     fn path(&self) -> &'a Path;
 }
 

@@ -122,6 +122,8 @@ mod tests {
             declared_traits: vec![],
             implemented_traits: vec![],
             declarations: vec![],
+            static_declarations: vec![],
+            module_decls: vec![],
         }
     }
 

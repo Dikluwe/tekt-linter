@@ -2,12 +2,14 @@
 //! @prompt 00_nucleo/prompts/linter-core.md
 //! @prompt-hash a615858b
 //! @layer L1
-//! @updated 2025-03-13
+//! @updated 2026-03-22
 
 pub mod alien_file;
 pub mod dangling_contract;
+pub mod external_type_in_contract;
 pub mod forbidden_import;
 pub mod impure_core;
+pub mod mutable_state_core;
 pub mod orphan_prompt;
 pub mod prompt_drift;
 pub mod prompt_header;

@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/rust.md
-//! @prompt-hash df5d900d
+//! @prompt-hash 73539903
 //! @layer L3
-//! @updated 2026-03-18
+//! @updated 2026-03-22
 
 use std::borrow::Cow;
 
@@ -15,8 +15,8 @@ use crate::contracts::prompt_reader::PromptReader;
 use crate::contracts::prompt_snapshot_reader::PromptSnapshotReader;
 use crate::entities::layer::{Language, Layer};
 use crate::entities::parsed_file::{
-    Declaration, DeclarationKind, FunctionSignature, Import, ImportKind, ParsedFile,
-    PromptHeader, PublicInterface, Token, TokenKind, TypeKind, TypeSignature,
+    Declaration, DeclarationKind, FunctionSignature, Import, ImportKind, ModuleDecl, ParsedFile,
+    PromptHeader, PublicInterface, StaticDeclaration, Token, TokenKind, TypeKind, TypeSignature,
 };
 use crate::infra::config::CrystallineConfig;
 
@@ -128,6 +128,12 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
         // ── Declarations (V12) ─────────────────────────────────────────────
         let declarations = extract_declarations(root, source);
 
+        // ── Static declarations (V13) ──────────────────────────────────────
+        let static_declarations = extract_static_declarations(root, source);
+
+        // ── Module declarations (ADR-0013) ─────────────────────────────────
+        let module_decls = extract_module_decls(root, source, &file.layer);
+
         Ok(ParsedFile {
             path: file.path.as_path(),
             layer: file.layer.clone(),
@@ -142,6 +148,8 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
             declared_traits,
             implemented_traits,
             declarations,
+            static_declarations,
+            module_decls,
         })
     }
 }
@@ -238,25 +246,6 @@ fn collect_imports<'a>(
             let target_layer = resolve_layer(path, config);
             let target_subdir = resolve_subdir(path, config);
             imports.push(Import { path, line, kind: ImportKind::Direct, target_layer, target_subdir });
-        }
-        "mod_item" => {
-            // Only bare `mod foo;` declarations (no block body)
-            if !node_has_child_kind(node, "declaration_list") {
-                let line = node.start_position().row + 1;
-                let text = node_text(node, source);
-                let path = text
-                    .trim_start_matches("pub ")
-                    .trim_start_matches("mod ")
-                    .trim_end_matches(';')
-                    .trim();
-                imports.push(Import {
-                    path,
-                    line,
-                    kind: ImportKind::Direct,
-                    target_layer: Layer::Unknown,
-                    target_subdir: None,
-                });
-            }
         }
         _ => {}
     }
@@ -666,6 +655,71 @@ fn extract_declarations<'a>(root: Node, source: &'a [u8]) -> Vec<Declaration<'a>
     decls
 }
 
+/// Extract top-level static_item declarations for V13.
+/// All files are processed — V13 filters by `layer == L1` internally.
+fn extract_static_declarations<'a>(root: Node, source: &'a [u8]) -> Vec<StaticDeclaration<'a>> {
+    let mut decls = Vec::new();
+    for i in 0..root.child_count() {
+        if let Some(node) = root.child(i) {
+            if node.kind() == "static_item" {
+                let is_mut = node_has_child_kind(node, "mutable_specifier");
+                let name = node
+                    .child_by_field_name("name")
+                    .map(|n| node_text(n, source))
+                    .unwrap_or("");
+                let type_text = node
+                    .child_by_field_name("type")
+                    .map(|n| node_text(n, source))
+                    .unwrap_or("");
+                let line = node.start_position().row + 1;
+                if !name.is_empty() {
+                    decls.push(StaticDeclaration { name, type_text, is_mut, line });
+                }
+            }
+        }
+    }
+    decls
+}
+
+/// Extract bare `mod foo;` declarations (no inline block body) for ADR-0013.
+/// Inline `mod foo { }` blocks are skipped — they are not external module declarations.
+/// The `target_layer` is the layer of the declaring file (same layer, different module).
+fn extract_module_decls<'a>(
+    root: Node,
+    source: &'a [u8],
+    file_layer: &Layer,
+) -> Vec<ModuleDecl<'a>> {
+    let mut decls = Vec::new();
+    collect_module_decls(root, source, file_layer, &mut decls);
+    decls
+}
+
+fn collect_module_decls<'a>(
+    node: Node,
+    source: &'a [u8],
+    file_layer: &Layer,
+    decls: &mut Vec<ModuleDecl<'a>>,
+) {
+    if node.kind() == "mod_item" && !node_has_child_kind(node, "declaration_list") {
+        let line = node.start_position().row + 1;
+        let text = node_text(node, source);
+        let name = text
+            .trim_start_matches("pub ")
+            .trim_start_matches("mod ")
+            .trim_end_matches(';')
+            .trim();
+        if !name.is_empty() {
+            decls.push(ModuleDecl { name, target_layer: file_layer.clone(), line });
+        }
+    }
+
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            collect_module_decls(child, source, file_layer, decls);
+        }
+    }
+}
+
 // ── AST utilities ─────────────────────────────────────────────────────────────
 
 fn node_text<'a>(node: Node, source: &'a [u8]) -> &'a str {
@@ -1045,14 +1099,47 @@ fn main() {}",
     }
 
     #[test]
-    fn mod_declaration_maps_to_direct() {
-        // mod foo; (sem bloco) → ImportKind::Direct
+    fn mod_declaration_not_in_imports() {
+        // mod foo; (sem bloco) → vai para module_decls, não para imports (ADR-0013)
         let parser = make_parser();
         let file = source_file("mod helpers;\nfn bar() {}");
         let parsed = parser.parse(&file).unwrap();
-        let imp = parsed.imports.iter().find(|i| i.path.contains("helpers"));
-        assert!(imp.is_some(), "mod declaration should produce an Import");
-        assert_eq!(imp.unwrap().kind, ImportKind::Direct);
+        let in_imports = parsed.imports.iter().any(|i| i.path.contains("helpers"));
+        assert!(!in_imports, "mod declaration must NOT appear in imports after ADR-0013");
+    }
+
+    // ── module_decls (ADR-0013) ───────────────────────────────────────────
+
+    #[test]
+    fn bare_mod_produces_module_decl() {
+        let parser = make_parser();
+        let file = source_file("mod helpers;\nfn bar() {}");
+        let parsed = parser.parse(&file).unwrap();
+        assert_eq!(parsed.module_decls.len(), 1);
+        let d = &parsed.module_decls[0];
+        assert_eq!(d.name, "helpers");
+        assert_eq!(d.target_layer, Layer::L1);
+        assert_eq!(d.line, 1);
+    }
+
+    #[test]
+    fn inline_mod_block_not_in_module_decls() {
+        let parser = make_parser();
+        let file = source_file("mod tests { fn t() {} }\nfn bar() {}");
+        let parsed = parser.parse(&file).unwrap();
+        assert!(
+            parsed.module_decls.is_empty(),
+            "inline mod block must NOT appear in module_decls"
+        );
+    }
+
+    #[test]
+    fn pub_mod_produces_module_decl() {
+        let parser = make_parser();
+        let file = source_file("pub mod rules;\nfn main() {}");
+        let parsed = parser.parse(&file).unwrap();
+        assert_eq!(parsed.module_decls.len(), 1);
+        assert_eq!(parsed.module_decls[0].name, "rules");
     }
 
     #[test]
@@ -1064,6 +1151,47 @@ fn main() {}",
         let imp = parsed.imports.iter().find(|i| i.target_layer == Layer::L1);
         assert!(imp.is_some(), "crate::entities should resolve to L1");
         assert_eq!(imp.unwrap().target_subdir, Some("entities"));
+    }
+
+    // ── Static declarations (V13) ─────────────────────────────────────────────
+
+    #[test]
+    fn extracts_static_mut() {
+        let parser = make_parser();
+        let file = source_file("static mut COUNTER: u32 = 0;\nfn foo() {}");
+        let parsed = parser.parse(&file).unwrap();
+        assert_eq!(parsed.static_declarations.len(), 1);
+        let s = &parsed.static_declarations[0];
+        assert_eq!(s.name, "COUNTER");
+        assert_eq!(s.type_text, "u32");
+        assert!(s.is_mut);
+        assert_eq!(s.line, 1);
+    }
+
+    #[test]
+    fn extracts_mutex_static() {
+        let parser = make_parser();
+        let file = source_file(
+            "use std::sync::Mutex;\nstatic CACHE: Mutex<u32> = Mutex::new(0);\nfn foo() {}",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        let s = parsed.static_declarations.iter().find(|s| s.name == "CACHE");
+        assert!(s.is_some());
+        let s = s.unwrap();
+        assert!(!s.is_mut);
+        assert!(s.type_text.contains("Mutex"));
+    }
+
+    #[test]
+    fn extracts_immutable_str_static() {
+        let parser = make_parser();
+        let file = source_file("static RULE_ID: &str = \"V13\";\nfn foo() {}");
+        let parsed = parser.parse(&file).unwrap();
+        let s = parsed.static_declarations.iter().find(|s| s.name == "RULE_ID");
+        assert!(s.is_some());
+        let s = s.unwrap();
+        assert!(!s.is_mut);
+        assert_eq!(s.type_text, "&str");
     }
 
     #[test]

@@ -175,6 +175,8 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for PyParser<R, S>
             declared_traits,
             implemented_traits,
             declarations,
+            static_declarations: vec![],
+            module_decls: vec![],
         })
     }
 }

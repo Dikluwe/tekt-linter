@@ -176,6 +176,8 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for TsParser<R, S>
             declared_traits,
             implemented_traits,
             declarations,
+            static_declarations: vec![],
+            module_decls: vec![],
         })
     }
 }

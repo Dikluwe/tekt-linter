@@ -2,9 +2,9 @@
 //! @prompt 00_nucleo/prompts/linter-core.md
 //! @prompt-hash a615858b
 //! @layer L3
-//! @updated 2026-03-20
+//! @updated 2026-03-22
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use serde::Deserialize;
@@ -54,6 +54,12 @@ pub struct CrystallineConfig {
     /// Exemplo: { "crate_root" = "lib.rs" }
     #[serde(default)]
     pub excluded_files: HashMap<String, String>,
+    /// Pacotes externos permitidos em L1 por linguagem.
+    /// Se ausente, L1 não pode importar nenhum externo.
+    /// Chave: "rust", "typescript", "python"
+    /// Valor: lista de nomes de pacote
+    #[serde(default)]
+    pub l1_allowed_external: HashMap<String, Vec<String>>,
 }
 
 impl CrystallineConfig {
@@ -61,6 +67,15 @@ impl CrystallineConfig {
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("Cannot read {}: {}", path.display(), e))?;
         toml::from_str(&content).map_err(|e| format!("Invalid TOML: {e}"))
+    }
+
+    /// Returns the set of allowed external packages for a given language.
+    /// Returns an empty set if the language is not present in the config.
+    pub fn l1_allowed_for_language(&self, language: &str) -> HashSet<String> {
+        self.l1_allowed_external
+            .get(language)
+            .map(|v| v.iter().cloned().collect())
+            .unwrap_or_default()
     }
 
     /// Resolve a Rust module name (e.g. "entities") to a Layer.
@@ -116,6 +131,7 @@ impl Default for CrystallineConfig {
             ts_aliases: HashMap::new(),
             py_aliases: HashMap::new(),
             excluded_files: HashMap::new(),
+            l1_allowed_external: HashMap::new(),
         }
     }
 }
@@ -152,5 +168,17 @@ mod tests {
     fn excluded_files_defaults_to_empty() {
         let config = CrystallineConfig::default();
         assert!(config.excluded_files.is_empty());
+    }
+
+    #[test]
+    fn l1_allowed_external_defaults_to_empty() {
+        let config = CrystallineConfig::default();
+        assert!(config.l1_allowed_external.is_empty());
+    }
+
+    #[test]
+    fn l1_allowed_for_language_returns_empty_for_missing_key() {
+        let config = CrystallineConfig::default();
+        assert!(config.l1_allowed_for_language("rust").is_empty());
     }
 }

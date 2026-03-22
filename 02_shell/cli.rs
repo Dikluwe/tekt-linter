@@ -2,7 +2,7 @@
 //! @prompt 00_nucleo/prompts/sarif-formatter.md
 //! @prompt-hash 8ce22799
 //! @layer L2
-//! @updated 2026-03-20
+//! @updated 2026-03-22
 
 use std::path::PathBuf;
 
@@ -32,7 +32,7 @@ pub struct Cli {
     /// Comma-separated list of checks to run (e.g. v1,v2,...,v12)
     /// V11 (dangling-contract) is opt-in — not included in the default because
     /// rule_traits in L1/contracts/ are implemented by ParsedFile (L1), not L2/L3.
-    #[arg(long, default_value = "v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12")]
+    #[arg(long, default_value = "v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14")]
     pub checks: String,
 
     /// Disable V5 drift detection
@@ -104,6 +104,8 @@ pub struct EnabledChecks {
     /// L1/contracts/ are implemented by ParsedFile (L1), not L2/L3.
     pub v11: bool,
     pub v12: bool,
+    pub v13: bool,
+    pub v14: bool,
 }
 
 impl EnabledChecks {
@@ -131,6 +133,8 @@ impl EnabledChecks {
             v10: has("v10"),
             v11: has("v11"),
             v12: has("v12"),
+            v13: has("v13"),
+            v14: has("v14"),
         }
     }
 }
@@ -227,7 +231,9 @@ fn sarif_rules() -> Vec<serde_json::Value> {
         sarif_rule("V9", "PubLeak", "Import bypasses L1 encapsulation boundary", "error"),
         sarif_rule("V10", "QuarantineLeak", "Production code imports from lab/ quarantine", "error"),
         sarif_rule("V11", "DanglingContract", "Contract trait without implementation in L2/L3", "error"),
-        sarif_rule("V12", "WiringLogicLeak", "Type declaration in L4 wiring layer", "warning"),
+        sarif_rule("V12", "WiringLogicLeak",       "Type declaration in L4 wiring layer", "warning"),
+        sarif_rule("V13", "MutableStateInCore",    "Global mutable state in L1 core", "error"),
+        sarif_rule("V14", "ExternalTypeInContract", "Unauthorized external dependency in L1", "error"),
     ]
 }
 
@@ -567,11 +573,11 @@ mod tests {
     }
 
     #[test]
-    fn sarif_driver_rules_has_13_entries() {
-        // SARIF driver.rules deve conter exatamente 13 entradas (V0 a V12)
+    fn sarif_driver_rules_has_15_entries() {
+        // SARIF driver.rules deve conter exatamente 15 entradas (V0 a V14)
         let out = format_sarif(&[]);
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
         let rules = parsed["runs"][0]["tool"]["driver"]["rules"].as_array().unwrap();
-        assert_eq!(rules.len(), 13, "expected 13 rules (V0 to V12), got {}", rules.len());
+        assert_eq!(rules.len(), 15, "expected 15 rules (V0 to V14), got {}", rules.len());
     }
 }

@@ -55,9 +55,13 @@ Parsers de outras linguagens usam resolução física via `normalize`
 Rust não precisa deste mecanismo porque `crate::` já é absoluto.
 
 **ADR-0009 correcção**: `ImportKind` é semântico, não sintáctico.
-Os nós `use_declaration`, `extern_crate_declaration` e `mod_item`
-de Rust são mapeados para `Direct/Glob/Alias/Named` — nunca para
-variantes específicas de linguagem.
+Os nós `use_declaration` e `extern_crate_declaration` de Rust são
+mapeados para `Direct/Glob/Alias/Named` — nunca para variantes
+específicas de linguagem.
+
+**ADR-0013**: `mod_item` é separado de `use_declaration` na IR.
+`mod foo;` produz `ModuleDecl` em `module_decls`; não entra em
+`imports`. `HasModuleDecls<'a>` expõe o novo campo.
 
 ---
 
@@ -123,7 +127,8 @@ do buffer.
 | `use_declaration` com `as` | `Alias` | `use std::fs as f` |
 | `use_declaration` com `{...}` | `Named` | `use crate::{A, B}` |
 | `extern_crate_declaration` | `Direct` | `extern crate foo` |
-| `mod_item` sem bloco (`mod foo;`) | `Direct` | declaração de módulo |
+
+`mod_item` **não entra em `imports`** (ADR-0013) — ver secção abaixo.
 
 Para cada import: `path` = fatia `&'a str` do buffer.
 `target_layer` via `LayerResolver` (crate:: é absoluto).
@@ -204,6 +209,56 @@ V12 filtra por `layer == L4` internamente.
 | `enum_item` | `Enum` | sempre capturado |
 | `impl_item` sem campo `trait` | `Impl` | `impl Type { ... }` |
 | `impl_item` com campo `trait` | **não capturado** | `impl Trait for Type` — adapter |
+
+### Static declarations (V13)
+
+Para cada nó `static_item` de nível superior:
+- `name`: campo `name` do nó
+- `type_text`: texto bruto do campo `type` — `&'a str` do buffer
+- `is_mut`: presença de `mutable_specifier` (token `mut`)
+- `line`: `node.start_position().row + 1`
+
+Para todos os arquivos — V13 filtra por `layer == L1` internamente.
+
+```
+Dado SourceFile com static mut COUNTER: u32 = 0;
+Quando parse() for chamado
+Então static_declarations contém StaticDeclaration { is_mut: true, name: "COUNTER" }
+
+Dado SourceFile com static CACHE: Mutex<HashMap<String,u32>> = ...;
+Quando parse() for chamado
+Então static_declarations contém StaticDeclaration { is_mut: false, type_text: "Mutex<HashMap<String,u32>>" }
+
+Dado SourceFile com static RULE_ID: &str = "V13";
+Quando parse() for chamado
+Então static_declarations contém StaticDeclaration { is_mut: false, type_text: "&str" }
+```
+
+### Declarações de módulo (ADR-0013) — `module_decls`
+
+`mod foo;` (sem corpo inline) é uma declaração de módulo — inclui
+`foo.rs` como submódulo. Não é uma dependência. Separado de `imports`
+por construção.
+
+| Campo | Valor |
+|-------|-------|
+| `name` | texto extraído do nó `mod_item`, sem `pub`/`mod`/`;` |
+| `target_layer` | `file_layer` — camada do ficheiro declarante |
+| `line` | `node.start_position().row + 1` |
+
+Módulos inline (`mod foo { }`) **não** produzem `ModuleDecl`.
+TypeScript e Python produzem `module_decls: vec![]` por construção.
+
+```
+Dado SourceFile com mod helpers; (sem bloco)
+Quando parse() for chamado
+Então module_decls contém ModuleDecl { name: "helpers", target_layer: L1, .. }
+E imports NÃO contém nenhum item com path "helpers"
+
+Dado SourceFile com mod tests { fn t() {} } (bloco inline)
+Quando parse() for chamado
+Então module_decls está vazio
+```
 
 ---
 
@@ -287,6 +342,8 @@ where
         // 6. declared_traits (apenas L1/contracts) (V11)
         // 7. implemented_traits (apenas L2|L3) (V11)
         // 8. declarations — nível superior struct/enum/impl-sem-trait (V12)
+        // 9. static_declarations — static_item de nível superior (V13)
+        // 10. module_decls — mod foo; sem bloco (ADR-0013)
         //
         // ImportKind mapeado semanticamente:
         //   use X        → Direct
@@ -294,7 +351,7 @@ where
         //   use X as Y   → Alias
         //   use {A, B}   → Named
         //   extern crate → Direct
-        //   mod foo;     → Direct
+        //   mod foo;     → ModuleDecl (não Import)
     }
 }
 ```
@@ -369,8 +426,9 @@ Então imports contém Import { kind: ImportKind::Direct, .. }
 
 Dado SourceFile com mod foo; (sem bloco)
 Quando parse() for chamado
-Então imports contém Import { kind: ImportKind::Direct, .. }
-— mod declaration mapeia para Direct
+Então module_decls contém ModuleDecl { name: "foo", .. }
+E imports NÃO contém nenhum item com path "foo"
+— mod declaration vai para module_decls, não para imports (ADR-0013)
 
 Dado SourceFile com use crate::entities::Layer
 Quando parse() for chamado
@@ -519,3 +577,5 @@ Então nenhum acesso a disco ocorre durante testes
 | 2026-03-16 | ADR-0007: declared_traits, implemented_traits, declarations | rs_parser.rs |
 | 2026-03-18 | ADR-0009: movido de rs-parser.md para parsers/rust.md; nota sobre LayerResolver Rust vs resolução física | rs_parser.rs |
 | 2026-03-18 | ADR-0009 correcção: ImportKind semântico — tabela de mapeamento Rust→Direct/Glob/Alias/Named; nota sobre V4 usar file.language(); restrição de agnósticidade adicionada; critérios de ImportKind::Direct/Glob/Alias/Named adicionados | rs_parser.rs |
+| 2026-03-22 | ADR-0011/0012: static_item extraction (V13) — StaticDeclaration; mod_item usa file_layer em vez de Unknown (corrige V14 false positives) | rs_parser.rs |
+| 2026-03-22 | ADR-0013: mod_item separado de imports → module_decls; extract_module_decls(); file_layer removido de extract_imports/collect_imports | rs_parser.rs |
