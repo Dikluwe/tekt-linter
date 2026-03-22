@@ -1,6 +1,6 @@
 # ⚖️ ADR-0013: Separação `Import` e `ModuleDecl` na IR
 
-**Status**: `IMPLEMENTADO`
+**Status**: `PROPOSTO`
 **Data**: 2026-03-22
 
 ---
@@ -129,6 +129,13 @@ TypeScript e Python não têm `mod` — os seus parsers produzem
   separação — o comportamento observável é idêntico, o modelo
   é mais correcto
 - TypeScript e Python não são afectados funcionalmente
+- `module_decls` abre a possibilidade de uma regra topológica futura
+  (**V15 — ModuleDeclarationInNonRoot**): `mod foo;` só seria permitido
+  em ficheiros raiz de camada (`lib.rs`, `mod.rs`, `main.rs`), impedindo
+  que ficheiros folha assumam responsabilidade de estrutura de crate.
+  Não implementada agora — o projecto actual não tem este padrão, e
+  "ficheiro raiz de camada" precisa de definição formal antes de ser
+  codificado. Registada aqui para preservar o raciocínio.
 
 ---
 
