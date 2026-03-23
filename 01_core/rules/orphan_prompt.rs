@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/orphan-prompt.md
-//! @prompt-hash bfb205f0
+//! @prompt-hash 4b4bc5a1
 //! @layer L1
-//! @updated 2026-03-15
+//! @updated 2026-03-23
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -24,6 +24,7 @@ use crate::entities::violation::{Location, Violation, ViolationLevel};
 pub fn check_orphans<'a>(
     index: &ProjectIndex<'a>,
     all_prompts: &AllPrompts<'a>,
+    level: ViolationLevel,
 ) -> Vec<Violation<'a>> {
     all_prompts
         .entries
@@ -31,7 +32,7 @@ pub fn check_orphans<'a>(
         .filter(|entry| !index.referenced_prompts.contains(entry.relative_path))
         .map(|entry| Violation {
             rule_id: "V7".to_string(),
-            level: ViolationLevel::Warning,
+            level: level.clone(),
             message: format!(
                 "Prompt órfão: '{}' não é referenciado por nenhum \
                  arquivo em L1–L4. Materializar ou remover.",
@@ -74,7 +75,7 @@ mod tests {
     fn orphan_prompt_not_referenced_returns_v7() {
         let all = make_all_prompts(&["00_nucleo/prompts/novo-contrato.md"]);
         let index = make_index(&[]);
-        let violations = check_orphans(&index, &all);
+        let violations = check_orphans(&index, &all, ViolationLevel::Warning);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "V7");
         assert_eq!(violations[0].level, ViolationLevel::Warning);
@@ -85,7 +86,7 @@ mod tests {
     fn referenced_prompt_does_not_return_v7() {
         let all = make_all_prompts(&["00_nucleo/prompts/auth.md"]);
         let index = make_index(&["00_nucleo/prompts/auth.md"]);
-        assert!(check_orphans(&index, &all).is_empty());
+        assert!(check_orphans(&index, &all, ViolationLevel::Warning).is_empty());
     }
 
     #[test]
@@ -93,7 +94,7 @@ mod tests {
         let paths = ["00_nucleo/prompts/a.md", "00_nucleo/prompts/b.md"];
         let all = make_all_prompts(&paths);
         let index = make_index(&paths);
-        assert!(check_orphans(&index, &all).is_empty());
+        assert!(check_orphans(&index, &all, ViolationLevel::Warning).is_empty());
     }
 
     #[test]
@@ -103,7 +104,7 @@ mod tests {
             "00_nucleo/prompts/b.md",
         ]);
         let index = make_index(&["00_nucleo/prompts/a.md"]);
-        let violations = check_orphans(&index, &all);
+        let violations = check_orphans(&index, &all, ViolationLevel::Warning);
         assert_eq!(violations.len(), 1);
         assert!(violations[0].message.contains("b.md"));
     }
@@ -112,7 +113,7 @@ mod tests {
     fn violation_location_path_is_prompt_path() {
         let all = make_all_prompts(&["00_nucleo/prompts/orphan.md"]);
         let index = make_index(&[]);
-        let violations = check_orphans(&index, &all);
+        let violations = check_orphans(&index, &all, ViolationLevel::Warning);
         let path = violations[0].location.path.as_ref();
         assert_eq!(path, std::path::Path::new("00_nucleo/prompts/orphan.md"));
     }
@@ -124,6 +125,14 @@ mod tests {
     fn empty_all_prompts_returns_no_violations() {
         let all = AllPrompts { entries: HashSet::new() };
         let index = make_index(&[]);
-        assert!(check_orphans(&index, &all).is_empty());
+        assert!(check_orphans(&index, &all, ViolationLevel::Warning).is_empty());
+    }
+
+    #[test]
+    fn level_error_propagates_to_violation() {
+        let all = make_all_prompts(&["00_nucleo/prompts/orphan.md"]);
+        let index = make_index(&[]);
+        let violations = check_orphans(&index, &all, ViolationLevel::Error);
+        assert_eq!(violations[0].level, ViolationLevel::Error);
     }
 }

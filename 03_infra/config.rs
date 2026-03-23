@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash a615858b
+//! @prompt-hash 9e806f55
 //! @layer L3
-//! @updated 2026-03-22
+//! @updated 2026-03-23
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -10,6 +10,13 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::entities::layer::Layer;
+use crate::entities::violation::ViolationLevel;
+
+/// Entrada individual de `[rules]` — nível configurável por regra.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct RuleEntry {
+    pub level: Option<String>,
+}
 
 /// Configuração de exceções para V12 — lida de `[wiring_exceptions]`.
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -60,6 +67,10 @@ pub struct CrystallineConfig {
     /// Valor: lista de nomes de pacote
     #[serde(default)]
     pub l1_allowed_external: HashMap<String, Vec<String>>,
+    /// Níveis configuráveis por regra — lidos de `[rules]`.
+    /// Exemplo: { "V11" => RuleEntry { level: Some("warning") } }
+    #[serde(default)]
+    pub rules: HashMap<String, RuleEntry>,
 }
 
 impl CrystallineConfig {
@@ -67,6 +78,22 @@ impl CrystallineConfig {
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("Cannot read {}: {}", path.display(), e))?;
         toml::from_str(&content).map_err(|e| format!("Invalid TOML: {e}"))
+    }
+
+    /// Resolve o nível efectivo para uma regra.
+    /// Se `[rules]` declara um nível para `rule_id`, esse nível é retornado.
+    /// Caso contrário, retorna `default`.
+    pub fn level_for(&self, rule_id: &str, default: ViolationLevel) -> ViolationLevel {
+        self.rules
+            .get(rule_id)
+            .and_then(|e| e.level.as_deref())
+            .and_then(|s| match s {
+                "fatal" | "Fatal" => Some(ViolationLevel::Fatal),
+                "error" | "Error" => Some(ViolationLevel::Error),
+                "warning" | "Warning" => Some(ViolationLevel::Warning),
+                _ => None,
+            })
+            .unwrap_or(default)
     }
 
     /// Returns the set of allowed external packages for a given language.
@@ -132,6 +159,7 @@ impl Default for CrystallineConfig {
             py_aliases: HashMap::new(),
             excluded_files: HashMap::new(),
             l1_allowed_external: HashMap::new(),
+            rules: HashMap::new(),
         }
     }
 }
@@ -180,5 +208,25 @@ mod tests {
     fn l1_allowed_for_language_returns_empty_for_missing_key() {
         let config = CrystallineConfig::default();
         assert!(config.l1_allowed_for_language("rust").is_empty());
+    }
+
+    #[test]
+    fn level_for_returns_default_when_rules_empty() {
+        let config = CrystallineConfig::default();
+        assert_eq!(config.level_for("V11", ViolationLevel::Error), ViolationLevel::Error);
+        assert_eq!(config.level_for("V7", ViolationLevel::Warning), ViolationLevel::Warning);
+    }
+
+    #[test]
+    fn level_for_returns_configured_level_when_declared() {
+        let mut config = CrystallineConfig::default();
+        config.rules.insert("V11".to_string(), RuleEntry { level: Some("warning".to_string()) });
+        assert_eq!(config.level_for("V11", ViolationLevel::Error), ViolationLevel::Warning);
+    }
+
+    #[test]
+    fn level_for_unknown_rule_returns_default() {
+        let config = CrystallineConfig::default();
+        assert_eq!(config.level_for("V99", ViolationLevel::Warning), ViolationLevel::Warning);
     }
 }

@@ -63,13 +63,14 @@ A fusão é associativa e comutativa — segura para rayon.
 ```rust
 pub fn check_dangling_contracts<'a>(
     index: &ProjectIndex<'a>,
+    level: ViolationLevel,
 ) -> Vec<Violation<'a>> {
     index.all_declared_traits
         .iter()
         .filter(|t| !index.all_implemented_traits.contains(*t))
         .map(|trait_name| Violation {
             rule_id: "V11".to_string(),
-            level: ViolationLevel::Error,
+            level: level.clone(),
             message: format!(
                 "Contrato sem implementação: trait '{}' declarada em \
                  L1/contracts/ não tem impl correspondente em L2 ou L3. \
@@ -105,9 +106,9 @@ FQN se colisões se tornarem problema real.
 ## Restrições (L1 Pura)
 
 - Opera sobre `ProjectIndex` — zero I/O, zero acesso a disco
-- Nível Error — bloqueia CI por padrão
-- Não há exceções configuráveis: uma trait sem impl é sempre
-  lixo estrutural, independentemente do contexto
+- Nível Error por padrão — configurável via `[rules]` no `crystalline.toml`
+- O nível é resolvido em L4 (`main.rs`) via `config.level_for("V11", ViolationLevel::Error)`
+  e injectado como parâmetro — L1 não lê config directamente
 - A localização da violação aponta para `01_core/contracts` com
   `line: 0` — V11 é uma violação global, não de arquivo específico.
   Uma versão futura pode rastrear o path exato da trait.
@@ -153,3 +154,4 @@ Então a trait não entra em declared_traits
 |------|--------|-------------------|
 | 2026-03-16 | Criação inicial (ADR-0007) | dangling_contract.rs |
 | 2026-03-16 | Materialização: check_dangling_contracts() implementado sobre ProjectIndex, 8 testes cobrindo todos os critérios; módulo registado em rules/mod.rs | dangling_contract.rs |
+| 2026-03-23 | ADR-0014: assinatura com `level: ViolationLevel`; nível hardcoded eliminado; nível resolvido em L4 via `config.level_for` | dangling_contract.rs |

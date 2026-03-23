@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/dangling-contract.md
-//! @prompt-hash 752e9f31
+//! @prompt-hash 4a61b722
 //! @layer L1
-//! @updated 2026-03-16
+//! @updated 2026-03-23
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -20,14 +20,17 @@ use crate::entities::violation::{Location, Violation, ViolationLevel};
 /// Comparação por nome simples da trait (limitação declarada no prompt).
 ///
 /// Error — bloqueia CI. Sem exceções configuráveis.
-pub fn check_dangling_contracts<'a>(index: &ProjectIndex<'a>) -> Vec<Violation<'a>> {
+pub fn check_dangling_contracts<'a>(
+    index: &ProjectIndex<'a>,
+    level: ViolationLevel,
+) -> Vec<Violation<'a>> {
     index
         .all_declared_traits
         .iter()
         .filter(|t| !index.all_implemented_traits.contains(*t))
         .map(|trait_name| Violation {
             rule_id: "V11".to_string(),
-            level: ViolationLevel::Error,
+            level: level.clone(),
             message: format!(
                 "Contrato sem implementação: trait '{}' declarada em \
                  L1/contracts/ não tem impl correspondente em L2 ou L3. \
@@ -60,7 +63,7 @@ mod tests {
     #[test]
     fn declared_without_impl_returns_v11_error() {
         let index = index_with(&["FileProvider"], &[]);
-        let violations = check_dangling_contracts(&index);
+        let violations = check_dangling_contracts(&index, ViolationLevel::Error);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "V11");
         assert_eq!(violations[0].level, ViolationLevel::Error);
@@ -70,19 +73,19 @@ mod tests {
     #[test]
     fn declared_with_impl_returns_no_violation() {
         let index = index_with(&["LanguageParser"], &["LanguageParser"]);
-        assert!(check_dangling_contracts(&index).is_empty());
+        assert!(check_dangling_contracts(&index, ViolationLevel::Error).is_empty());
     }
 
     #[test]
     fn all_implemented_returns_empty() {
         let index = index_with(&["FileProvider", "LanguageParser"], &["FileProvider", "LanguageParser"]);
-        assert!(check_dangling_contracts(&index).is_empty());
+        assert!(check_dangling_contracts(&index, ViolationLevel::Error).is_empty());
     }
 
     #[test]
     fn two_declared_one_missing_returns_one_violation() {
         let index = index_with(&["FileProvider", "LanguageParser"], &["FileProvider"]);
-        let violations = check_dangling_contracts(&index);
+        let violations = check_dangling_contracts(&index, ViolationLevel::Error);
         assert_eq!(violations.len(), 1);
         assert!(violations[0].message.contains("LanguageParser"));
     }
@@ -90,13 +93,13 @@ mod tests {
     #[test]
     fn empty_declared_returns_no_violations() {
         let index = index_with(&[], &["FileProvider"]);
-        assert!(check_dangling_contracts(&index).is_empty());
+        assert!(check_dangling_contracts(&index, ViolationLevel::Error).is_empty());
     }
 
     #[test]
     fn violation_location_points_to_contracts_dir() {
         let index = index_with(&["PromptReader"], &[]);
-        let violations = check_dangling_contracts(&index);
+        let violations = check_dangling_contracts(&index, ViolationLevel::Error);
         assert_eq!(violations[0].location.path.as_os_str(), "01_core/contracts");
         assert_eq!(violations[0].location.line, 0);
     }
@@ -104,13 +107,20 @@ mod tests {
     #[test]
     fn multiple_dangling_traits_produce_one_violation_each() {
         let index = index_with(&["TraitA", "TraitB", "TraitC"], &[]);
-        assert_eq!(check_dangling_contracts(&index).len(), 3);
+        assert_eq!(check_dangling_contracts(&index, ViolationLevel::Error).len(), 3);
     }
 
     #[test]
     fn extra_implemented_without_declaration_is_not_violation() {
         // Traits implementadas sem declaração em contracts/ não disparam V11
         let index = index_with(&[], &["SomeAdapter"]);
-        assert!(check_dangling_contracts(&index).is_empty());
+        assert!(check_dangling_contracts(&index, ViolationLevel::Error).is_empty());
+    }
+
+    #[test]
+    fn level_warning_propagates_to_violation() {
+        let index = index_with(&["FileProvider"], &[]);
+        let violations = check_dangling_contracts(&index, ViolationLevel::Warning);
+        assert_eq!(violations[0].level, ViolationLevel::Warning);
     }
 }

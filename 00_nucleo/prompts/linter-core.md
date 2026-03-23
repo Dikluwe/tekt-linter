@@ -379,9 +379,13 @@ let (mut all_violations, project_index) = walker
     );
 
 // Fase global — V7, V8, V11
-if enabled.v7  { all_violations.extend(check_orphans(&project_index, &all_prompts)); }
+// Níveis efectivos resolvidos de [rules] antes das verificações globais (ADR-0014)
+let v7_level  = config.level_for("V7",  ViolationLevel::Warning);
+let v11_level = config.level_for("V11", ViolationLevel::Error);
+
+if enabled.v7  { all_violations.extend(check_orphans(&project_index, &all_prompts, v7_level)); }
 if enabled.v8  { all_violations.extend(check_aliens(&project_index)); }
-if enabled.v11 { all_violations.extend(check_dangling_contracts(&project_index)); }
+if enabled.v11 { all_violations.extend(check_dangling_contracts(&project_index, v11_level)); }
 
 // Ordenação para output determinístico (ADR ausente — decisão de L4)
 // Rayon não garante ordem — ordenar após reduce, antes do formatter.
@@ -670,3 +674,4 @@ Então exit 0 — o linter passa em sua própria validação
 | 2026-03-19 | ADR-0009 Python: PyParser no pipeline, [py_aliases], python em [languages] | linter-core.md, main.rs, crystalline.toml, Cargo.toml |
 | 2026-03-20 | ADR-0010: [excluded_files] no crystalline.toml; lib.rs excluído por path relativo; lib.rs na estrutura de ficheiros com nota @layer L0; critério adicionado | linter-core.md, crystalline.toml, config.rs |
 | 2026-03-20 | Ordenação de violations após reduce: Fatal→Error→Warning, por path, por linha; sort_by adicionado ao pipeline; critério de determinismo adicionado; nota no PromptWalker sobre entradas inacessíveis | linter-core.md, main.rs |
+| 2026-03-23 | ADR-0014: V7 e V11 configuráveis via [rules]; `config.level_for` adicionado a CrystallineConfig; assinaturas de check_orphans e check_dangling_contracts com parâmetro `level`; pipeline global actualizado | linter-core.md, main.rs, config.rs, dangling_contract.rs, orphan_prompt.rs |

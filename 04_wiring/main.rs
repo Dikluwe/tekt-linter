@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash a615858b
+//! @prompt-hash 9e806f55
 //! @layer L4
-//! @updated 2026-03-22
+//! @updated 2026-03-23
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
@@ -123,16 +123,19 @@ fn main() {
         run_pipeline(&source_files, &source_errors, &parser, &enabled, &l1_ports, &wiring_config, &l1_allowed);
 
     // ── V7/V8/V11 post-reduce ─────────────────────────────────────────────────
+    let v7_level  = config.level_for("V7",  ViolationLevel::Warning);
+    let v11_level = config.level_for("V11", ViolationLevel::Error);
+
     if enabled.v7 {
         if let Some(ref ap) = all_prompts {
-            all_violations.extend(orphan_prompt::check_orphans(&project_index, ap));
+            all_violations.extend(orphan_prompt::check_orphans(&project_index, ap, v7_level));
         }
     }
     if enabled.v8 {
         all_violations.extend(alien_file::check_aliens(&project_index));
     }
     if enabled.v11 {
-        all_violations.extend(dangling_contract::check_dangling_contracts(&project_index));
+        all_violations.extend(dangling_contract::check_dangling_contracts(&project_index, v11_level));
     }
 
     // ── Ordenação determinística ───────────────────────────────────────────────

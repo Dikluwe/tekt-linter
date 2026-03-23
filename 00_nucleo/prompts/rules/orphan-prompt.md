@@ -27,12 +27,16 @@ V7 não opera sobre `ParsedFile` individual. Opera sobre
 `ProjectIndex` — estrutura global construída por L3 após varrer
 todo o projeto:
 ```rust
-pub fn check_orphans<'a>(index: &ProjectIndex<'a>) -> Vec<Violation<'a>> {
-    index.all_prompts.iter()
-        .filter(|prompt| !index.referenced_prompts.contains(*prompt))
-        .map(|prompt| Violation {
+pub fn check_orphans<'a>(
+    index: &ProjectIndex<'a>,
+    all_prompts: &AllPrompts<'a>,
+    level: ViolationLevel,
+) -> Vec<Violation<'a>> {
+    all_prompts.entries.iter()
+        .filter(|entry| !index.referenced_prompts.contains(entry.relative_path))
+        .map(|entry| Violation {
             rule_id: "V7".to_string(),
-            level: ViolationLevel::Warning,
+            level: level.clone(),
             message: format!(
                 "Prompt órfão: '{}' não é referenciado por nenhum \
                  arquivo em L1–L4. Materializar ou remover.",
@@ -69,10 +73,10 @@ o `ProjectIndex`. V7 nunca as vê.
 ## Restrições (L1 Pura)
 
 - Opera sobre `ProjectIndex`, não `ParsedFile`
-- Zero I/O — `all_prompts` e `referenced_prompts` chegam
-  prontos via `ProjectIndex`
-- `Level::Warning` por padrão — configurável para `Error`
-  via `crystalline.toml`
+- Zero I/O — `all_prompts` e `referenced_prompts` chegam prontos
+- `Level::Warning` por padrão — configurável via `[rules]` no `crystalline.toml`
+- O nível é resolvido em L4 (`main.rs`) via `config.level_for("V7", ViolationLevel::Warning)`
+  e injectado como parâmetro — L1 não lê config directamente
 
 ---
 
@@ -104,3 +108,4 @@ Então retorna vec![]
 | Data | Motivo | Arquivos afetados |
 |------|--------|-------------------|
 | 2026-03-14 | Criação inicial (ADR-0006) | orphan_prompt.rs |
+| 2026-03-23 | ADR-0014: assinatura com `level: ViolationLevel`; nível hardcoded eliminado; nível resolvido em L4 via `config.level_for` | orphan_prompt.rs |
