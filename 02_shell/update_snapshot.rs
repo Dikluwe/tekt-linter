@@ -281,6 +281,7 @@ mod tests {
             prompt_snapshot: None,
             declared_traits: vec![],
             implemented_traits: vec![],
+            blanket_impl_traits: vec![],
             declarations: vec![],
             static_declarations: vec![],
             module_decls: vec![],

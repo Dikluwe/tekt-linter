@@ -27,7 +27,10 @@ pub fn check_dangling_contracts<'a>(
     index
         .all_declared_traits
         .iter()
-        .filter(|t| !index.all_implemented_traits.contains(*t))
+        .filter(|t| {
+            !index.all_implemented_traits.contains(*t)
+                && !index.all_blanket_impl_traits.contains(*t)
+        })
         .map(|trait_name| Violation {
             rule_id: "V11".to_string(),
             level: level.clone(),
@@ -57,6 +60,16 @@ mod tests {
         let mut index = ProjectIndex::new();
         for t in declared { index.all_declared_traits.insert(t); }
         for t in implemented { index.all_implemented_traits.insert(t); }
+        index
+    }
+
+    fn index_with_blanket(
+        declared: &[&'static str],
+        implemented: &[&'static str],
+        blanket: &[&'static str],
+    ) -> ProjectIndex<'static> {
+        let mut index = index_with(declared, implemented);
+        for t in blanket { index.all_blanket_impl_traits.insert(t); }
         index
     }
 
@@ -122,5 +135,39 @@ mod tests {
         let index = index_with(&["FileProvider"], &[]);
         let violations = check_dangling_contracts(&index, ViolationLevel::Warning);
         assert_eq!(violations[0].level, ViolationLevel::Warning);
+    }
+
+    // ── blanket_impl_traits (ADR-0015) ────────────────────────────────────────
+
+    #[test]
+    fn blanket_impl_satisfies_contract_no_violation() {
+        // Trait declarada em L1, satisfeita APENAS por blanket impl em L2/L3.
+        // Não deve disparar V11 — é o falso positivo que esta ADR corrige.
+        let index = index_with_blanket(&["TrackedWorld"], &[], &["TrackedWorld"]);
+        assert!(check_dangling_contracts(&index, ViolationLevel::Error).is_empty());
+    }
+
+    #[test]
+    fn blanket_impl_only_for_unrelated_trait_still_violations_others() {
+        // Blanket impl satisfaz TrackedWorld, mas FileProvider continua dangling.
+        let index = index_with_blanket(
+            &["TrackedWorld", "FileProvider"],
+            &[],
+            &["TrackedWorld"],
+        );
+        let violations = check_dangling_contracts(&index, ViolationLevel::Error);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].message.contains("FileProvider"));
+    }
+
+    #[test]
+    fn both_concrete_and_blanket_no_violations() {
+        // Um contrato satisfeito por impl concreto e outro por blanket impl.
+        let index = index_with_blanket(
+            &["FileProvider", "TrackedWorld"],
+            &["FileProvider"],
+            &["TrackedWorld"],
+        );
+        assert!(check_dangling_contracts(&index, ViolationLevel::Error).is_empty());
     }
 }

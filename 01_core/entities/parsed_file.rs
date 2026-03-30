@@ -442,6 +442,11 @@ pub struct ParsedFile<'a> {
     /// Populated by L3 (RustParser) for files with layer == L2 | L3.
     pub implemented_traits: Vec<&'a str>,
 
+    /// For V11: trait names satisfied by blanket impls in L2/L3 files — ADR-0015.
+    /// Populated by L3 (RustParser) for `impl<T: B> Trait for T` patterns.
+    /// Prevents false positives when a contract is fulfilled generically.
+    pub blanket_impl_traits: Vec<&'a str>,
+
     /// For V12: top-level struct/enum/impl-without-trait declarations.
     /// Populated by L3 (RustParser) for all files — V12 filters by layer == L4 internally.
     pub declarations: Vec<Declaration<'a>>,
@@ -475,6 +480,7 @@ mod tests {
             prompt_snapshot: None,
             declared_traits: vec![],
             implemented_traits: vec![],
+            blanket_impl_traits: vec![],
             declarations: vec![],
             static_declarations: vec![],
             module_decls: vec![],

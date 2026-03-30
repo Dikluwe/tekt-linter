@@ -71,6 +71,14 @@ pub struct CrystallineConfig {
     /// Exemplo: { "V11" => RuleEntry { level: Some("warning") } }
     #[serde(default)]
     pub rules: HashMap<String, RuleEntry>,
+
+    /// Escape hatch para blanket impls do padrão 4 — ADR-0015.
+    /// Traits satisfeitas por `impl<T: B> Trait for &T` / `Box<T>` / `Arc<T>`
+    /// não são detectáveis estaticamente sem type checker completo.
+    /// Chave: nome arbitrário (documentação). Valor: nome da trait.
+    /// Exemplo: { "tracked_world_ref" = "TrackedWorld" }
+    #[serde(default)]
+    pub v11_blanket_exceptions: HashMap<String, String>,
 }
 
 impl CrystallineConfig {
@@ -160,6 +168,7 @@ impl Default for CrystallineConfig {
             excluded_files: HashMap::new(),
             l1_allowed_external: HashMap::new(),
             rules: HashMap::new(),
+            v11_blanket_exceptions: HashMap::new(),
         }
     }
 }

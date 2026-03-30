@@ -34,6 +34,11 @@ pub struct LocalIndex<'a> {
     /// Vazio para arquivos fora de L2 e L3.
     /// Populado pelo RustParser a partir de nós `impl_item` com trait.
     pub implemented_traits: Vec<&'a str>,
+
+    /// Traits satisfeitas por blanket impl neste arquivo — ADR-0015.
+    /// `impl<T: B> Trait for T` onde T é parâmetro genérico.
+    /// Vazio para arquivos fora de L2 e L3.
+    pub blanket_impl_traits: Vec<&'a str>,
 }
 
 impl<'a> LocalIndex<'a> {
@@ -43,6 +48,7 @@ impl<'a> LocalIndex<'a> {
             alien_file: None,
             declared_traits: vec![],
             implemented_traits: vec![],
+            blanket_impl_traits: vec![],
         }
     }
 
@@ -63,6 +69,7 @@ impl<'a> LocalIndex<'a> {
             alien_file: if file.layer == Layer::Unknown { Some(file.path) } else { None },
             declared_traits: file.declared_traits.clone(),
             implemented_traits: file.implemented_traits.clone(),
+            blanket_impl_traits: file.blanket_impl_traits.clone(),
         }
     }
 
@@ -99,6 +106,11 @@ pub struct ProjectIndex<'a> {
     /// Agregado de LocalIndex.implemented_traits de todos os arquivos L2/L3.
     /// Usado por V11 para fechar o circuito contrato → implementação.
     pub all_implemented_traits: HashSet<&'a str>,
+
+    /// Todas as traits satisfeitas por blanket impl em L2 ou L3 — ADR-0015.
+    /// Agregado de LocalIndex.blanket_impl_traits de todos os arquivos L2/L3.
+    /// Usado por V11 para evitar falso positivo em impls genéricos canónicos.
+    pub all_blanket_impl_traits: HashSet<&'a str>,
 }
 
 impl<'a> ProjectIndex<'a> {
@@ -108,6 +120,7 @@ impl<'a> ProjectIndex<'a> {
             alien_files: Vec::new(),
             all_declared_traits: HashSet::new(),
             all_implemented_traits: HashSet::new(),
+            all_blanket_impl_traits: HashSet::new(),
         }
     }
 
@@ -122,6 +135,7 @@ impl<'a> ProjectIndex<'a> {
         }
         self.all_declared_traits.extend(local.declared_traits);
         self.all_implemented_traits.extend(local.implemented_traits);
+        self.all_blanket_impl_traits.extend(local.blanket_impl_traits);
     }
 
     /// Funde dois ProjectIndex — para rayon::reduce.
@@ -130,6 +144,7 @@ impl<'a> ProjectIndex<'a> {
         self.alien_files.extend(other.alien_files);
         self.all_declared_traits.extend(other.all_declared_traits);
         self.all_implemented_traits.extend(other.all_implemented_traits);
+        self.all_blanket_impl_traits.extend(other.all_blanket_impl_traits);
         self
     }
 }
@@ -164,6 +179,7 @@ mod tests {
             prompt_snapshot: None,
             declared_traits: vec![],
             implemented_traits: vec![],
+            blanket_impl_traits: vec![],
             declarations: vec![],
             static_declarations: vec![],
             module_decls: vec![],
@@ -176,6 +192,7 @@ mod tests {
             alien_file: alien,
             declared_traits: vec![],
             implemented_traits: vec![],
+            blanket_impl_traits: vec![],
         }
     }
 
@@ -192,7 +209,7 @@ mod tests {
     fn unknown_layer_adds_alien_to_index() {
         let mut index = ProjectIndex::new();
         let path = Path::new("src/utils/helper.rs");
-        index.merge_local(LocalIndex { referenced_prompt: None, alien_file: Some(path), declared_traits: vec![], implemented_traits: vec![] });
+        index.merge_local(LocalIndex { referenced_prompt: None, alien_file: Some(path), declared_traits: vec![], implemented_traits: vec![], blanket_impl_traits: vec![] });
         assert_eq!(index.alien_files, vec![path]);
     }
 
@@ -280,12 +297,14 @@ mod tests {
             alien_file: None,
             declared_traits: vec!["FileProvider"],
             implemented_traits: vec![],
+            blanket_impl_traits: vec![],
         });
         index.merge_local(LocalIndex {
             referenced_prompt: None,
             alien_file: None,
             declared_traits: vec!["LanguageParser"],
             implemented_traits: vec![],
+            blanket_impl_traits: vec![],
         });
         assert!(index.all_declared_traits.contains("FileProvider"));
         assert!(index.all_declared_traits.contains("LanguageParser"));
@@ -299,6 +318,7 @@ mod tests {
             alien_file: None,
             declared_traits: vec![],
             implemented_traits: vec!["FileProvider"],
+            blanket_impl_traits: vec![],
         });
         assert!(index.all_implemented_traits.contains("FileProvider"));
         assert!(index.all_declared_traits.is_empty());
@@ -312,6 +332,7 @@ mod tests {
             alien_file: None,
             declared_traits: vec!["FileProvider"],
             implemented_traits: vec![],
+            blanket_impl_traits: vec![],
         });
 
         let mut b = ProjectIndex::new();
@@ -320,6 +341,7 @@ mod tests {
             alien_file: None,
             declared_traits: vec!["LanguageParser"],
             implemented_traits: vec!["FileProvider"],
+            blanket_impl_traits: vec![],
         });
 
         let merged = a.merge(b);
@@ -347,12 +369,14 @@ mod tests {
             alien_file: None,
             declared_traits: vec!["FileProvider"],
             implemented_traits: vec![],
+            blanket_impl_traits: vec![],
         });
         index.merge_local(LocalIndex {
             referenced_prompt: None,
             alien_file: None,
             declared_traits: vec!["FileProvider"],
             implemented_traits: vec![],
+            blanket_impl_traits: vec![],
         });
         assert_eq!(index.all_declared_traits.len(), 1);
     }
@@ -365,6 +389,7 @@ mod tests {
             alien_file: None,
             declared_traits: vec!["TraitA"],
             implemented_traits: vec!["TraitB"],
+            blanket_impl_traits: vec![],
         });
 
         let mut b = ProjectIndex::new();
@@ -373,6 +398,7 @@ mod tests {
             alien_file: None,
             declared_traits: vec!["TraitB"],
             implemented_traits: vec!["TraitA"],
+            blanket_impl_traits: vec![],
         });
 
         let ab = a.merge(b);
@@ -383,6 +409,7 @@ mod tests {
             alien_file: None,
             declared_traits: vec!["TraitA"],
             implemented_traits: vec!["TraitB"],
+            blanket_impl_traits: vec![],
         });
 
         let mut d = ProjectIndex::new();
@@ -391,10 +418,62 @@ mod tests {
             alien_file: None,
             declared_traits: vec!["TraitB"],
             implemented_traits: vec!["TraitA"],
+            blanket_impl_traits: vec![],
         });
 
         let dc = d.merge(c);
         assert_eq!(ab.all_declared_traits, dc.all_declared_traits);
         assert_eq!(ab.all_implemented_traits, dc.all_implemented_traits);
+    }
+
+    // ── blanket_impl_traits (ADR-0015) ────────────────────────────────────────
+
+    #[test]
+    fn merge_local_accumulates_blanket_impl_traits() {
+        let mut index = ProjectIndex::new();
+        index.merge_local(LocalIndex {
+            referenced_prompt: None,
+            alien_file: None,
+            declared_traits: vec![],
+            implemented_traits: vec![],
+            blanket_impl_traits: vec!["TrackedWorld"],
+        });
+        assert!(index.all_blanket_impl_traits.contains("TrackedWorld"));
+        assert!(index.all_declared_traits.is_empty());
+        assert!(index.all_implemented_traits.is_empty());
+    }
+
+    #[test]
+    fn merge_propagates_blanket_impl_traits() {
+        let mut a = ProjectIndex::new();
+        a.merge_local(LocalIndex {
+            referenced_prompt: None,
+            alien_file: None,
+            declared_traits: vec![],
+            implemented_traits: vec![],
+            blanket_impl_traits: vec!["TraitX"],
+        });
+        let mut b = ProjectIndex::new();
+        b.merge_local(LocalIndex {
+            referenced_prompt: None,
+            alien_file: None,
+            declared_traits: vec![],
+            implemented_traits: vec![],
+            blanket_impl_traits: vec!["TraitY"],
+        });
+        let merged = a.merge(b);
+        assert!(merged.all_blanket_impl_traits.contains("TraitX"));
+        assert!(merged.all_blanket_impl_traits.contains("TraitY"));
+    }
+
+    #[test]
+    fn from_parsed_transports_blanket_impl_traits() {
+        let mut parsed = base_parsed(
+            Path::new("03_infra/walker.rs"),
+            "00_nucleo/prompts/file-walker.md",
+        );
+        parsed.blanket_impl_traits = vec!["TrackedWorld"];
+        let local = LocalIndex::from_parsed(&parsed);
+        assert_eq!(local.blanket_impl_traits, vec!["TrackedWorld"]);
     }
 }

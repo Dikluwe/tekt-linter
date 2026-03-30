@@ -125,6 +125,13 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
             vec![]
         };
 
+        // ── Blanket impl traits (V11 — ADR-0015) ──────────────────────────
+        let blanket_impl_traits = if matches!(file.layer, Layer::L1 | Layer::L2 | Layer::L3) {
+            extract_blanket_impls(root, source)
+        } else {
+            vec![]
+        };
+
         // ── Declarations (V12) ─────────────────────────────────────────────
         let declarations = extract_declarations(root, source);
 
@@ -147,6 +154,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
             prompt_snapshot,
             declared_traits,
             implemented_traits,
+            blanket_impl_traits,
             declarations,
             static_declarations,
             module_decls,
@@ -609,6 +617,76 @@ fn extract_implemented_traits<'a>(root: Node, source: &'a [u8]) -> Vec<&'a str> 
         }
     }
     traits
+}
+
+/// Extract trait names satisfied by blanket impls — ADR-0015.
+///
+/// Detects three canonical patterns:
+///   `impl<T: B> Trait for T`           (single bound)
+///   `impl<T: B1 + B2> Trait for T`    (multi-bound)
+///   `impl<T> Trait for T where T: B`  (where clause)
+///
+/// Pattern 4 (`impl<T: B> Trait for &T` / `Box<T>`) is intentionally
+/// excluded — available via `[v11_blanket_exceptions]` in crystalline.toml.
+///
+/// Caller must gate on `L2 | L3` — this function does no filtering.
+fn extract_blanket_impls<'a>(root: Node, source: &'a [u8]) -> Vec<&'a str> {
+    let mut result = Vec::new();
+    for i in 0..root.child_count() {
+        if let Some(node) = root.child(i) {
+            if node.kind() != "impl_item" {
+                continue;
+            }
+            // Passo 1: recolher parâmetros genéricos do impl
+            let type_params = node
+                .child_by_field_name("type_parameters")
+                .map(|n| collect_type_param_names(n, source))
+                .unwrap_or_default();
+            if type_params.is_empty() {
+                continue; // impl concreto, já tratado por extract_implemented_traits
+            }
+            // Passo 2: verificar se o tipo em `for` é parâmetro genérico simples
+            let for_type = node
+                .child_by_field_name("type")
+                .map(|n| node_text(n, source));
+            let is_blanket = for_type
+                .map(|t| type_params.iter().any(|p| *p == t))
+                .unwrap_or(false);
+            if !is_blanket {
+                continue; // impl<T> Trait for ConcreteType — não é blanket
+            }
+            // Passo 3: extrair nome da trait
+            if let Some(trait_node) = node.child_by_field_name("trait") {
+                let trait_str = node_text(trait_node, source);
+                result.push(trait_last_segment(trait_str));
+            }
+        }
+    }
+    result
+}
+
+/// Coleta os nomes dos parâmetros de tipo de um nó `type_parameters`.
+/// Exemplo: `<T: World, U>` → `["T", "U"]`
+/// tree-sitter resolve where clauses e multi-bounds no mesmo nó,
+/// portanto os três padrões da ADR-0015 usam o mesmo algoritmo.
+fn collect_type_param_names<'a>(node: Node, source: &'a [u8]) -> Vec<&'a str> {
+    let mut names = Vec::new();
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            // type_identifier é o nome simples do parâmetro (ex: T, U)
+            // constrained_type_parameter tem field "left" com o nome
+            if child.kind() == "type_identifier" {
+                names.push(node_text(child, source));
+            } else if child.kind() == "constrained_type_parameter" {
+                if let Some(left) = child.child_by_field_name("left") {
+                    names.push(node_text(left, source));
+                }
+            } else if child.kind() == "lifetime" {
+                // ignorar lifetimes ('a) — não são parâmetros de tipo
+            }
+        }
+    }
+    names
 }
 
 /// Extract top-level struct/enum/impl-without-trait declarations for V12.
@@ -1213,5 +1291,85 @@ fn main() {}",
             }
             Err(other) => panic!("expected SyntaxError, got {:?}", other),
         }
+    }
+
+    // ── blanket_impl_traits (ADR-0015) ────────────────────────────────────
+
+    #[test]
+    fn blanket_impl_single_bound_detected() {
+        // impl<T: World> TrackedWorld for T  — padrão 1 (~60%)
+        let parser = make_parser();
+        let mut file = source_file(
+            "pub struct Wrapper;\nimpl<T: World> TrackedWorld for T { fn method(&self) {} }",
+        );
+        file.path = PathBuf::from("03_infra/adapter.rs");
+        file.layer = Layer::L3;
+        let parsed = parser.parse(&file).unwrap();
+        assert!(
+            parsed.blanket_impl_traits.contains(&"TrackedWorld"),
+            "blanket impl<T: B> Trait for T deve ser detectado"
+        );
+        // impl concreto não deve poluir blanket set
+        assert!(!parsed.blanket_impl_traits.contains(&"Wrapper"));
+    }
+
+    #[test]
+    fn blanket_impl_multi_bound_detected() {
+        // impl<T: A + B> Contract for T — padrão 2 (~25%)
+        let parser = make_parser();
+        let mut file = source_file(
+            "impl<T: Alpha + Beta> MyContract for T { fn run(&self) {} }",
+        );
+        file.path = PathBuf::from("02_shell/adapters.rs");
+        file.layer = Layer::L2;
+        let parsed = parser.parse(&file).unwrap();
+        assert!(
+            parsed.blanket_impl_traits.contains(&"MyContract"),
+            "blanket impl<T: A + B> Trait for T deve ser detectado"
+        );
+    }
+
+    #[test]
+    fn blanket_impl_where_clause_detected() {
+        // impl<T> Contract for T where T: Bound — padrão 3 (~10%)
+        let parser = make_parser();
+        let mut file = source_file(
+            "impl<T> WhereContract for T where T: SomeBound { fn exec(&self) {} }",
+        );
+        file.path = PathBuf::from("03_infra/where_adapter.rs");
+        file.layer = Layer::L3;
+        let parsed = parser.parse(&file).unwrap();
+        assert!(
+            parsed.blanket_impl_traits.contains(&"WhereContract"),
+            "blanket impl<T> Trait for T where T: B deve ser detectado"
+        );
+    }
+
+    #[test]
+    fn blanket_impl_empty_for_l1() {
+        // blanket impls agora são coletados em L1, L2 e L3 (ajuste para TrackedWorld)
+        let parser = make_parser();
+        let mut file = source_file(
+            "impl<T: World> TrackedWorld for T { fn method(&self) {} }",
+        );
+        file.path = PathBuf::from("01_core/entities/foo.rs");
+        file.layer = Layer::L1;
+        let parsed = parser.parse(&file).unwrap();
+        assert!(parsed.blanket_impl_traits.contains(&"TrackedWorld"));
+    }
+
+    #[test]
+    fn concrete_impl_not_in_blanket_traits() {
+        // impl ConcreteType for Adapter — não é blanket
+        let parser = make_parser();
+        let mut file = source_file(
+            "pub struct FsWalker;\nimpl FileProvider for FsWalker { fn files(&self) {} }",
+        );
+        file.path = PathBuf::from("03_infra/walker.rs");
+        file.layer = Layer::L3;
+        let parsed = parser.parse(&file).unwrap();
+        // FileProvider aparece em implemented_traits, não em blanket_impl_traits
+        assert!(parsed.implemented_traits.contains(&"FileProvider"));
+        assert!(!parsed.blanket_impl_traits.contains(&"FileProvider"));
     }
 }
