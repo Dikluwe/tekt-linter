@@ -4,7 +4,9 @@
 //! @layer L3
 //! @updated 2025-03-13
 
+pub mod c_parser;
 pub mod config;
+pub mod cpp_parser;
 pub mod hash_writer;
 pub mod prompt_reader;
 pub mod prompt_snapshot_reader;

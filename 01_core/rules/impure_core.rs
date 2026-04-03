@@ -37,6 +37,15 @@ fn forbidden_symbols_for(language: &Language) -> &'static [&'static str] {
             "socket", "urllib", "http.client", "ftplib", "smtplib",
             "open", "random.random", "time.time", "datetime.now",
         ],
+        Language::C => &[
+            "stdio.h", "stdlib.h", "time.h", "unistd.h", "fcntl.h",
+            "sys/socket.h", "pthread.h", "sys/stat.h", "windows.h"
+        ],
+        Language::Cpp => &[
+            "iostream", "fstream", "thread", "mutex", "chrono",
+            "filesystem", "net", "stdio.h", "stdlib.h", "time.h",
+            "unistd.h", "sys/socket.h", "windows.h"
+        ],
         Language::Unknown => &[],
     }
 }

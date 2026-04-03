@@ -20,6 +20,8 @@ pub enum Language {
     Rust,
     TypeScript,
     Python,
+    C,
+    Cpp,
     Unknown,
 }
 
@@ -72,6 +74,8 @@ mod tests {
         assert_ne!(Language::Unknown, Language::Rust);
         assert_ne!(Language::Unknown, Language::TypeScript);
         assert_ne!(Language::Unknown, Language::Python);
+        assert_ne!(Language::Unknown, Language::C);
+        assert_ne!(Language::Unknown, Language::Cpp);
     }
 
     #[test]
@@ -80,6 +84,8 @@ mod tests {
             Language::Rust,
             Language::TypeScript,
             Language::Python,
+            Language::C,
+            Language::Cpp,
             Language::Unknown,
         ];
         for lang in &langs {

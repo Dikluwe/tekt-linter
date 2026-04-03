@@ -94,6 +94,8 @@ fn language_for_path(path: &Path) -> Option<Language> {
         "rs" => Some(Language::Rust),
         "ts" | "tsx" => Some(Language::TypeScript),
         "py" => Some(Language::Python),
+        "c" | "h" => Some(Language::C),
+        "cpp" | "hpp" | "cc" | "cxx" | "hxx" => Some(Language::Cpp),
         _ => None,
     }
 }
@@ -156,6 +158,18 @@ fn check_adjacent_test(path: &Path) -> bool {
             if stem.ends_with("_test") || stem.starts_with("test_") { return false; }
             dir.join(format!("{}_test.py", stem)).exists()
                 || dir.join(format!("test_{}.py", stem)).exists()
+        }
+        Some("c") => {
+            if stem.ends_with("_test") || stem.starts_with("test_") { return false; }
+            dir.join(format!("{}_test.c", stem)).exists()
+                || dir.join(format!("test_{}.c", stem)).exists()
+        }
+        Some("cpp") | Some("cc") | Some("cxx") => {
+            if stem.ends_with("_test") || stem.starts_with("test_") { return false; }
+            dir.join(format!("{}_test.cpp", stem)).exists()
+                || dir.join(format!("test_{}.cpp", stem)).exists()
+                || dir.join(format!("{}_test.cc", stem)).exists()
+                || dir.join(format!("test_{}.cc", stem)).exists()
         }
         _ => false,
     }

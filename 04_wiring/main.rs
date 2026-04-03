@@ -17,7 +17,7 @@ use crystalline_lint::contracts::parse_error::ParseError;
 use crystalline_lint::contracts::prompt_provider::PromptProvider;
 use crystalline_lint::contracts::prompt_reader::PromptReader;
 use crystalline_lint::contracts::prompt_snapshot_reader::PromptSnapshotReader;
-use crystalline_lint::entities::l1_allowed_external::L1AllowedExternal;
+use crystalline_lint::entities::l1_allowed_external::{L1AllowedExternal, L1AllowedExternalSet};
 use crystalline_lint::entities::parsed_file::{ParsedFile, PublicInterface, WiringConfig};
 use crystalline_lint::entities::project_index::{LocalIndex, ProjectIndex};
 use crystalline_lint::entities::violation::{Location, Violation, ViolationLevel};
@@ -28,6 +28,8 @@ use crystalline_lint::infra::prompt_snapshot_reader::FsPromptSnapshotReader;
 use crystalline_lint::infra::prompt_walker::FsPromptWalker;
 use crystalline_lint::entities::layer::Language;
 use crystalline_lint::infra::py_parser::PyParser;
+use crystalline_lint::infra::c_parser::CParser;
+use crystalline_lint::infra::cpp_parser::CppParser;
 use crystalline_lint::infra::rs_parser::RustParser;
 use crystalline_lint::infra::ts_parser::TsParser;
 use crystalline_lint::infra::snapshot_writer;
@@ -89,8 +91,14 @@ fn main() {
         allow_adapter_structs: config.wiring_exceptions.allow_adapter_structs.unwrap_or(true),
     };
 
-    // ── L1AllowedExternal for V14 ─────────────────────────────────────────────
-    let l1_allowed = L1AllowedExternal::for_rust(config.l1_allowed_for_language("rust"));
+    // ── L1AllowedExternalSet for V14 (por linguagem) ────────────────────────
+    let l1_allowed = L1AllowedExternalSet {
+        rust:       L1AllowedExternal::for_rust(config.l1_allowed_for_language("rust")),
+        python:     L1AllowedExternal::for_python(config.l1_allowed_for_language("python")),
+        typescript: L1AllowedExternal::for_typescript(config.l1_allowed_for_language("typescript")),
+        c:          L1AllowedExternal::for_c(config.l1_allowed_for_language("c")),
+        cpp:        L1AllowedExternal::for_cpp(config.l1_allowed_for_language("cpp")),
+    };
 
     // ── Instantiate L3 components ─────────────────────────────────────────────
     let parser = MultiParser {
@@ -106,6 +114,18 @@ fn main() {
             cli.path.clone(),
         ),
         py: PyParser::new(
+            FsPromptReader { nucleo_root: nucleo_root.clone() },
+            FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+            config.clone(),
+            cli.path.clone(),
+        ),
+        c: CParser::new(
+            FsPromptReader { nucleo_root: nucleo_root.clone() },
+            FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+            config.clone(),
+            cli.path.clone(),
+        ),
+        cpp: CppParser::new(
             FsPromptReader { nucleo_root: nucleo_root.clone() },
             FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
             config.clone(),
@@ -177,6 +197,18 @@ fn main() {
                     config.clone(),
                     cli.path.clone(),
                 ),
+                c: CParser::new(
+                    FsPromptReader { nucleo_root: nucleo_root.clone() },
+                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    config.clone(),
+                    cli.path.clone(),
+                ),
+                cpp: CppParser::new(
+                    FsPromptReader { nucleo_root: nucleo_root.clone() },
+                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    config.clone(),
+                    cli.path.clone(),
+                ),
             };
             let rewalker = FileWalker::new(cli.path.clone(), config.clone());
             let (re_files, re_errors) = collect_walker_results(rewalker.files());
@@ -233,6 +265,18 @@ fn main() {
                     config.clone(),
                     cli.path.clone(),
                 ),
+                c: CParser::new(
+                    FsPromptReader { nucleo_root: nucleo_root.clone() },
+                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    config.clone(),
+                    cli.path.clone(),
+                ),
+                cpp: CppParser::new(
+                    FsPromptReader { nucleo_root: nucleo_root.clone() },
+                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    config.clone(),
+                    cli.path.clone(),
+                ),
             };
             let rewalker = FileWalker::new(cli.path.clone(), config);
             let (re_files, re_errors) = collect_walker_results(rewalker.files());
@@ -278,6 +322,8 @@ struct MultiParser {
     rust: RustParser<FsPromptReader, FsPromptSnapshotReader>,
     ts:   TsParser<FsPromptReader, FsPromptSnapshotReader>,
     py:   PyParser<FsPromptReader, FsPromptSnapshotReader>,
+    c:    CParser<FsPromptReader, FsPromptSnapshotReader>,
+    cpp:  CppParser<FsPromptReader, FsPromptSnapshotReader>,
 }
 
 impl LanguageParser for MultiParser {
@@ -286,6 +332,8 @@ impl LanguageParser for MultiParser {
             Language::Rust       => self.rust.parse(file),
             Language::TypeScript => self.ts.parse(file),
             Language::Python     => self.py.parse(file),
+            Language::C          => self.c.parse(file),
+            Language::Cpp        => self.cpp.parse(file),
             _ => Err(ParseError::UnsupportedLanguage {
                 path: file.path.clone(),
                 language: file.language.clone(),
@@ -293,6 +341,7 @@ impl LanguageParser for MultiParser {
         }
     }
 }
+
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -372,7 +421,7 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
     enabled: &EnabledChecks,
     l1_ports: &L1Ports,
     wiring_config: &WiringConfig,
-    l1_allowed: &L1AllowedExternal,
+    l1_allowed: &L1AllowedExternalSet,
 ) -> (Vec<Violation<'a>>, Vec<ParsedFile<'a>>, ProjectIndex<'a>) {
     // Fase Map ─────────────────────────────────────────────────────────────────
 
@@ -443,9 +492,10 @@ fn run_checks<'a>(
     enabled: &EnabledChecks,
     l1_ports: &L1Ports,
     wiring_config: &WiringConfig,
-    l1_allowed: &L1AllowedExternal,
+    l1_allowed: &L1AllowedExternalSet,
 ) -> Vec<Violation<'a>> {
     let mut violations = Vec::new();
+    let l1_allowed_lang = l1_allowed.for_language(&file.language);
     if enabled.v1  { violations.extend(prompt_header::check(file)); }
     if enabled.v2  { violations.extend(test_file::check(file)); }
     if enabled.v3  { violations.extend(forbidden_import::check(file)); }
@@ -456,7 +506,7 @@ fn run_checks<'a>(
     if enabled.v10 { violations.extend(quarantine_leak::check(file)); }
     if enabled.v12 { violations.extend(wiring_logic_leak::check(file, wiring_config)); }
     if enabled.v13 { violations.extend(mutable_state_core::check(file)); }
-    if enabled.v14 { violations.extend(external_type_in_contract::check(file, l1_allowed)); }
+    if enabled.v14 { violations.extend(external_type_in_contract::check(file, l1_allowed_lang)); }
     violations
 }
 
