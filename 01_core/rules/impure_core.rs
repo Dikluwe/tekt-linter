@@ -46,6 +46,10 @@ fn forbidden_symbols_for(language: &Language) -> &'static [&'static str] {
             "filesystem", "net", "stdio.h", "stdlib.h", "time.h",
             "unistd.h", "sys/socket.h", "windows.h"
         ],
+        Language::Zig => &[
+            "std.fs", "std.io", "std.net", "std.os", "std.process",
+            "std.time", "std.crypto",
+        ],
         Language::Unknown => &[],
     }
 }

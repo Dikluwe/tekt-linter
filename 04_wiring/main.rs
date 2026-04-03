@@ -32,6 +32,7 @@ use crystalline_lint::infra::c_parser::CParser;
 use crystalline_lint::infra::cpp_parser::CppParser;
 use crystalline_lint::infra::rs_parser::RustParser;
 use crystalline_lint::infra::ts_parser::TsParser;
+use crystalline_lint::infra::zig_parser::ZigParser;
 use crystalline_lint::infra::snapshot_writer;
 use crystalline_lint::infra::walker::FileWalker;
 use crystalline_lint::rules::{
@@ -98,6 +99,7 @@ fn main() {
         typescript: L1AllowedExternal::for_typescript(config.l1_allowed_for_language("typescript")),
         c:          L1AllowedExternal::for_c(config.l1_allowed_for_language("c")),
         cpp:        L1AllowedExternal::for_cpp(config.l1_allowed_for_language("cpp")),
+        zig:        L1AllowedExternal::for_zig(config.l1_allowed_for_language("zig")),
     };
 
     // ── Instantiate L3 components ─────────────────────────────────────────────
@@ -126,6 +128,12 @@ fn main() {
             cli.path.clone(),
         ),
         cpp: CppParser::new(
+            FsPromptReader { nucleo_root: nucleo_root.clone() },
+            FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+            config.clone(),
+            cli.path.clone(),
+        ),
+        zig: ZigParser::new(
             FsPromptReader { nucleo_root: nucleo_root.clone() },
             FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
             config.clone(),
@@ -209,6 +217,12 @@ fn main() {
                     config.clone(),
                     cli.path.clone(),
                 ),
+                zig: ZigParser::new(
+                    FsPromptReader { nucleo_root: nucleo_root.clone() },
+                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    config.clone(),
+                    cli.path.clone(),
+                ),
             };
             let rewalker = FileWalker::new(cli.path.clone(), config.clone());
             let (re_files, re_errors) = collect_walker_results(rewalker.files());
@@ -277,6 +291,12 @@ fn main() {
                     config.clone(),
                     cli.path.clone(),
                 ),
+                zig: ZigParser::new(
+                    FsPromptReader { nucleo_root: nucleo_root.clone() },
+                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    config.clone(),
+                    cli.path.clone(),
+                ),
             };
             let rewalker = FileWalker::new(cli.path.clone(), config);
             let (re_files, re_errors) = collect_walker_results(rewalker.files());
@@ -324,6 +344,7 @@ struct MultiParser {
     py:   PyParser<FsPromptReader, FsPromptSnapshotReader>,
     c:    CParser<FsPromptReader, FsPromptSnapshotReader>,
     cpp:  CppParser<FsPromptReader, FsPromptSnapshotReader>,
+    zig:  ZigParser<FsPromptReader, FsPromptSnapshotReader>,
 }
 
 impl LanguageParser for MultiParser {
@@ -334,6 +355,7 @@ impl LanguageParser for MultiParser {
             Language::Python     => self.py.parse(file),
             Language::C          => self.c.parse(file),
             Language::Cpp        => self.cpp.parse(file),
+            Language::Zig        => self.zig.parse(file),
             _ => Err(ParseError::UnsupportedLanguage {
                 path: file.path.clone(),
                 language: file.language.clone(),

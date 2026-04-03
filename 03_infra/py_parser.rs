@@ -81,7 +81,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for PyParser<R, S>
         }
 
         let mut engine = PyParserEngine::new();
-        engine.set_language(&tree_sitter_python::language()).map_err(|_| {
+        engine.set_language(&tree_sitter_python::LANGUAGE.into()).map_err(|_| {
             ParseError::SyntaxError {
                 path: file.path.clone(),
                 line: 0,

@@ -59,7 +59,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for CParser<R, S> 
         }
 
         let mut engine = TsParserEngine::new();
-        engine.set_language(&tree_sitter_c::language()).map_err(|_| ParseError::SyntaxError {
+        engine.set_language(&tree_sitter_c::LANGUAGE.into()).map_err(|_| ParseError::SyntaxError {
             path: file.path.clone(),
             line: 0,
             column: 0,

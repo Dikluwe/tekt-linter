@@ -22,6 +22,7 @@ pub enum Language {
     Python,
     C,
     Cpp,
+    Zig,
     Unknown,
 }
 
@@ -76,6 +77,7 @@ mod tests {
         assert_ne!(Language::Unknown, Language::Python);
         assert_ne!(Language::Unknown, Language::C);
         assert_ne!(Language::Unknown, Language::Cpp);
+        assert_ne!(Language::Unknown, Language::Zig);
     }
 
     #[test]
@@ -86,6 +88,7 @@ mod tests {
             Language::Python,
             Language::C,
             Language::Cpp,
+            Language::Zig,
             Language::Unknown,
         ];
         for lang in &langs {

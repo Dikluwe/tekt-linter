@@ -1,8 +1,8 @@
 //! Crystalline Lineage
-//! @prompt 00_nucleo/prompts/parsers/cpp.md
-//! @prompt-hash 3a75f59a
+//! @prompt 00_nucleo/prompts/parsers/zig.md
+//! @prompt-hash 789e7202
 //! @layer L3
-//! @updated 2026-03-30
+//! @updated 2026-04-03
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
@@ -22,14 +22,14 @@ use crate::entities::parsed_file::{
 use crate::infra::config::CrystallineConfig;
 use crate::infra::walker::resolve_file_layer;
 
-pub struct CppParser<R: PromptReader, S: PromptSnapshotReader> {
+pub struct ZigParser<R: PromptReader, S: PromptSnapshotReader> {
     pub prompt_reader: R,
     pub snapshot_reader: S,
     pub config: CrystallineConfig,
     pub project_root: PathBuf,
 }
 
-impl<R: PromptReader, S: PromptSnapshotReader> CppParser<R, S> {
+impl<R: PromptReader, S: PromptSnapshotReader> ZigParser<R, S> {
     pub fn new(
         prompt_reader: R,
         snapshot_reader: S,
@@ -45,13 +45,13 @@ impl<R: PromptReader, S: PromptSnapshotReader> CppParser<R, S> {
     }
 }
 
-impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for CppParser<R, S> {
+impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for ZigParser<R, S> {
     fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
         if file.content.is_empty() {
             return Err(ParseError::EmptySource { path: file.path.clone() });
         }
 
-        if file.language != Language::Cpp {
+        if file.language != Language::Zig {
             return Err(ParseError::UnsupportedLanguage {
                 path: file.path.clone(),
                 language: file.language.clone(),
@@ -59,11 +59,11 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for CppParser<R, S
         }
 
         let mut engine = TsParserEngine::new();
-        engine.set_language(&tree_sitter_cpp::LANGUAGE.into()).map_err(|_| ParseError::SyntaxError {
+        engine.set_language(&tree_sitter_zig::LANGUAGE.into()).map_err(|_| ParseError::SyntaxError {
             path: file.path.clone(),
             line: 0,
             column: 0,
-            message: "Failed to load C++ grammar".to_string(),
+            message: "Failed to load Zig grammar".to_string(),
         })?;
 
         let tree = engine
@@ -83,7 +83,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for CppParser<R, S
                 path: file.path.clone(),
                 line,
                 column,
-                message: "Syntax error detected in C++ AST".to_string(),
+                message: "Syntax error detected in Zig AST".to_string(),
             });
         }
 
@@ -102,11 +102,9 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for CppParser<R, S
 
         let tokens = extract_tokens(root, source);
 
-        // For C++, testing frameworks like gtest use TEST or TEST_F
-        let has_test_ast = has_test_calls(root, source);
-        let ext = file.path.extension().unwrap_or_default().to_str().unwrap_or_default();
-        let is_decl_only = ext == "h" || ext == "hpp" || ext == "hxx";
-        let has_test_coverage = has_test_ast || file.has_adjacent_test || is_decl_only;
+        // Zig uses `test "name" { ... }` blocks
+        let has_test_ast = has_test_blocks(root, source);
+        let has_test_coverage = has_test_ast || file.has_adjacent_test;
 
         let public_interface = extract_public_interface(root, source, file.path.as_path());
         let prompt_snapshot = prompt_header
@@ -199,7 +197,7 @@ fn parse_layer_tag(tag: &str) -> Layer {
         "L2" => Layer::L2,
         "L3" => Layer::L3,
         "L4" => Layer::L4,
-        "Lab" | "lab" => Layer::Lab,
+        "Lab"| "lab" => Layer::Lab,
         _ => Layer::Unknown,
     }
 }
@@ -226,29 +224,29 @@ fn collect_imports<'a>(
     config: &CrystallineConfig,
     imports: &mut Vec<Import<'a>>,
 ) {
-    if node.kind() == "preproc_include" {
-        let mut path_str = None;
-        for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
-                if child.kind() == "string_literal" || child.kind() == "system_lib_string" {
-                    let text = node_text(child, source);
-                    if text.len() >= 2 {
-                        path_str = Some(&text[1..text.len() - 1]);
+    // Zig imports: `@import("std")`, `@import("./local.zig")`
+    if node.kind() == "builtin_call_expr" {
+        let name_node = node.child(0); // usually @import
+        if let Some(n) = name_node {
+            if node_text(n, source) == "@import" {
+                if let Some(args) = node.child_by_field_name("arguments") {
+                    if let Some(arg) = args.child(1) { // 0 is '(', 1 is the string
+                        let text = node_text(arg, source);
+                        if text.len() >= 2 {
+                            let p = &text[1..text.len()-1];
+                            let line = node.start_position().row + 1;
+                            let target_layer = resolve_zig_layer(p, file_path, project_root, config);
+                            imports.push(Import {
+                                path: p,
+                                line,
+                                kind: ImportKind::Direct,
+                                target_layer,
+                                target_subdir: None,
+                            });
+                        }
                     }
                 }
             }
-        }
-
-        if let Some(p) = path_str {
-            let line = node.start_position().row + 1;
-            let target_layer = resolve_cpp_layer(p, file_path, project_root, config);
-            imports.push(Import {
-                path: p,
-                line,
-                kind: ImportKind::Direct,
-                target_layer,
-                target_subdir: None,
-            });
         }
     }
 
@@ -265,9 +263,7 @@ fn normalize(path: &Path, project_root: &Path) -> Option<PathBuf> {
     for component in path.components() {
         match component {
             Component::ParentDir => {
-                if components.is_empty() {
-                    return None;
-                }
+                if components.is_empty() { return None; }
                 components.pop();
             }
             Component::CurDir => {}
@@ -276,25 +272,20 @@ fn normalize(path: &Path, project_root: &Path) -> Option<PathBuf> {
     }
     let result: PathBuf = components.iter().collect();
     if project_root != Path::new(".") && !project_root.as_os_str().is_empty() {
-        if !result.starts_with(project_root) {
-            return None;
-        }
+        if !result.starts_with(project_root) { return None; }
     }
     Some(result)
 }
 
-fn resolve_cpp_layer(
+fn resolve_zig_layer(
     import_path: &str,
     file_path: &Path,
     project_root: &Path,
     config: &CrystallineConfig,
 ) -> Layer {
-    let is_relative = import_path.starts_with("./") || import_path.starts_with("../");
-    
-    if !is_relative {
-        return Layer::Unknown;
+    if !import_path.starts_with(".") {
+        return Layer::Unknown; // stdlib or package
     }
-
     let base = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
     let joined = base.join(import_path);
     if let Some(normalized) = normalize(&joined, project_root) {
@@ -306,82 +297,69 @@ fn resolve_cpp_layer(
 
 // ── PublicInterface extraction ────────────────────────────────────────────────
 
-fn extract_public_interface<'a>(root: Node, source: &'a [u8], file_path: &Path) -> PublicInterface<'a> {
+fn extract_public_interface<'a>(root: Node, source: &'a [u8], _file_path: &Path) -> PublicInterface<'a> {
     let mut functions = Vec::new();
     let mut types = Vec::new();
-    
-    let ext = file_path.extension().unwrap_or_default().to_str().unwrap_or_default();
-    let is_header = ext == "h" || ext == "hpp" || ext == "hxx";
 
-    for i in 0..root.child_count() {
-        if let Some(child) = root.child(i) {
-            match child.kind() {
-                "function_definition" | "declaration" => {
-                    let is_static = child.child(0).map_or(false, |n| node_text(n, source) == "static");
-                    
-                    if !is_static || is_header {
-                        if child.kind() == "function_definition" {
-                            if let Some(sig) = extract_fn_sig(child, source) {
-                                functions.push(sig);
-                            }
-                        } else if let Some(sig) = extract_decl_sig(child, source) {
-                            types.push(sig);
-                        }
-                    }
-                }
-                "class_specifier" => {
-                    if let Some(sig) = extract_class_sig(child, source) {
-                        types.push(sig);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
+    collect_public_members(root, source, &mut functions, &mut types);
 
     PublicInterface { functions, types, reexports: vec![] }
 }
 
-fn extract_fn_sig<'a>(node: Node, source: &'a [u8]) -> Option<FunctionSignature<'a>> {
-    let decl = node.child_by_field_name("declarator")?;
-    let mut name = None;
-    let mut params = Vec::new();
-    
-    if decl.kind() == "function_declarator" {
-        if let Some(n) = decl.child_by_field_name("declarator") {
-            name = Some(node_text(n, source));
+fn collect_public_members<'a>(
+    node: Node,
+    source: &'a [u8],
+    functions: &mut Vec<FunctionSignature<'a>>,
+    types: &mut Vec<TypeSignature<'a>>,
+) {
+    match node.kind() {
+        "fn_proto" => {
+            if is_pub(node, source) {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    functions.push(FunctionSignature {
+                        name: node_text(name_node, source),
+                        params: vec![], // simplified
+                        return_type: None, // simplified
+                    });
+                }
+            }
         }
-        if let Some(p) = decl.child_by_field_name("parameters") {
-            params.push(node_text(p, source));
+        "variable_declaration" => {
+            if is_pub(node, source) {
+                // If it's a const X = struct { ... }, treat as a type
+                if let Some(value) = node.child_by_field_name("value") {
+                    if value.kind() == "container_decl" {
+                        if let Some(name_node) = node.child_by_field_name("name") {
+                            types.push(TypeSignature {
+                                name: node_text(name_node, source),
+                                kind: TypeKind::Struct,
+                                members: vec![],
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            collect_public_members(child, source, functions, types);
         }
     }
-    
-    let return_type = node.child_by_field_name("type").map(|n| node_text(n, source));
-    
-    name.map(|n| FunctionSignature { name: n, params, return_type })
 }
 
-fn extract_decl_sig<'a>(node: Node, source: &'a [u8]) -> Option<TypeSignature<'a>> {
-    let type_node = node.child_by_field_name("type")?;
-    
-    if type_node.kind() == "struct_specifier" || type_node.kind() == "enum_specifier" || type_node.kind() == "class_specifier" {
-        let name = type_node.child_by_field_name("name").map(|n| node_text(n, source))?;
-        let kind = if type_node.kind() == "struct_specifier" { 
-            TypeKind::Struct 
-        } else if type_node.kind() == "enum_specifier" {
-            TypeKind::Enum
-        } else {
-            TypeKind::Class
-        };
-        return Some(TypeSignature { name, kind, members: vec![] });
+fn is_pub(node: Node, source: &[u8]) -> bool {
+    // Check if the node or its parent has "pub" keyword
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            if node_text(child, source) == "pub" {
+                return true;
+            }
+        }
     }
-    
-    None
-}
-
-fn extract_class_sig<'a>(node: Node, source: &'a [u8]) -> Option<TypeSignature<'a>> {
-    let name = node.child_by_field_name("name").map(|n| node_text(n, source))?;
-    Some(TypeSignature { name, kind: TypeKind::Class, members: vec![] })
+    false
 }
 
 // ── Token extraction ──────────────────────────────────────────────────────────
@@ -393,8 +371,8 @@ fn extract_tokens<'a>(root: Node, source: &'a [u8]) -> Vec<Token<'a>> {
 }
 
 fn collect_tokens<'a>(node: Node, source: &'a [u8], tokens: &mut Vec<Token<'a>>) {
-    if node.kind() == "call_expression" {
-        if let Some(func) = node.child_by_field_name("function") {
+    if node.kind() == "call_expr" {
+        if let Some(func) = node.child(0) {
             let symbol = Cow::Borrowed(node_text(func, source));
             let pos = node.start_position();
             tokens.push(Token {
@@ -415,28 +393,21 @@ fn collect_tokens<'a>(node: Node, source: &'a [u8], tokens: &mut Vec<Token<'a>>)
 
 // ── Test Coverage ────────────────────────────────────────────────────────────
 
-fn has_test_calls(root: Node, source: &[u8]) -> bool {
+fn has_test_blocks(root: Node, source: &[u8]) -> bool {
     let mut found = false;
-    check_cpp_test_calls(root, source, &mut found);
+    check_test_nodes(root, source, &mut found);
     found
 }
 
-fn check_cpp_test_calls(node: Node, source: &[u8], found: &mut bool) {
+fn check_test_nodes(node: Node, _source: &[u8], found: &mut bool) {
     if *found { return; }
-    
-    if node.kind() == "call_expression" {
-        if let Some(func) = node.child_by_field_name("function") {
-            let text = node_text(func, source);
-            if text == "TEST" || text == "TEST_F" || text == "TEST_P" || text.starts_with("assert_") || text.starts_with("EXPECT_") || text.starts_with("ASSERT_") {
-                *found = true;
-                return;
-            }
-        }
+    if node.kind() == "test_declaration" {
+        *found = true;
+        return;
     }
-
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
-            check_cpp_test_calls(child, source, found);
+            check_test_nodes(child, _source, found);
         }
     }
 }
@@ -445,56 +416,55 @@ fn check_cpp_test_calls(node: Node, source: &[u8], found: &mut bool) {
 
 fn extract_declarations<'a>(root: Node, source: &'a [u8]) -> Vec<Declaration<'a>> {
     let mut decls = Vec::new();
-    for i in 0..root.child_count() {
-        if let Some(node) = root.child(i) {
-            if node.kind() == "declaration" {
-                if let Some(sig) = extract_decl_sig(node, source) {
-                    let d_kind = match sig.kind {
-                        TypeKind::Struct => DeclarationKind::Struct,
-                        TypeKind::Enum => DeclarationKind::Enum,
-                        TypeKind::Class => DeclarationKind::Class,
-                        _ => DeclarationKind::TypeAlias,
-                    };
+    collect_decls(root, source, &mut decls);
+    decls
+}
+
+fn collect_decls<'a>(node: Node, source: &'a [u8], decls: &mut Vec<Declaration<'a>>) {
+    if node.kind() == "variable_declaration" {
+        if let Some(value) = node.child_by_field_name("value") {
+            if value.kind() == "container_decl" {
+                if let Some(name_node) = node.child_by_field_name("name") {
                     decls.push(Declaration {
-                        kind: d_kind,
-                        name: sig.name,
-                        line: node.start_position().row + 1,
-                    });
-                }
-            } else if node.kind() == "class_specifier" {
-                if let Some(sig) = extract_class_sig(node, source) {
-                    decls.push(Declaration {
-                        kind: DeclarationKind::Class,
-                        name: sig.name,
+                        kind: DeclarationKind::Struct,
+                        name: node_text(name_node, source),
                         line: node.start_position().row + 1,
                     });
                 }
             }
         }
     }
-    decls
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            collect_decls(child, source, decls);
+        }
+    }
 }
 
 fn extract_static_declarations<'a>(root: Node, source: &'a [u8]) -> Vec<StaticDeclaration<'a>> {
     let mut decls = Vec::new();
-    for i in 0..root.child_count() {
-        if let Some(node) = root.child(i) {
-            if node.kind() == "declaration" {
-                let is_static = node.child(0).map_or(false, |n| node_text(n, source) == "static");
-                if is_static {
-                    if let Some(decl) = node.child_by_field_name("declarator") {
-                        let name = node_text(decl, source); // simplified
-                        let type_text = node.child_by_field_name("type").map(|n| node_text(n, source)).unwrap_or("");
-                        decls.push(StaticDeclaration {
-                            name,
-                            type_text,
-                            is_mut: true, // simplified
-                            line: node.start_position().row + 1,
-                        });
-                    }
-                }
+    collect_statics(root, source, &mut decls);
+    decls
+}
+
+fn collect_statics<'a>(node: Node, source: &'a [u8], decls: &mut Vec<StaticDeclaration<'a>>) {
+    if node.kind() == "variable_declaration" {
+        // Top-level variable in source_file usually
+        if node.parent().map_or(false, |p| p.kind() == "source_file") {
+            let is_mut = node_text(node, source).contains("var");
+            if let Some(name_node) = node.child_by_field_name("name") {
+                decls.push(StaticDeclaration {
+                    name: node_text(name_node, source),
+                    type_text: "", // simplified
+                    is_mut,
+                    line: node.start_position().row + 1,
+                });
             }
         }
     }
-    decls
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            collect_statics(child, source, decls);
+        }
+    }
 }

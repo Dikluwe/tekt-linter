@@ -19,12 +19,12 @@ path = "04_wiring/main.rs"
 thiserror         = "1"
 
 # L3 — infra
-tree-sitter            = "0.22"
-tree-sitter-rust       = "0.21"
-tree-sitter-typescript = "0.21"
-tree-sitter-python     = "0.21"
-tree-sitter-c          = "0.21"
-tree-sitter-cpp        = "0.22"
+tree-sitter            = "0.23"
+tree-sitter-rust       = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-python     = "0.23"
+tree-sitter-c          = "0.23"
+tree-sitter-cpp        = "0.23"
 walkdir           = "2"
 sha2              = "0.10"
 hex               = "0.4"
@@ -38,6 +38,7 @@ colored           = "2"
 
 # L4 — wiring (ADR-0004)
 rayon             = "1"
+tree-sitter-zig = "1.1.2"
 
 [dev-dependencies]
 tempfile = "3"

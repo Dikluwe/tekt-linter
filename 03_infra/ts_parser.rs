@@ -80,10 +80,10 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for TsParser<R, S>
         }
 
         let mut engine = TsParserEngine::new();
-        let lang = if file.path.extension().and_then(|e| e.to_str()) == Some("tsx") {
-            tree_sitter_typescript::language_tsx()
+        let lang: tree_sitter::Language = if file.path.extension().and_then(|e| e.to_str()) == Some("tsx") {
+            tree_sitter_typescript::LANGUAGE_TSX.into()
         } else {
-            tree_sitter_typescript::language_typescript()
+            tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()
         };
         engine.set_language(&lang).map_err(|_| ParseError::SyntaxError {
             path: file.path.clone(),

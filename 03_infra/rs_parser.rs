@@ -49,7 +49,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
 
         let mut ts_parser = TsParser::new();
         ts_parser
-            .set_language(&tree_sitter_rust::language())
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
             .map_err(|_| ParseError::SyntaxError {
                 path: file.path.clone(),
                 line: 0,

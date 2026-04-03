@@ -96,6 +96,7 @@ fn language_for_path(path: &Path) -> Option<Language> {
         "py" => Some(Language::Python),
         "c" | "h" => Some(Language::C),
         "cpp" | "hpp" | "cc" | "cxx" | "hxx" => Some(Language::Cpp),
+        "zig" => Some(Language::Zig),
         _ => None,
     }
 }
@@ -132,6 +133,7 @@ pub fn resolve_file_layer(path: &Path, root: &Path, config: &CrystallineConfig) 
 /// - Rust:       `<stem>_test.rs`
 /// - TypeScript: `<stem>.test.ts`, `<stem>.spec.ts`, `<stem>.test.tsx`, `<stem>.spec.tsx`
 /// - Python:     `<stem>_test.py` or `test_<stem>.py`
+/// - Zig:        `<stem>_test.zig`
 fn check_adjacent_test(path: &Path) -> bool {
     let stem = match path.file_stem().and_then(|s| s.to_str()) {
         Some(s) => s,
@@ -158,6 +160,10 @@ fn check_adjacent_test(path: &Path) -> bool {
             if stem.ends_with("_test") || stem.starts_with("test_") { return false; }
             dir.join(format!("{}_test.py", stem)).exists()
                 || dir.join(format!("test_{}.py", stem)).exists()
+        }
+        Some("zig") => {
+            if stem.ends_with("_test") { return false; }
+            dir.join(format!("{}_test.zig", stem)).exists()
         }
         Some("c") => {
             if stem.ends_with("_test") || stem.starts_with("test_") { return false; }

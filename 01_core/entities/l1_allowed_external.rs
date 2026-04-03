@@ -59,6 +59,11 @@ impl L1AllowedExternal {
         Self { allowed, exempt_prefixes: vec![] }
     }
 
+    /// Zig — nenhum prefixo isento automático.
+    pub fn for_zig(allowed: HashSet<String>) -> Self {
+        Self { allowed, exempt_prefixes: vec![] }
+    }
+
     // ── Helpers de conveniência ────────────────────────────────────────────────
 
     pub fn empty_for_rust() -> Self {
@@ -85,6 +90,7 @@ pub struct L1AllowedExternalSet {
     pub typescript: L1AllowedExternal,
     pub c:          L1AllowedExternal,
     pub cpp:        L1AllowedExternal,
+    pub zig:        L1AllowedExternal,
 }
 
 impl L1AllowedExternalSet {
@@ -96,6 +102,7 @@ impl L1AllowedExternalSet {
             Language::TypeScript => &self.typescript,
             Language::C          => &self.c,
             Language::Cpp        => &self.cpp,
+            Language::Zig        => &self.zig,
             Language::Unknown    => &self.rust, // fallback conservador
         }
     }
