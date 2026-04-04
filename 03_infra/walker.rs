@@ -71,12 +71,15 @@ fn is_ignored(
     excluded_dirs: &HashSet<String>,
     excluded_files: &HashSet<String>,
 ) -> bool {
-    if path.components().any(|c| {
-        let name = c.as_os_str().to_str().unwrap_or("");
-        excluded_dirs.contains(name)
-    }) {
-        return true;
+    // 1. Dir exclusion: only check the last component.
+    // filter_entry ensures we don't descend if a parent is ignored.
+    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+        if excluded_dirs.contains(name) {
+            return true;
+        }
     }
+
+    // 2. File exclusion: check exact relative path.
     if let Ok(relative) = path.strip_prefix(root) {
         if let Some(rel_str) = relative.to_str() {
             let normalized = rel_str.replace('\\', "/");

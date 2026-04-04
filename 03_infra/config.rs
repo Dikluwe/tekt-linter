@@ -150,6 +150,13 @@ impl Default for CrystallineConfig {
         excluded.insert("vcs".to_string(), ".git".to_string());
         excluded.insert("deps".to_string(), "node_modules".to_string());
         excluded.insert("cargo".to_string(), ".cargo".to_string());
+        // Python environment and caches (ADR-0006 compliance)
+        excluded.insert("venv1".to_string(), ".venv".to_string());
+        excluded.insert("venv2".to_string(), "venv".to_string());
+        excluded.insert("venv3".to_string(), "env".to_string());
+        excluded.insert("pycache".to_string(), "__pycache__".to_string());
+        excluded.insert("pytest".to_string(), ".pytest_cache".to_string());
+        excluded.insert("temp".to_string(), "tmp".to_string());
 
         let mut l1_ports = HashMap::new();
         l1_ports.insert("entities".to_string(), "01_core/entities".to_string());

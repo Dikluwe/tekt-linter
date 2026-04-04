@@ -11,6 +11,9 @@ use sha2::{Digest, Sha256};
 
 use crate::contracts::prompt_reader::PromptReader;
 
+use std::collections::HashMap;
+use std::sync::Mutex;
+
 /// L3 implementation of PromptReader.
 /// Reads prompt files from 00_nucleo/ and returns SHA256[0..8].
 /// std::io::Error is absorbed — never crosses to L1.
@@ -21,6 +24,14 @@ pub struct FsPromptReader {
 impl PromptReader for FsPromptReader {
     fn read_hash(&self, prompt_path: &str) -> Option<String> {
         let full_path = self.nucleo_root.join(prompt_path);
+        
+        // ADR-0006 compliance: prevent hashing giant files (> 10MB)
+        // typically prompts are markdown files under 100KB.
+        let meta = std::fs::metadata(&full_path).ok()?;
+        if meta.len() > 10 * 1024 * 1024 {
+            return None; 
+        }
+
         let content = std::fs::read(&full_path).ok()?;
         let hash = Sha256::digest(&content);
         Some(encode(hash)[..8].to_string())
@@ -31,11 +42,79 @@ impl PromptReader for FsPromptReader {
     }
 }
 
+/// Decorator that caches SHA256 results to prevent redundant I/O.
+/// Essential for V5/V6 performance when multiple files share a prompt.
+pub struct CachedPromptReader<R: PromptReader> {
+    pub inner: R,
+    cache: Mutex<HashMap<String, Option<String>>>,
+}
+
+impl<R: PromptReader> CachedPromptReader<R> {
+    pub fn new(inner: R) -> Self {
+        Self {
+            inner,
+            cache: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+impl<R: PromptReader> PromptReader for CachedPromptReader<R> {
+    fn read_hash(&self, prompt_path: &str) -> Option<String> {
+        let mut cache = self.cache.lock().unwrap();
+        if let Some(hash) = cache.get(prompt_path) {
+            return hash.clone();
+        }
+        let hash = self.inner.read_hash(prompt_path);
+        cache.insert(prompt_path.to_string(), hash.clone());
+        hash
+    }
+
+    fn exists(&self, prompt_path: &str) -> bool {
+        self.inner.exists(prompt_path)
+    }
+}
+
+// Support Arc for sharing the cache between parallel parser threads
+impl<R: PromptReader> PromptReader for std::sync::Arc<CachedPromptReader<R>> {
+    fn read_hash(&self, prompt_path: &str) -> Option<String> {
+        (**self).read_hash(prompt_path)
+    }
+
+    fn exists(&self, prompt_path: &str) -> bool {
+        (**self).exists(prompt_path)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use tempfile::TempDir;
+
+    struct CountingReader {
+        count: AtomicUsize,
+    }
+
+    impl PromptReader for CountingReader {
+        fn read_hash(&self, _path: &str) -> Option<String> {
+            self.count.fetch_add(1, Ordering::SeqCst);
+            Some("hash".to_string())
+        }
+        fn exists(&self, _path: &str) -> bool { true }
+    }
+
+    #[test]
+    fn cache_prevents_multiple_reads() {
+        let counter = CountingReader { count: AtomicUsize::new(0) };
+        let cached = CachedPromptReader::new(counter);
+        
+        assert_eq!(cached.read_hash("foo"), Some("hash".to_string()));
+        assert_eq!(cached.read_hash("foo"), Some("hash".to_string()));
+        
+        // Should only have called inner once
+        assert_eq!(cached.inner.count.load(Ordering::SeqCst), 1);
+    }
 
     fn setup_temp_nucleo(content: &str, relative_path: &str) -> (TempDir, FsPromptReader) {
         let dir = tempfile::tempdir().unwrap();

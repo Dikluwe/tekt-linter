@@ -16,12 +16,15 @@ L3  = "03_infra"
 L4  = "04_wiring"
 lab = "lab"
 
-# Excluídos — ignorados intencionalmente, não disparam V8 (ADR-0006)
 [excluded]
 build    = "target"
 deps     = "node_modules"
 vcs      = ".git"
 cargo    = ".cargo"
+temp     = "tmp"
+venv1    = ".venv"
+venv2    = "venv"
+pycache  = "__pycache__"
 
 [excluded_files]
 # Ficheiros individuais excluídos por path relativo à raiz do projecto.
