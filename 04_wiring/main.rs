@@ -103,39 +103,46 @@ fn main() {
     };
 
     // ── Instantiate L3 components ─────────────────────────────────────────────
+    let shared_prompt_reader = std::sync::Arc::new(
+        crystalline_lint::infra::prompt_reader::CachedPromptReader::new(
+            FsPromptReader { nucleo_root: nucleo_root.clone() }
+        )
+    );
+    let shared_snapshot_reader = FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() };
+
     let parser = MultiParser {
         rust: RustParser::new(
-            FsPromptReader { nucleo_root: nucleo_root.clone() },
-            FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+            shared_prompt_reader.clone(),
+            shared_snapshot_reader.clone(),
             config.clone(),
         ),
         ts: TsParser::new(
-            FsPromptReader { nucleo_root: nucleo_root.clone() },
-            FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+            shared_prompt_reader.clone(),
+            shared_snapshot_reader.clone(),
             config.clone(),
             cli.path.clone(),
         ),
         py: PyParser::new(
-            FsPromptReader { nucleo_root: nucleo_root.clone() },
-            FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+            shared_prompt_reader.clone(),
+            shared_snapshot_reader.clone(),
             config.clone(),
             cli.path.clone(),
         ),
         c: CParser::new(
-            FsPromptReader { nucleo_root: nucleo_root.clone() },
-            FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+            shared_prompt_reader.clone(),
+            shared_snapshot_reader.clone(),
             config.clone(),
             cli.path.clone(),
         ),
         cpp: CppParser::new(
-            FsPromptReader { nucleo_root: nucleo_root.clone() },
-            FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+            shared_prompt_reader.clone(),
+            shared_snapshot_reader.clone(),
             config.clone(),
             cli.path.clone(),
         ),
         zig: ZigParser::new(
-            FsPromptReader { nucleo_root: nucleo_root.clone() },
-            FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+            shared_prompt_reader.clone(),
+            shared_snapshot_reader.clone(),
             config.clone(),
             cli.path.clone(),
         ),
@@ -189,37 +196,37 @@ fn main() {
         let remaining_v5 = {
             let reparser = MultiParser {
                 rust: RustParser::new(
-                    FsPromptReader { nucleo_root: nucleo_root.clone() },
-                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
                     config.clone(),
                 ),
                 ts: TsParser::new(
-                    FsPromptReader { nucleo_root: nucleo_root.clone() },
-                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 py: PyParser::new(
-                    FsPromptReader { nucleo_root: nucleo_root.clone() },
-                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 c: CParser::new(
-                    FsPromptReader { nucleo_root: nucleo_root.clone() },
-                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 cpp: CppParser::new(
-                    FsPromptReader { nucleo_root: nucleo_root.clone() },
-                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 zig: ZigParser::new(
-                    FsPromptReader { nucleo_root: nucleo_root.clone() },
-                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
@@ -263,37 +270,37 @@ fn main() {
         let remaining_v6 = {
             let reparser = MultiParser {
                 rust: RustParser::new(
-                    FsPromptReader { nucleo_root: nucleo_root.clone() },
-                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
                     config.clone(),
                 ),
                 ts: TsParser::new(
-                    FsPromptReader { nucleo_root: nucleo_root.clone() },
-                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 py: PyParser::new(
-                    FsPromptReader { nucleo_root: nucleo_root.clone() },
-                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 c: CParser::new(
-                    FsPromptReader { nucleo_root: nucleo_root.clone() },
-                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 cpp: CppParser::new(
-                    FsPromptReader { nucleo_root: nucleo_root.clone() },
-                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 zig: ZigParser::new(
-                    FsPromptReader { nucleo_root: nucleo_root.clone() },
-                    FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() },
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
@@ -339,12 +346,12 @@ fn main() {
 /// Selecciona parser por `file.language`. Linguagem não suportada →
 /// `ParseError::UnsupportedLanguage`. Zero lógica de negócio — pura composição.
 struct MultiParser {
-    rust: RustParser<FsPromptReader, FsPromptSnapshotReader>,
-    ts:   TsParser<FsPromptReader, FsPromptSnapshotReader>,
-    py:   PyParser<FsPromptReader, FsPromptSnapshotReader>,
-    c:    CParser<FsPromptReader, FsPromptSnapshotReader>,
-    cpp:  CppParser<FsPromptReader, FsPromptSnapshotReader>,
-    zig:  ZigParser<FsPromptReader, FsPromptSnapshotReader>,
+    rust: RustParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
+    ts:   TsParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
+    py:   PyParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
+    c:    CParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
+    cpp:  CppParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
+    zig:  ZigParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
 }
 
 impl LanguageParser for MultiParser {
@@ -394,6 +401,7 @@ impl HashRewriter for L3HashRewriter {
     }
 
     fn compute_hash(&self, prompt_path: &str) -> Option<String> {
+        // Reuse hash calculation logic from FsPromptReader (with size limits)
         FsPromptReader { nucleo_root: self.nucleo_root.clone() }.read_hash(prompt_path)
     }
 

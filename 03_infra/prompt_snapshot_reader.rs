@@ -122,6 +122,7 @@ fn interface_to_owned(iface: &PublicInterface<'_>) -> OwnedPublicInterface {
 
 // ── FsPromptSnapshotReader ────────────────────────────────────────────────────
 
+#[derive(Clone)]
 pub struct FsPromptSnapshotReader {
     pub nucleo_root: PathBuf,
 }
