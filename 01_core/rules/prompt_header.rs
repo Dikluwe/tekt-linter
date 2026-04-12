@@ -12,16 +12,26 @@ use crate::entities::violation::{Location, Violation, ViolationLevel};
 /// V1 — Missing or unresolvable @prompt header.
 /// Fires when prompt_header is absent OR when the referenced prompt file
 /// does not exist in 00_nucleo/ (prompt_file_exists == false).
-pub fn check<'a, T: HasPromptFilesystem<'a>>(file: &T) -> Vec<Violation<'a>> {
+pub fn check<'a, T: HasPromptFilesystem<'a>>(
+    file: &T,
+    strict_dirs: &[String],
+) -> Vec<Violation<'a>> {
     let has_valid_header = file.prompt_header().is_some() && file.prompt_file_exists();
 
     if has_valid_header {
         return vec![];
     }
 
+    let is_strict = strict_dirs.iter().any(|d| file.path().starts_with(d));
+    let level = if is_strict {
+        ViolationLevel::Fatal
+    } else {
+        ViolationLevel::Error
+    };
+
     vec![Violation {
         rule_id: "V1".to_string(),
-        level: ViolationLevel::Error,
+        level,
         message: "Arquivo Cristalino sem linhagem causal @prompt encontrada".to_string(),
         location: Location { path: Cow::Borrowed(file.path()), line: 1, column: 0 },
     }]
@@ -75,16 +85,26 @@ mod tests {
         let mut file = base_file();
         file.header = Some(valid_header());
         file.exists = true;
-        assert!(check(&file).is_empty());
+        assert!(check(&file, &[]).is_empty());
     }
 
     #[test]
     fn violation_when_header_absent() {
         let file = base_file();
-        let violations = check(&file);
+        let violations = check(&file, &[]);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "V1");
         assert_eq!(violations[0].level, ViolationLevel::Error);
+    }
+
+    #[test]
+    fn fatal_violation_when_header_absent_in_strict_dir() {
+        let mut file = base_file();
+        file.path = Path::new("02_shell/foo.rs");
+        let strict_dirs = vec!["01_core".to_string(), "02_shell".to_string()];
+        let violations = check(&file, &strict_dirs);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].level, ViolationLevel::Fatal);
     }
 
     #[test]
@@ -92,7 +112,7 @@ mod tests {
         let mut file = base_file();
         file.header = Some(valid_header());
         file.exists = false;
-        let violations = check(&file);
+        let violations = check(&file, &[]);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "V1");
     }
@@ -100,7 +120,7 @@ mod tests {
     #[test]
     fn violation_points_to_line_1() {
         let file = base_file();
-        let violations = check(&file);
+        let violations = check(&file, &[]);
         assert_eq!(violations[0].location.line, 1);
     }
 }

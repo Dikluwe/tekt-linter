@@ -26,6 +26,18 @@ pub struct WiringExceptionsConfig {
     pub allow_adapter_structs: Option<bool>,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct LineageConfig {
+    #[serde(default)]
+    pub strict_directories: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct AnalysisConfig {
+    #[serde(default)]
+    pub lineage: LineageConfig,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct CrystallineConfig {
     #[serde(default)]
@@ -79,6 +91,9 @@ pub struct CrystallineConfig {
     /// Exemplo: { "tracked_world_ref" = "TrackedWorld" }
     #[serde(default)]
     pub v11_blanket_exceptions: HashMap<String, String>,
+
+    #[serde(default)]
+    pub analysis: AnalysisConfig,
 }
 
 impl CrystallineConfig {
@@ -163,6 +178,12 @@ impl Default for CrystallineConfig {
         l1_ports.insert("contracts".to_string(), "01_core/contracts".to_string());
         l1_ports.insert("rules".to_string(), "01_core/rules".to_string());
 
+        let mut strict_directories = Vec::new();
+        strict_directories.push("01_core".to_string());
+        strict_directories.push("02_shell".to_string());
+        strict_directories.push("03_infra".to_string());
+        strict_directories.push("04_wiring".to_string());
+
         Self {
             layers,
             module_layers,
@@ -176,6 +197,11 @@ impl Default for CrystallineConfig {
             l1_allowed_external: HashMap::new(),
             rules: HashMap::new(),
             v11_blanket_exceptions: HashMap::new(),
+            analysis: AnalysisConfig {
+                lineage: LineageConfig {
+                    strict_directories,
+                },
+            },
         }
     }
 }

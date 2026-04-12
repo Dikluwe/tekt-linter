@@ -98,3 +98,6 @@ rust       = ["thiserror"]
 typescript = []
 python     = []
 zig        = []
+
+[analysis.lineage]
+strict_directories = ["01_core", "02_shell", "03_infra", "04_wiring"]

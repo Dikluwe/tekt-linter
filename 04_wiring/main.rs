@@ -155,7 +155,7 @@ fn main() {
     let (source_files, source_errors) = collect_walker_results(walker.files());
 
     let (mut all_violations, all_parsed, project_index) =
-        run_pipeline(&source_files, &source_errors, &parser, &enabled, &l1_ports, &wiring_config, &l1_allowed);
+        run_pipeline(&source_files, &source_errors, &parser, &enabled, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories);
 
     // ── V7/V8/V11 post-reduce ─────────────────────────────────────────────────
     let v7_level  = config.level_for("V7",  ViolationLevel::Warning);
@@ -238,7 +238,7 @@ fn main() {
                 v7: false, v8: false, v9: false, v10: false, v11: false, v12: false,
                 v13: false, v14: false,
             };
-            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v5_only, &l1_ports, &wiring_config, &l1_allowed);
+            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v5_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories);
             violations.iter().filter(|v| v.rule_id == "V5").count()
         };
 
@@ -305,14 +305,14 @@ fn main() {
                     cli.path.clone(),
                 ),
             };
-            let rewalker = FileWalker::new(cli.path.clone(), config);
+            let rewalker = FileWalker::new(cli.path.clone(), config.clone());
             let (re_files, re_errors) = collect_walker_results(rewalker.files());
             let v6_only = EnabledChecks {
                 v1: false, v2: false, v3: false, v4: false, v5: false, v6: true,
                 v7: false, v8: false, v9: false, v10: false, v11: false, v12: false,
                 v13: false, v14: false,
             };
-            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v6_only, &l1_ports, &wiring_config, &l1_allowed);
+            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v6_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories);
             violations.iter().filter(|v| v.rule_id == "V6").count()
         };
 
@@ -452,6 +452,7 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
     l1_ports: &L1Ports,
     wiring_config: &WiringConfig,
     l1_allowed: &L1AllowedExternalSet,
+    strict_dirs: &[String],
 ) -> (Vec<Violation<'a>>, Vec<ParsedFile<'a>>, ProjectIndex<'a>) {
     // Fase Map ─────────────────────────────────────────────────────────────────
 
@@ -468,7 +469,7 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
         .map(|source_file| -> (Vec<Violation<'a>>, Option<ParsedFile<'a>>, LocalIndex<'a>) {
             match parser.parse(source_file) {
                 Ok(parsed) => {
-                    let violations = run_checks(&parsed, enabled, l1_ports, wiring_config, l1_allowed);
+                    let violations = run_checks(&parsed, enabled, l1_ports, wiring_config, l1_allowed, strict_dirs);
                     let local = LocalIndex::from_parsed(&parsed);
                     (violations, Some(parsed), local)
                 }
@@ -523,10 +524,11 @@ fn run_checks<'a>(
     l1_ports: &L1Ports,
     wiring_config: &WiringConfig,
     l1_allowed: &L1AllowedExternalSet,
+    strict_dirs: &[String],
 ) -> Vec<Violation<'a>> {
     let mut violations = Vec::new();
     let l1_allowed_lang = l1_allowed.for_language(&file.language);
-    if enabled.v1  { violations.extend(prompt_header::check(file)); }
+    if enabled.v1  { violations.extend(prompt_header::check(file, strict_dirs)); }
     if enabled.v2  { violations.extend(test_file::check(file)); }
     if enabled.v3  { violations.extend(forbidden_import::check(file)); }
     if enabled.v4  { violations.extend(impure_core::check(file)); }
