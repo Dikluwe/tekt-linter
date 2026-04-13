@@ -1,4 +1,5 @@
 # Prompt: PromptSnapshotReader (prompt-snapshot-reader)
+Hash do Código: 7e7e5206
 
 **Camada**: L1 (Core — Contracts) + L3 (Infra — Implementação)
 **Criado em**: 2025-03-13

@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/fix-hashes.md
-//! @prompt-hash 929d9c47
+//! @prompt-hash 8b5b716b
 //! @layer L2
 //! @updated 2026-03-20
 
@@ -24,18 +24,28 @@ pub trait HashRewriter {
     /// Returns None if the prompt file does not exist.
     fn compute_hash(&self, prompt_path: &str) -> Option<String>;
 
+    /// Compute SHA256[0..8] of the source file, ignoring its own @prompt-hash line.
+    fn compute_source_hash(&self, source_path: &Path) -> Option<String>;
+
     /// Atomically replace `@prompt-hash <old>` with `@prompt-hash <new>` in source file.
     fn write_hash(&self, source_path: &Path, new_hash: &str) -> Result<(), String>;
+
+    /// Inject "Hash do Código: <hash>" into the prompt file.
+    fn write_prompt_meta(&self, prompt_path: &str, code_hash: &str) -> Result<(), String>;
 }
 
 // ── Data types ────────────────────────────────────────────────────────────────
 
 pub struct FixEntry {
     pub source_path: PathBuf,
+    /// Path to the L0 prompt file. None if header is unreadable.
+    pub prompt_path: Option<String>,
     /// Hash currently written in the file header. Empty when header is unreadable.
     pub old_hash: String,
-    /// Real hash of the L0 prompt file. None if prompt file is missing.
+    /// Real hash of the L0 prompt file (Hash A). None if prompt file is missing.
     pub new_hash: Option<String>,
+    /// Real hash of the source code (Hash B). None if source file is unreadable.
+    pub source_hash: Option<String>,
     /// Set when the file header could not be read. Entry is skipped in execute().
     pub unreadable_reason: Option<String>,
 }
@@ -61,17 +71,22 @@ pub fn plan(violations: &[Violation<'_>], rewriter: &dyn HashRewriter) -> Vec<Fi
         .map(|v| match rewriter.read_header(&v.location.path) {
             Some((prompt_path, old_hash)) => {
                 let new_hash = rewriter.compute_hash(&prompt_path);
+                let source_hash = rewriter.compute_source_hash(&v.location.path);
                 FixEntry {
                     source_path: v.location.path.to_path_buf(),
+                    prompt_path: Some(prompt_path),
                     old_hash,
                     new_hash,
+                    source_hash,
                     unreadable_reason: None,
                 }
             }
             None => FixEntry {
                 source_path: v.location.path.to_path_buf(),
+                prompt_path: None,
                 old_hash: String::new(),
                 new_hash: None,
+                source_hash: None,
                 unreadable_reason: Some("could not read file header".to_string()),
             },
         })
@@ -105,6 +120,12 @@ pub fn execute(
             }
 
             let outcome = rewriter.write_hash(&entry.source_path, &new_hash);
+            
+            // Step 5: Inject Hash B into MD
+            if let (Ok(_), Some(p), Some(s)) = (&outcome, &entry.prompt_path, &entry.source_hash) {
+                let _ = rewriter.write_prompt_meta(p, s);
+            }
+
             Some(FixResult {
                 source_path: entry.source_path.clone(),
                 old_hash: entry.old_hash.clone(),
@@ -259,21 +280,26 @@ mod tests {
 
     struct MockRewriter {
         header: Option<(String, String)>,
-        hash: Option<String>,
+        prompt_hash: Option<String>,
+        source_hash: Option<String>,
         write_calls: RefCell<Vec<(PathBuf, String)>>,
+        meta_calls: RefCell<Vec<(String, String)>>,
         write_result: Result<(), String>,
     }
 
     impl MockRewriter {
         fn new(
             header: Option<(&str, &str)>,
-            hash: Option<&str>,
+            prompt_hash: Option<&str>,
+            source_hash: Option<&str>,
             write_result: Result<(), String>,
         ) -> Self {
             Self {
                 header: header.map(|(p, h)| (p.to_string(), h.to_string())),
-                hash: hash.map(str::to_string),
+                prompt_hash: prompt_hash.map(str::to_string),
+                source_hash: source_hash.map(str::to_string),
                 write_calls: RefCell::new(vec![]),
+                meta_calls: RefCell::new(vec![]),
                 write_result,
             }
         }
@@ -284,11 +310,18 @@ mod tests {
             self.header.clone()
         }
         fn compute_hash(&self, _: &str) -> Option<String> {
-            self.hash.clone()
+            self.prompt_hash.clone()
+        }
+        fn compute_source_hash(&self, _: &Path) -> Option<String> {
+            self.source_hash.clone()
         }
         fn write_hash(&self, path: &Path, new_hash: &str) -> Result<(), String> {
             self.write_calls.borrow_mut().push((path.to_path_buf(), new_hash.to_string()));
             self.write_result.clone()
+        }
+        fn write_prompt_meta(&self, prompt_path: &str, code_hash: &str) -> Result<(), String> {
+            self.meta_calls.borrow_mut().push((prompt_path.to_string(), code_hash.to_string()));
+            Ok(())
         }
     }
 
@@ -308,6 +341,7 @@ mod tests {
         let rewriter = MockRewriter::new(
             Some(("00_nucleo/prompts/foo.md", "00000000")),
             Some("a3f8c2d1"),
+            Some("b9e4f7a2"),
             Ok(()),
         );
         let violations = vec![v5_violation("01_core/foo.rs")];
@@ -315,11 +349,12 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].old_hash, "00000000");
         assert_eq!(entries[0].new_hash, Some("a3f8c2d1".to_string()));
+        assert_eq!(entries[0].source_hash, Some("b9e4f7a2".to_string()));
     }
 
     #[test]
     fn plan_ignores_non_v5_violations() {
-        let rewriter = MockRewriter::new(Some(("p.md", "00000000")), Some("a1b2c3d4"), Ok(()));
+        let rewriter = MockRewriter::new(Some(("p.md", "00000000")), Some("a1b2c3d4"), None, Ok(()));
         let violations = vec![
             Violation {
                 rule_id: "V1".to_string(),
@@ -337,6 +372,7 @@ mod tests {
         let rewriter = MockRewriter::new(
             Some(("00_nucleo/prompts/missing.md", "00000000")),
             None, // prompt doesn't exist
+            None,
             Ok(()),
         );
         let violations = vec![v5_violation("01_core/foo.rs")];
@@ -348,19 +384,20 @@ mod tests {
     // ── execute() ────────────────────────────────────────────────────────────
 
     #[test]
-    fn execute_writes_when_not_dry_run() {
+    fn execute_writes_back_code_hash_to_prompt() {
         let rewriter = MockRewriter::new(
-            Some(("p.md", "00000000")),
+            Some(("00_nucleo/prompts/foo.md", "00000000")),
             Some("a3f8c2d1"),
+            Some("b9e4f7a2"),
             Ok(()),
         );
         let violations = vec![v5_violation("01_core/foo.rs")];
         let entries = plan(&violations, &rewriter);
-        let results = execute(&entries, &rewriter, false);
+        let _ = execute(&entries, &rewriter, false);
 
-        assert_eq!(results.len(), 1);
-        assert!(results[0].success);
         assert_eq!(rewriter.write_calls.borrow().len(), 1);
+        assert_eq!(rewriter.meta_calls.borrow().len(), 1);
+        assert_eq!(rewriter.meta_calls.borrow()[0].1, "b9e4f7a2");
     }
 
     #[test]
@@ -368,6 +405,7 @@ mod tests {
         let rewriter = MockRewriter::new(
             Some(("p.md", "00000000")),
             Some("a3f8c2d1"),
+            Some("b9e4f7a2"),
             Ok(()),
         );
         let violations = vec![v5_violation("01_core/foo.rs")];
@@ -377,11 +415,12 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert!(results[0].success);
         assert_eq!(rewriter.write_calls.borrow().len(), 0); // no writes
+        assert_eq!(rewriter.meta_calls.borrow().len(), 0);
     }
 
     #[test]
     fn execute_skips_unfixable_entries() {
-        let rewriter = MockRewriter::new(Some(("p.md", "00000000")), None, Ok(()));
+        let rewriter = MockRewriter::new(Some(("p.md", "00000000")), None, None, Ok(()));
         let violations = vec![v5_violation("01_core/foo.rs")];
         let entries = plan(&violations, &rewriter);
         let results = execute(&entries, &rewriter, false);
@@ -393,6 +432,7 @@ mod tests {
         let rewriter = MockRewriter::new(
             Some(("p.md", "00000000")),
             Some("a3f8c2d1"),
+            Some("b9e4f7a2"),
             Err("permission denied".to_string()),
         );
         let violations = vec![v5_violation("01_core/foo.rs")];
@@ -429,7 +469,7 @@ mod tests {
     /// unreadable_reason definido — não silenciosamente descartada.
     #[test]
     fn plan_reports_unreadable_header_instead_of_silencing() {
-        let rewriter = MockRewriter::new(None, None, Ok(()));
+        let rewriter = MockRewriter::new(None, None, None, Ok(()));
         let violations = vec![v5_violation("01_core/unreadable.rs")];
         let entries = plan(&violations, &rewriter);
         assert_eq!(entries.len(), 1);

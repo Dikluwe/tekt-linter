@@ -1,4 +1,5 @@
 # Prompt: Types of Violations (violation-types)
+Hash do Código: f0776e27
 
 **Camada**: L1 (Core - Entities)
 **Criado em**: 2025-03-13

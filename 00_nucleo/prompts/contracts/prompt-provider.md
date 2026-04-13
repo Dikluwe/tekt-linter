@@ -1,4 +1,5 @@
 # Prompt: PromptProvider (prompt-provider)
+Hash do Código: 47bdf75f
 
 **Camada**: L1 (Core — Contracts)
 **Criado em**: 2026-03-14 (ADR-0006)

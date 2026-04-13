@@ -1,4 +1,5 @@
 # Prompt: Zig Parser (parsers/zig)
+Hash do Código: 4ca315f8
 
 **Camada**: L3 (Infra)
 **Padrão**: Adapter over `tree-sitter-zig`

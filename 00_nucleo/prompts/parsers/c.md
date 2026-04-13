@@ -1,4 +1,5 @@
 # Prompt: C Parser (parsers/c)
+Hash do Código: ec8c915b
 
 **Camada**: L3 (Infra)
 **Padrão**: Adapter over `tree-sitter-c`

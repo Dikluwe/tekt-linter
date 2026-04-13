@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/rule-traits.md
-//! @prompt-hash 1b36408c
+//! @prompt-hash 7e9688c7
 //! @layer L1
 //! @updated 2026-03-22
 

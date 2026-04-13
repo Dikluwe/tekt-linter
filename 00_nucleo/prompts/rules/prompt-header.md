@@ -1,4 +1,5 @@
 # Prompt: Rule V1 - Missing Prompt Header (prompt-header)
+Hash do Código: 700de7c2
 
 **Camada**: L1 (Core - Rules)
 **Regra**: V1

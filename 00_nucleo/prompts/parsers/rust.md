@@ -1,4 +1,5 @@
 # Prompt: Rust Parser (parsers/rust)
+Hash do Código: 0a5796df
 
 > **Nota de localização:** Este prompt foi movido de `prompts/rs-parser.md`
 > para `prompts/parsers/rust.md` pelo ADR-0009. É a implementação de

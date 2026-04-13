@@ -1,4 +1,5 @@
 # Prompt: Python Parser (parsers/python)
+Hash do Código: fdbc661a
 
 **Camada**: L3 (Infra)
 **Padrão**: Adapter over `tree-sitter-python`

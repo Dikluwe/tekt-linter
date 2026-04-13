@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 9e806f55
+//! @prompt-hash ad60b69b
 //! @layer L4
 //! @updated 2026-03-23
 
@@ -405,8 +405,17 @@ impl HashRewriter for L3HashRewriter {
         FsPromptReader { nucleo_root: self.nucleo_root.clone() }.read_hash(prompt_path)
     }
 
+    fn compute_source_hash(&self, source_path: &Path) -> Option<String> {
+        hash_writer::compute_source_hash(source_path)
+    }
+
     fn write_hash(&self, source_path: &Path, new_hash: &str) -> Result<(), String> {
         hash_writer::write_hash(source_path, new_hash)
+    }
+
+    fn write_prompt_meta(&self, prompt_path: &str, code_hash: &str) -> Result<(), String> {
+        let full_path = self.nucleo_root.join(prompt_path);
+        hash_writer::write_prompt_meta(&full_path, code_hash)
     }
 }
 

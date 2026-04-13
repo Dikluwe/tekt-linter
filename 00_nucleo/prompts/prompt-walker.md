@@ -1,4 +1,5 @@
 # Prompt: Prompt Walker (prompt-walker)
+Hash do Código: 3da73baa
 
 **Camada**: L3 (Infra)
 **Padrão**: Filesystem Scanner

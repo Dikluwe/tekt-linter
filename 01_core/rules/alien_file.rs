@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/alien-file.md
-//! @prompt-hash a00a1ed2
+//! @prompt-hash dbc09d95
 //! @layer L1
 //! @updated 2026-03-15
 
