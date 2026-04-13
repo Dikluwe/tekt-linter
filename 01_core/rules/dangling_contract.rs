@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/dangling-contract.md
-//! @prompt-hash 4a61b722
+//! @prompt-hash e4472ea2
 //! @layer L1
 //! @updated 2026-03-23
 

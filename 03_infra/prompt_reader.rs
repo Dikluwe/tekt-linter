@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/prompt-reader.md
-//! @prompt-hash 48a4329e
+//! @prompt-hash 0d91d230
 //! @layer L3
 //! @updated 2026-03-13
 
@@ -32,8 +32,15 @@ impl PromptReader for FsPromptReader {
             return None; 
         }
 
-        let content = std::fs::read(&full_path).ok()?;
-        let hash = Sha256::digest(&content);
+        let content_raw = std::fs::read_to_string(&full_path).ok()?;
+        
+        // Strip the meta line to avoid the hash paradox (Double Parity)
+        let cleaned: Vec<&str> = content_raw.lines()
+            .filter(|line| !line.contains("Hash do Código:"))
+            .collect();
+        
+        let cleaned_content = cleaned.join("\n");
+        let hash = Sha256::digest(cleaned_content.as_bytes());
         Some(encode(hash)[..8].to_string())
     }
 

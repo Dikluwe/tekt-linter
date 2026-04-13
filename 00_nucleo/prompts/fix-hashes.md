@@ -50,6 +50,21 @@ crystalline-lint --fix-hashes [--dry-run] [PATH]
 
 ---
 
+## Solução do Paradoxo do Hash (Dupla Paridade)
+
+Para evitar o ciclo infinito onde a alteração do Hash do Prompt no Código altera o Hash do Código, e vice-versa, o linter **ignora a linha de metainformação durante o cálculo**.
+
+### Algoritmo de 5 passos:
+Hash do Código: 2c13736a
+2. Calcula o **Hash A** usando apenas o texto limpo do `.md`.
+3. O linter lê o ficheiro `.rs` (ou outra linguagem) inteiro para a memória e apaga temporariamente a linha `//! @prompt-hash [valor]`.
+4. Calcula o **Hash B** usando apenas o texto limpo do ficheiro de código.
+5. O linter injeta o **Hash A** no ficheiro de código e injeta o **Hash B** no ficheiro `.md`.
+
+Este método garante que a dupla paridade funciona de forma cruzada sem interferir no resultado do cálculo do ficheiro oposto.
+
+---
+
 ## Comportamento de --update-snapshot
 ```
 crystalline-lint --update-snapshot [--dry-run] [PATH]

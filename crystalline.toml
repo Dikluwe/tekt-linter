@@ -54,6 +54,7 @@ rules     = "rules"
 "00_nucleo/prompts/readme_prompt.md"           = "gera README.md, não arquivo Rust"
 "00_nucleo/prompts/parsers/_template.md"       = "contrato editorial, não materializa directamente"
 "00_nucleo/prompts/parsers/zig.md"              = "documentação do parser zig"
+"00_nucleo/prompts/architecture-standards.md"  = "padrões globais de gestão de prompts"
 
 # Exceções V12 — declarações permitidas em L4
 # true = permite struct_item em L4 (padrão — adapter structs são comuns)

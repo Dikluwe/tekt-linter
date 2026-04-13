@@ -1,4 +1,5 @@
 # Prompt: Rule V7 - Orphan Prompt (orphan-prompt)
+Hash do Código: 2b08e766
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V7

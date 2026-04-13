@@ -1,4 +1,5 @@
 # Prompt: Rule V11 - Dangling Contract (dangling-contract)
+Hash do Código: 95fa9d64
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V11

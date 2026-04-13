@@ -1,4 +1,5 @@
 # Prompt: C++ Parser (parsers/cpp)
+Hash do Código: 8d7c3716
 
 **Camada**: L3 (Infra)
 **Padrão**: Adapter over `tree-sitter-cpp`

@@ -1,4 +1,5 @@
 # Prompt: Rule V12 - Wiring Logic Leak (wiring-logic-leak)
+Hash do Código: 46e2306d
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V12

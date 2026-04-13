@@ -1,4 +1,5 @@
 # Prompt: PromptReader (prompt-reader)
+Hash do Código: 4033c4ed
 
 **Camada**: L1 (Core — Contracts) + L3 (Infra — Implementação)
 **Criado em**: 2025-03-13

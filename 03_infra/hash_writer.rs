@@ -1,12 +1,29 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/fix-hashes.md
-//! @prompt-hash 929d9c47
+//! @prompt-hash 8b5b716b
 //! @layer L3
 //! @updated 2026-03-13
 
 use std::path::Path;
+use hex::encode;
+use sha2::{Digest, Sha256};
 
 // ── Public API ────────────────────────────────────────────────────────────────
+
+/// Compute SHA256[0..8] of the source file, ignoring its own `@prompt-hash` line.
+/// Returns None if the file cannot be read.
+pub fn compute_source_hash(path: &Path) -> Option<String> {
+    let content_raw = std::fs::read_to_string(path).ok()?;
+    
+    // Strip the meta line to avoid the hash paradox
+    let cleaned: Vec<&str> = content_raw.lines()
+        .filter(|line| !line.contains("@prompt-hash"))
+        .collect();
+        
+    let cleaned_content = cleaned.join("\n");
+    let hash = Sha256::digest(cleaned_content.as_bytes());
+    Some(encode(hash)[..8].to_string())
+}
 
 /// Read the `@prompt` path and current `@prompt-hash` value from a source file header.
 /// Scans only the leading `//!` block — stops at the first non-`//!` line.
@@ -28,6 +45,52 @@ pub fn write_hash(path: &Path, new_hash: &str) -> Result<(), String> {
 
     let dir = path.parent().ok_or_else(|| "File has no parent directory".to_string())?;
     let tmp_path = dir.join(format!(".crystalline-tmp-{}", std::process::id()));
+
+    std::fs::write(&tmp_path, new_content.as_bytes()).map_err(|e| e.to_string())?;
+
+    std::fs::rename(&tmp_path, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        e.to_string()
+    })?;
+    Ok(())
+}
+
+/// Inject "Hash do Código: <hash>" into the prompt file.
+/// Atomically replaces existing line or inserts it after the title.
+pub fn write_prompt_meta(path: &Path, code_hash: &str) -> Result<(), String> {
+    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+    let mut found_idx = None;
+
+    for (i, line) in lines.iter().enumerate() {
+        if line.contains("Hash do Código:") {
+            found_idx = Some(i);
+            break;
+        }
+    }
+
+    if let Some(idx) = found_idx {
+        lines[idx] = format!("Hash do Código: {}", code_hash);
+    } else {
+        // Insert after first heading or at top
+        let mut insert_idx = 0;
+        for (i, line) in lines.iter().enumerate() {
+            if line.starts_with("# ") {
+                insert_idx = i + 1;
+                break;
+            }
+        }
+        lines.insert(insert_idx, format!("Hash do Código: {}", code_hash));
+        if insert_idx < lines.len() - 1 && !lines[insert_idx + 1].trim().is_empty() {
+             lines.insert(insert_idx + 1, String::new());
+        }
+    }
+
+    let trailing_newline = if content.ends_with('\n') { "\n" } else { "" };
+    let new_content = format!("{}{}", lines.join("\n"), trailing_newline);
+
+    let dir = path.parent().ok_or_else(|| "File has no parent directory".to_string())?;
+    let tmp_path = dir.join(format!(".crystalline-p-tmp-{}", std::process::id()));
 
     std::fs::write(&tmp_path, new_content.as_bytes()).map_err(|e| e.to_string())?;
 
