@@ -19,6 +19,7 @@ use crate::entities::parsed_file::{
     PromptHeader, PublicInterface, StaticDeclaration, Token, TokenKind, TypeKind, TypeSignature,
 };
 use crate::infra::config::CrystallineConfig;
+use crate::infra::crate_registry::{CrateRegistry, MemberCrate};
 
 // ── RustParser ────────────────────────────────────────────────────────────────
 
@@ -26,11 +27,18 @@ pub struct RustParser<R: PromptReader, S: PromptSnapshotReader> {
     pub prompt_reader: R,
     pub snapshot_reader: S,
     pub config: CrystallineConfig,
+    /// Registro membro→camada do workspace-alvo. Vazio ⇒ classificação legada.
+    pub registry: CrateRegistry,
 }
 
 impl<R: PromptReader, S: PromptSnapshotReader> RustParser<R, S> {
-    pub fn new(prompt_reader: R, snapshot_reader: S, config: CrystallineConfig) -> Self {
-        Self { prompt_reader, snapshot_reader, config }
+    pub fn new(
+        prompt_reader: R,
+        snapshot_reader: S,
+        config: CrystallineConfig,
+        registry: CrateRegistry,
+    ) -> Self {
+        Self { prompt_reader, snapshot_reader, config, registry }
     }
 }
 
@@ -93,7 +101,10 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
         }
 
         // ── Imports ───────────────────────────────────────────────────────────
-        let imports = extract_imports(root, source, &self.config);
+        // Contexto per-crate: o membro dono deste ficheiro fornece as deps
+        // declaradas, distinguindo externo real de item local (ADR-0009 / 0052).
+        let owner = self.registry.owner_of(file.path.as_path());
+        let imports = extract_imports(root, source, &self.config, &self.registry, owner);
 
         // ── Tokens ────────────────────────────────────────────────────────────
         let tokens = extract_tokens(root, source);
@@ -215,9 +226,11 @@ fn extract_imports<'a>(
     root: Node,
     source: &'a [u8],
     config: &CrystallineConfig,
+    registry: &CrateRegistry,
+    owner: Option<&MemberCrate>,
 ) -> Vec<Import<'a>> {
     let mut imports = Vec::new();
-    collect_imports(root, source, config, &mut imports);
+    collect_imports(root, source, config, registry, owner, &mut imports);
     imports
 }
 
@@ -225,14 +238,14 @@ fn collect_imports<'a>(
     node: Node,
     source: &'a [u8],
     config: &CrystallineConfig,
+    registry: &CrateRegistry,
+    owner: Option<&MemberCrate>,
     imports: &mut Vec<Import<'a>>,
 ) {
     match node.kind() {
         "use_declaration" => {
             let line = node.start_position().row + 1;
             let path = use_declaration_path(node, source);
-            let target_layer = resolve_layer(path, config);
-            let target_subdir = resolve_subdir(path, config);
             let kind = if path.ends_with("::*") {
                 ImportKind::Glob
             } else if path.contains(" as ") {
@@ -242,7 +255,12 @@ fn collect_imports<'a>(
             } else {
                 ImportKind::Direct
             };
-            imports.push(Import { path, line, kind, target_layer, target_subdir });
+            // Item local (ex.: `use EnumLocal::*`) não é import inter-crate/externo
+            // — não emitir Import. O falso positivo do V14 (`Kind`) some sem tocar a regra.
+            if let ImportClass::Resolved(target_layer) = classify_import(path, config, registry, owner) {
+                let target_subdir = resolve_subdir(path, config, &target_layer);
+                imports.push(Import { path, line, kind, target_layer, target_subdir });
+            }
         }
         "extern_crate_declaration" => {
             let line = node.start_position().row + 1;
@@ -251,16 +269,17 @@ fn collect_imports<'a>(
                 .trim_start_matches("extern crate ")
                 .trim_end_matches(';')
                 .trim();
-            let target_layer = resolve_layer(path, config);
-            let target_subdir = resolve_subdir(path, config);
-            imports.push(Import { path, line, kind: ImportKind::Direct, target_layer, target_subdir });
+            if let ImportClass::Resolved(target_layer) = classify_import(path, config, registry, owner) {
+                let target_subdir = resolve_subdir(path, config, &target_layer);
+                imports.push(Import { path, line, kind: ImportKind::Direct, target_layer, target_subdir });
+            }
         }
         _ => {}
     }
 
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
-            collect_imports(child, source, config, imports);
+            collect_imports(child, source, config, registry, owner, imports);
         }
     }
 }
@@ -282,46 +301,117 @@ fn use_declaration_path<'a>(node: Node, source: &'a [u8]) -> &'a str {
         .trim()
 }
 
-/// Resolve the import layer from its path string.
-/// Only inspects the second segment of `crate::` paths.
-/// Everything else is Layer::Unknown.
-fn resolve_layer(path: &str, config: &CrystallineConfig) -> Layer {
-    let path = path.trim_start_matches('{').trim();
+/// Resultado da classificação de um `use`/`extern crate`.
+enum ImportClass {
+    /// Emitir `Import` com esta camada alvo.
+    Resolved(Layer),
+    /// Item local (ex.: `use EnumLocal::*`) — não é import inter-crate/externo;
+    /// não emitir `Import` (evita o falso positivo do V14 sem tocar a regra).
+    LocalItem,
+}
 
-    if !path.starts_with("crate::") && !path.starts_with("super::") {
-        return Layer::Unknown;
-    }
+/// Primeiro segmento de um path de `use`, normalizado `-`→`_`.
+fn first_segment(path: &str) -> String {
+    let p = path.trim_start_matches('{').trim();
+    let end = p.find("::").unwrap_or(p.len());
+    p[..end].trim().replace('-', "_")
+}
 
+/// Camada do segundo segmento de um path qualificado por crate.
+/// Funciona para `crate::M::…`, `super::M::…` e `nome_do_crate::M::…`
+/// (todos têm o módulo em `segments[1]`).
+fn module_layer(path: &str, config: &CrystallineConfig) -> Layer {
     let segments: Vec<&str> = path.splitn(4, "::").collect();
-    // segments[0] = "crate" | "super", segments[1] = module name
-    if let Some(module_name) = segments.get(1) {
-        config.layer_for_module(module_name)
-    } else {
-        Layer::Unknown
+    segments
+        .get(1)
+        .map(|m| config.layer_for_module(m))
+        .unwrap_or(Layer::Unknown)
+}
+
+/// Classifica um import com conhecimento das dependências reais (ADR-0009 / 0052).
+/// `owner` é o crate-membro dono do ficheiro que faz o import (contexto per-crate).
+///
+/// Ordem: intra-crate (`crate::`/`super::`) → stdlib → self-import por nome →
+/// outro membro first-party → dep externa declarada → (sem owner) legado →
+/// item local (não emitir).
+fn classify_import(
+    path: &str,
+    config: &CrystallineConfig,
+    registry: &CrateRegistry,
+    owner: Option<&MemberCrate>,
+) -> ImportClass {
+    let p = path.trim_start_matches('{').trim();
+
+    // 1. Intra-crate explícito — inalterado.
+    if p.starts_with("crate::") || p.starts_with("super::") {
+        return ImportClass::Resolved(module_layer(p, config));
     }
+
+    let seg = first_segment(p);
+
+    // 2. Stdlib — preservado (V14 isenta std/core/alloc; I/O fica com o V4).
+    if matches!(seg.as_str(), "std" | "core" | "alloc") {
+        return ImportClass::Resolved(Layer::Unknown);
+    }
+
+    // 3. Self-import pelo nome do próprio crate ≡ intra-crate (ex.: `crystalline_lint::…`).
+    if let Some(o) = owner {
+        if o.name == seg {
+            return ImportClass::Resolved(module_layer(p, config));
+        }
+    }
+
+    // 4. Outro membro first-party → camada do membro (V3 enxerga direção entre crates).
+    if let Some(layer) = registry.member_layer(&seg) {
+        return ImportClass::Resolved(layer);
+    }
+
+    // 5. Dep externa declarada pelo owner → externo (Unknown; V14 aplica no L1).
+    if let Some(o) = owner {
+        if o.deps.contains(&seg) {
+            return ImportClass::Resolved(Layer::Unknown);
+        }
+        // 7. owner presente e o segmento não é membro/dep/stdlib → item local.
+        return ImportClass::LocalItem;
+    }
+
+    // 6. Sem owner (ficheiro fora de qualquer membro) → comportamento legado.
+    ImportClass::Resolved(Layer::Unknown)
 }
 
 /// Resolve o subdiretório de destino de um import para V9.
 /// Retorna Some("entities") se import aponta para crate::entities::...
-/// Retorna None para crates externas (não começam com "crate::" ou "super::").
 /// Inspeciona o segundo segmento do path — o nome do módulo de L1.
-fn resolve_subdir<'a>(path: &'a str, config: &CrystallineConfig) -> Option<&'a str> {
+///
+/// `target_layer` é a camada já classificada do import. Para `crate::`/`super::`
+/// o comportamento legado é preservado bit-a-bit. Para membros first-party
+/// resolvidos a L1 (cross-crate), o subdir é `segments[1]` — mas só quando o
+/// import alcança um sub-módulo (≥3 segmentos: `crate::sub::Item`); um import de
+/// 2 segmentos (`crate::Item`) usa a API re-exportada na raiz, não uma porta.
+fn resolve_subdir<'a>(
+    path: &'a str,
+    config: &CrystallineConfig,
+    target_layer: &Layer,
+) -> Option<&'a str> {
     let path = path.trim_start_matches('{').trim();
-
-    if !path.starts_with("crate::") && !path.starts_with("super::") {
-        return None; // crate externa — sem subdir
-    }
-
     let segments: Vec<&'a str> = path.splitn(4, "::").collect();
-    // segments[0] = "crate" | "super", segments[1] = module name
-    let module_name = segments.get(1).copied()?;
 
-    // Só é relevante para imports que apontam para L1
-    if config.layer_for_module(module_name) == crate::entities::layer::Layer::L1 {
-        Some(module_name)
-    } else {
-        None
+    if path.starts_with("crate::") || path.starts_with("super::") {
+        // Legado — segments[0] = "crate"|"super", segments[1] = nome do módulo.
+        let module_name = segments.get(1).copied()?;
+        if config.layer_for_module(module_name) == Layer::L1 {
+            return Some(module_name);
+        }
+        return None;
     }
+
+    // Cross-crate: membro first-party resolvido a L1 → subdir = segments[1],
+    // apenas quando alcança um sub-módulo (≥3 segmentos).
+    if *target_layer == Layer::L1 && segments.len() >= 3 {
+        return segments.get(1).copied();
+    }
+
+    None
 }
 
 // ── PublicInterface extraction ────────────────────────────────────────────────
@@ -669,20 +759,32 @@ fn extract_blanket_impls<'a>(root: Node, source: &'a [u8]) -> Vec<&'a str> {
 /// Exemplo: `<T: World, U>` → `["T", "U"]`
 /// tree-sitter resolve where clauses e multi-bounds no mesmo nó,
 /// portanto os três padrões da ADR-0015 usam o mesmo algoritmo.
+///
+/// tree-sitter-rust 0.23 embrulha cada parâmetro num nó `type_parameter`
+/// com field `name` (tanto `<T>` como `<T: Bound>`). As variantes
+/// `type_identifier` solto e `constrained_type_parameter`/`left` são mantidas
+/// por compatibilidade com grammars anteriores.
 fn collect_type_param_names<'a>(node: Node, source: &'a [u8]) -> Vec<&'a str> {
     let mut names = Vec::new();
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
-            // type_identifier é o nome simples do parâmetro (ex: T, U)
-            // constrained_type_parameter tem field "left" com o nome
-            if child.kind() == "type_identifier" {
-                names.push(node_text(child, source));
-            } else if child.kind() == "constrained_type_parameter" {
-                if let Some(left) = child.child_by_field_name("left") {
-                    names.push(node_text(left, source));
+            match child.kind() {
+                // grammar 0.23: `<T>` e `<T: Bound>` → type_parameter{ name }
+                "type_parameter" => {
+                    if let Some(name) = child.child_by_field_name("name") {
+                        names.push(node_text(name, source));
+                    }
                 }
-            } else if child.kind() == "lifetime" {
-                // ignorar lifetimes ('a) — não são parâmetros de tipo
+                // type_identifier solto — grammars anteriores
+                "type_identifier" => names.push(node_text(child, source)),
+                // constrained_type_parameter{ left } — grammars anteriores
+                "constrained_type_parameter" => {
+                    if let Some(left) = child.child_by_field_name("left") {
+                        names.push(node_text(left, source));
+                    }
+                }
+                // lifetimes ('a) não são parâmetros de tipo — ignorar
+                _ => {}
             }
         }
     }
@@ -848,7 +950,7 @@ mod tests {
     use crate::contracts::prompt_reader::PromptReader;
     use crate::contracts::prompt_snapshot_reader::PromptSnapshotReader;
     use crate::entities::parsed_file::PublicInterface;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     struct NullPromptReader;
     impl PromptReader for NullPromptReader {
@@ -863,7 +965,48 @@ mod tests {
     }
 
     fn make_parser() -> RustParser<NullPromptReader, NullSnapshotReader> {
-        RustParser::new(NullPromptReader, NullSnapshotReader, CrystallineConfig::default())
+        RustParser::new(
+            NullPromptReader,
+            NullSnapshotReader,
+            CrystallineConfig::default(),
+            CrateRegistry::empty(),
+        )
+    }
+
+    /// Parser com um registro de membros — exercita a classificação cross-crate.
+    fn make_parser_with_registry(
+        registry: CrateRegistry,
+    ) -> RustParser<NullPromptReader, NullSnapshotReader> {
+        RustParser::new(
+            NullPromptReader,
+            NullSnapshotReader,
+            CrystallineConfig::default(),
+            registry,
+        )
+    }
+
+    /// SourceFile num path/camada específicos (para casar com o `owner` do registro).
+    fn source_file_at(path: &str, layer: Layer, content: &str) -> SourceFile {
+        SourceFile {
+            path: PathBuf::from(path),
+            content: content.to_string(),
+            language: Language::Rust,
+            layer,
+            has_adjacent_test: false,
+        }
+    }
+
+    /// Camada classificada de um import isolado, dado um registro e owner.
+    fn classify_layer(
+        path: &str,
+        config: &CrystallineConfig,
+        registry: &CrateRegistry,
+        owner: Option<&MemberCrate>,
+    ) -> Option<Layer> {
+        match classify_import(path, config, registry, owner) {
+            ImportClass::Resolved(l) => Some(l),
+            ImportClass::LocalItem => None,
+        }
     }
 
     fn source_file(content: &str) -> SourceFile {
@@ -939,16 +1082,162 @@ fn main() {}",
     #[test]
     fn resolves_crate_import_layer() {
         let config = CrystallineConfig::default();
-        assert_eq!(resolve_layer("crate::entities::layer::Layer", &config), Layer::L1);
-        assert_eq!(resolve_layer("crate::shell::cli::Cli", &config), Layer::L2);
-        assert_eq!(resolve_layer("crate::infra::walker::FileWalker", &config), Layer::L3);
+        let reg = CrateRegistry::empty();
+        assert_eq!(classify_layer("crate::entities::layer::Layer", &config, &reg, None), Some(Layer::L1));
+        assert_eq!(classify_layer("crate::shell::cli::Cli", &config, &reg, None), Some(Layer::L2));
+        assert_eq!(classify_layer("crate::infra::walker::FileWalker", &config, &reg, None), Some(Layer::L3));
     }
 
     #[test]
     fn external_crate_resolves_to_unknown() {
+        // Sem owner (registro vazio) → comportamento legado: tudo não-crate vira Unknown.
         let config = CrystallineConfig::default();
-        assert_eq!(resolve_layer("reqwest::Client", &config), Layer::Unknown);
-        assert_eq!(resolve_layer("std::fs::read", &config), Layer::Unknown);
+        let reg = CrateRegistry::empty();
+        assert_eq!(classify_layer("reqwest::Client", &config, &reg, None), Some(Layer::Unknown));
+        assert_eq!(classify_layer("std::fs::read", &config, &reg, None), Some(Layer::Unknown));
+    }
+
+    // ── Classificação ciente de dependências (0052) ──────────────────────────
+
+    fn member(name: &str, dir: &str, layer: Layer, deps: &[&str]) -> MemberCrate {
+        MemberCrate {
+            name: name.to_string(),
+            dir: PathBuf::from(dir),
+            layer,
+            deps: deps.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    /// Workspace de teste: L1 (core, shared), L2 (shell), L3 (infra), L4 (wiring).
+    fn case_registry() -> CrateRegistry {
+        CrateRegistry::from_members(vec![
+            member("proj_core", "/proj/core", Layer::L1, &["serde"]),
+            member("proj_shared", "/proj/shared", Layer::L1, &[]),
+            member("proj_shell", "/proj/shell", Layer::L2, &[]),
+            member("proj_infra", "/proj/infra", Layer::L3, &["proj_wiring"]),
+            member("proj_wiring", "/proj/wiring", Layer::L4, &[]),
+        ])
+    }
+
+    #[test]
+    fn case1_first_party_cross_crate_forbidden_resolves_target_layer() {
+        // L3 importando membro L4 → L4 (V3 dispararia: L3→L4). Hoje era o buraco.
+        let config = CrystallineConfig::default();
+        let reg = case_registry();
+        let owner = reg.owner_of(Path::new("/proj/infra/src/x.rs"));
+        assert_eq!(classify_layer("proj_wiring::Algo", &config, &reg, owner), Some(Layer::L4));
+    }
+
+    #[test]
+    fn case2_first_party_cross_crate_allowed_resolves_l1() {
+        // L1 importando outro membro L1 → L1 (V3 calado L1→L1, e V14 calado: não-Unknown).
+        let config = CrystallineConfig::default();
+        let reg = case_registry();
+        let owner = reg.owner_of(Path::new("/proj/core/src/x.rs"));
+        assert_eq!(classify_layer("proj_shared::X", &config, &reg, owner), Some(Layer::L1));
+    }
+
+    #[test]
+    fn case3_declared_external_resolves_unknown() {
+        // L1 com dep externa declarada → Unknown (V14 dispara).
+        let config = CrystallineConfig::default();
+        let reg = case_registry();
+        let owner = reg.owner_of(Path::new("/proj/core/src/x.rs"));
+        assert_eq!(classify_layer("serde::Serialize", &config, &reg, owner), Some(Layer::Unknown));
+    }
+
+    #[test]
+    fn case4_local_type_is_not_classified() {
+        // L1 com `use EnumLocal::*` (não é dependência) → não classificar (V14 calado).
+        let config = CrystallineConfig::default();
+        let reg = case_registry();
+        let owner = reg.owner_of(Path::new("/proj/core/src/x.rs"));
+        assert_eq!(classify_layer("EnumLocal::*", &config, &reg, owner), None);
+    }
+
+    #[test]
+    fn case5_std_preserved_as_unknown() {
+        let config = CrystallineConfig::default();
+        let reg = case_registry();
+        let owner = reg.owner_of(Path::new("/proj/core/src/x.rs"));
+        assert_eq!(
+            classify_layer("std::collections::HashMap", &config, &reg, owner),
+            Some(Layer::Unknown)
+        );
+    }
+
+    #[test]
+    fn case6_intra_crate_preserved_via_module_layer() {
+        // `use crate::shell::X` num L1 → L2 (o controle do 0051; V3 dispara).
+        let config = CrystallineConfig::default();
+        let reg = case_registry();
+        let owner = reg.owner_of(Path::new("/proj/core/src/x.rs"));
+        assert_eq!(classify_layer("crate::shell::cli::X", &config, &reg, owner), Some(Layer::L2));
+    }
+
+    #[test]
+    fn self_import_by_crate_name_is_intra_crate() {
+        // `proj_core::shell::X` do próprio proj_core → module_layer(shell)=L2, não a camada do membro (L1).
+        let config = CrystallineConfig::default();
+        let reg = case_registry();
+        let owner = reg.owner_of(Path::new("/proj/core/src/x.rs"));
+        assert_eq!(classify_layer("proj_core::shell::X", &config, &reg, owner), Some(Layer::L2));
+    }
+
+    #[test]
+    fn empty_registry_does_not_skip_local_looking_imports() {
+        // Não-regressão: registro vazio (owner None) → `use EnumLocal::*` vira Unknown (legado), não Skip.
+        let config = CrystallineConfig::default();
+        let reg = CrateRegistry::empty();
+        assert_eq!(classify_layer("EnumLocal::*", &config, &reg, None), Some(Layer::Unknown));
+    }
+
+    // ── V9 cross-crate (resolve_subdir ciente) ───────────────────────────────
+
+    #[test]
+    fn v9_cross_crate_subdir_resolved_for_l1_member_submodule() {
+        // L2 importando subdir interno de um membro L1 → subdir "internal" (V9 dispara).
+        let config = CrystallineConfig::default();
+        assert_eq!(
+            resolve_subdir("proj_core::internal::X", &config, &Layer::L1),
+            Some("internal")
+        );
+    }
+
+    #[test]
+    fn v9_cross_crate_two_segment_import_has_no_subdir() {
+        // `proj_core::Thing` (2 segmentos) usa a API da raiz, não uma porta → sem subdir.
+        let config = CrystallineConfig::default();
+        assert_eq!(resolve_subdir("proj_core::Thing", &config, &Layer::L1), None);
+    }
+
+    #[test]
+    fn v9_intra_crate_subdir_preserved() {
+        // Legado: crate::entities::X (entities→L1) → Some("entities"); crate::shell::X → None.
+        let config = CrystallineConfig::default();
+        assert_eq!(resolve_subdir("crate::entities::Layer", &config, &Layer::L1), Some("entities"));
+        assert_eq!(resolve_subdir("crate::shell::cli::X", &config, &Layer::L2), None);
+    }
+
+    // ── End-to-end via parse() ───────────────────────────────────────────────
+
+    #[test]
+    fn parse_emits_cross_crate_member_import_with_target_layer() {
+        let reg = case_registry();
+        let parser = make_parser_with_registry(reg);
+        let file = source_file_at("/proj/infra/src/x.rs", Layer::L3, "use proj_wiring::Algo;\nfn f() {}");
+        let parsed = parser.parse(&file).unwrap();
+        let imp = parsed.imports.iter().find(|i| i.path.starts_with("proj_wiring"));
+        assert_eq!(imp.map(|i| i.target_layer.clone()), Some(Layer::L4));
+    }
+
+    #[test]
+    fn parse_skips_local_type_import() {
+        let reg = case_registry();
+        let parser = make_parser_with_registry(reg);
+        let file = source_file_at("/proj/core/src/x.rs", Layer::L1, "use EnumLocal::*;\nfn f() {}");
+        let parsed = parser.parse(&file).unwrap();
+        assert!(parsed.imports.iter().all(|i| !i.path.starts_with("EnumLocal")));
     }
 
     #[test]

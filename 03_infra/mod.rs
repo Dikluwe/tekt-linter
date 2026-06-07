@@ -7,6 +7,7 @@
 pub mod c_parser;
 pub mod config;
 pub mod cpp_parser;
+pub mod crate_registry;
 pub mod hash_writer;
 pub mod prompt_reader;
 pub mod prompt_snapshot_reader;
