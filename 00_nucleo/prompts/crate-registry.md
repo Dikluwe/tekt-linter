@@ -52,7 +52,10 @@ vez e não participa do zero-copy do `SourceFile`.
 1. `crate::`/`super::` → `module_layer(seg[1])` (inalterado).
 2. `std`/`core`/`alloc` → `Unknown` (preservado; V14 isenta stdlib; V4 cuida de I/O).
 3. 1º segmento == **nome do próprio crate dono** → intra-crate: `module_layer(seg[1])`
-   (equivalente a `crate::`; cobre o self-import por nome `crystalline_lint::…`).
+   (equivalente a `crate::`; cobre o self-import por nome `crystalline_lint::…`). Se o
+   sub-módulo não está mapeado em `[module_layers]`, cai na **camada do próprio crate**
+   (`owner.layer`) — um self-import NUNCA é externo, então jamais vira `Unknown`/V14
+   (ex.: `use lente_filtro::filtrar_stdlib` num teste de integração do próprio pacote).
 4. 1º segmento ∈ **outro membro** (registry) → camada do membro (first-party
    cross-crate; **V3 volta a enxergar a direção**).
 5. 1º segmento ∈ **deps externas declaradas do owner** → `Unknown` (externo real;
@@ -126,3 +129,4 @@ Então 0 violações
 | Data | Motivo | Arquivos afetados |
 |------|--------|-------------------|
 | 2026-06-06 | Materialização do 0052. Registro membro→camada + deps (L3) e classificação de import ciente de dependências a montante no `resolve_layer`/`resolve_subdir`; emissão condicional para o item local (caso `Kind`). Decisões: contexto **per-crate** (owner via `owner_of`, deps+dev-deps por membro) e **V9 incluído** (subdir cross-crate). Regras L1 (V3/V14/V9) inalteradas. Registro vazio ⇒ legado bit-a-bit. | `03_infra/crate_registry.rs` (novo), `03_infra/rs_parser.rs` (resolve_layer/resolve_subdir/collect_imports/parse), `03_infra/mod.rs`, `04_wiring/main.rs` |
+| 2026-06-07 | Resíduo do laudo 0053: self-import do próprio pacote num teste de integração (`use lente_filtro::filtrar_stdlib`) para sub-módulo não mapeado em `[module_layers]` resolvia a `Unknown` → V14 falso (o `package_name` é o nome do crate, não isento como `crate`/`std`). Fix no passo 3 do `classify_import`: self-import cai na camada do próprio crate (`owner.layer`) quando o sub-módulo não está mapeado — nunca externo. V14 no `tekt-cargo-dsm` zera sem a whitelist. | `03_infra/rs_parser.rs` (`classify_import`) |

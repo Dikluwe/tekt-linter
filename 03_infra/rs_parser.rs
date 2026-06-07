@@ -354,10 +354,17 @@ fn classify_import(
         return ImportClass::Resolved(Layer::Unknown);
     }
 
-    // 3. Self-import pelo nome do próprio crate ≡ intra-crate (ex.: `crystalline_lint::…`).
+    // 3. Self-import pelo nome do próprio crate ≡ intra-crate (ex.: `crystalline_lint::…`,
+    //    ou `use lente_filtro::…` num teste de integração do próprio pacote).
+    //    `module_layer` resolve o sub-módulo (caso multi-camada como o próprio linter);
+    //    se o sub-módulo não está mapeado em `[module_layers]`, cai na camada do
+    //    próprio crate (`owner.layer`) — um self-import NUNCA é externo, então jamais
+    //    pode virar `Unknown` e disparar V14 (resíduo corrigido após o 0053).
     if let Some(o) = owner {
         if o.name == seg {
-            return ImportClass::Resolved(module_layer(p, config));
+            let by_module = module_layer(p, config);
+            let layer = if by_module == Layer::Unknown { o.layer.clone() } else { by_module };
+            return ImportClass::Resolved(layer);
         }
     }
 
@@ -1182,6 +1189,17 @@ fn main() {}",
         let reg = case_registry();
         let owner = reg.owner_of(Path::new("/proj/core/src/x.rs"));
         assert_eq!(classify_layer("proj_core::shell::X", &config, &reg, owner), Some(Layer::L2));
+    }
+
+    #[test]
+    fn self_import_unmapped_submodule_falls_back_to_owner_layer() {
+        // `use lente_filtro::filtrar_stdlib` — self-import de função re-exportada na raiz,
+        // submódulo NÃO mapeado em [module_layers]. Deve cair na camada do próprio crate
+        // (L1), não Unknown — senão V14 dispara falso (o resíduo do laudo 0053).
+        let config = CrystallineConfig::default();
+        let reg = case_registry();
+        let owner = reg.owner_of(Path::new("/proj/core/src/x.rs"));
+        assert_eq!(classify_layer("proj_core::filtrar_stdlib", &config, &reg, owner), Some(Layer::L1));
     }
 
     #[test]
