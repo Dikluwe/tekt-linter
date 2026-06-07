@@ -22,6 +22,7 @@ use crystalline_lint::entities::parsed_file::{ParsedFile, PublicInterface, Wirin
 use crystalline_lint::entities::project_index::{LocalIndex, ProjectIndex};
 use crystalline_lint::entities::violation::{Location, Violation, ViolationLevel};
 use crystalline_lint::infra::config::CrystallineConfig;
+use crystalline_lint::infra::crate_registry::CrateRegistry;
 use crystalline_lint::infra::hash_writer;
 use crystalline_lint::infra::prompt_reader::FsPromptReader;
 use crystalline_lint::infra::prompt_snapshot_reader::FsPromptSnapshotReader;
@@ -102,6 +103,10 @@ fn main() {
         zig:        L1AllowedExternal::for_zig(config.l1_allowed_for_language("zig")),
     };
 
+    // ── Crate registry (membro→camada + deps) para classificação ciente (0052) ─
+    // Construído uma vez do workspace-alvo; vazio se não for projeto cargo (legado).
+    let crate_registry = CrateRegistry::from_root(&cli.path, &config);
+
     // ── Instantiate L3 components ─────────────────────────────────────────────
     let shared_prompt_reader = std::sync::Arc::new(
         crystalline_lint::infra::prompt_reader::CachedPromptReader::new(
@@ -115,6 +120,7 @@ fn main() {
             shared_prompt_reader.clone(),
             shared_snapshot_reader.clone(),
             config.clone(),
+            crate_registry.clone(),
         ),
         ts: TsParser::new(
             shared_prompt_reader.clone(),
@@ -199,6 +205,7 @@ fn main() {
                     shared_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
+                    crate_registry.clone(),
                 ),
                 ts: TsParser::new(
                     shared_prompt_reader.clone(),
@@ -273,6 +280,7 @@ fn main() {
                     shared_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
+                    crate_registry.clone(),
                 ),
                 ts: TsParser::new(
                     shared_prompt_reader.clone(),
