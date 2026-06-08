@@ -4,7 +4,7 @@
 //! @layer L3
 //! @updated 2026-06-06
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::entities::layer::Layer;
@@ -26,6 +26,9 @@ pub struct MemberCrate {
     /// Dependências declaradas (`[dependencies]` + `[dev-dependencies]`),
     /// normalizadas `-`→`_`. Distinguem externo real de item local.
     pub deps: HashSet<String>,
+    /// Renomeações deste membro: chave de import → pacote real (cego #3, 0059).
+    /// `classify_import` resolve a chave através deste mapa antes de cair em `Unknown`.
+    pub renames: HashMap<String, String>,
 }
 
 // ── CrateRegistry ──────────────────────────────────────────────────────────────
@@ -98,6 +101,7 @@ impl CrateRegistry {
                 layer: resolve_file_layer(&dir, root, config),
                 dir,
                 deps: info.deps,
+                renames: info.renames,
             });
         }
 
@@ -114,6 +118,9 @@ pub struct ManifestInfo {
     pub name: Option<String>,
     /// União de `[dependencies]` e `[dev-dependencies]`, normalizadas `-`→`_`.
     pub deps: HashSet<String>,
+    /// Renomeações por-membro: chave de dependência → pacote real, ambos `-`→`_`.
+    /// Lido de `chave = { package = "real" }` (cego #3, 0059). Só entradas renomeadas.
+    pub renames: HashMap<String, String>,
 }
 
 /// Normaliza um nome de crate para a forma usada em paths `use` (`-` → `_`).
@@ -132,15 +139,21 @@ pub fn parse_manifest(content: &str) -> Result<ManifestInfo, toml::de::Error> {
         .map(normalize);
 
     let mut deps = HashSet::new();
+    let mut renames = HashMap::new();
     for table in ["dependencies", "dev-dependencies"] {
         if let Some(t) = value.get(table).and_then(|d| d.as_table()) {
-            for key in t.keys() {
-                deps.insert(normalize(key));
+            for (key, val) in t.iter() {
+                let key_norm = normalize(key);
+                deps.insert(key_norm.clone());
+                // `chave = { package = "real" }` → renomeação por-membro.
+                if let Some(pkg) = val.get("package").and_then(|p| p.as_str()) {
+                    renames.insert(key_norm, normalize(pkg));
+                }
             }
         }
     }
 
-    Ok(ManifestInfo { name, deps })
+    Ok(ManifestInfo { name, deps, renames })
 }
 
 /// Padrões de membros de um workspace (`[workspace].members`), ou `None` se não houver workspace.
@@ -182,6 +195,7 @@ mod tests {
             dir: PathBuf::from(dir),
             layer,
             deps: deps.iter().map(|s| s.to_string()).collect(),
+            renames: HashMap::new(),
         }
     }
 

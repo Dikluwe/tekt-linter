@@ -235,6 +235,20 @@ fn vmod_l4_fail_module_mapped_to_l4() { assert_verdict("vmod_l4_fail", &["V3"]);
 #[test]
 fn vl0_pass_rust_file_in_l0() { assert_verdict("vl0_pass", &[]); }
 
+// ── Conserto do resolvedor (0059) — cegos #1 (alias) e #3 (dep renomeada) ─────
+// Import cross-crate em direção PROIBIDA (L2→L4) por um nome de superfície que o
+// resolvedor cego não enxergava. O V3 só aparece DEPOIS do conserto — antes, o
+// import virava LocalItem (#1) ou Unknown (#3), invisível ao V3.
+
+// #1 alias no `use`: `use wiremod as w;` (wiremod é L4) → V3 (sufixo ` as w` removido).
+#[test]
+fn v03c_fail_alias_use_resolves_crate() { assert_verdict("v03c_fail_alias", &["V3"]); }
+
+// #3 dep renomeada: `alias = { package = "b" }`, `use alias::…` (b é L4) → V3
+// (chave resolvida ao pacote real pelo mapa por-membro do crate_registry).
+#[test]
+fn v03d_fail_renamed_dep_resolves_crate() { assert_verdict("v03d_fail_rename", &["V3"]); }
+
 // V14: prova a distinção do 0052 — `use serde::…` (externo real) FALHA, enquanto
 // `use corehelper::…` (first-party L1, mesma camada) no MESMO ficheiro NÃO falha.
 // Por isso o veredito é exatamente um V14, não dois.
