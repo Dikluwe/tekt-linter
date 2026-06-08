@@ -190,6 +190,51 @@ fn v02d_fail_cfg_test_only_in_comment() { assert_verdict("v02d_fail", &["V2"]); 
 #[test]
 fn v04b_fail_forbidden_macro_in_core() { assert_verdict("v04b_fail", &["V4"]); }
 
+// ── Caminho do veredito (0057) — config / walker / prompt-IO ──────────────────
+// Põe sob oráculo os botões de config e bordas de walker que produzem o veredito
+// mas que nenhuma fixture variava. Cada uma mata um mutante veredito-mudante fora
+// das regras (em config.rs / walker.rs / prompt_reader.rs).
+
+// V12 config: com allow_adapter_structs=false, struct no L4 passa a disparar V12
+// (par do default true em v12_pass). Mata o mutante do botão de config.
+#[test]
+fn v12c_fail_struct_when_adapter_disallowed() { assert_verdict("v12c_fail", &["V12"]); }
+
+// [excluded]: violação real (ficheiro sem header) num dir excluído → 0. Mata os
+// mutantes que quebram a exclusão do walker (o ficheiro apareceria como V1/V8).
+#[test]
+fn vexcl_pass_violation_in_excluded_dir() { assert_verdict("vexcl_pass", &[]); }
+
+// Recursão do walker: V1 num subdir profundamente aninhado tem de ser achada.
+// Mata o mutante que para a recursão / aborta a descida em subdiretórios.
+#[test]
+fn vnest_fail_violation_in_nested_subdir() { assert_verdict("vnest_fail", &["V1"]); }
+
+// V14 config: thiserror é externo PERMITIDO em L1 ([l1_allowed_external]) → sem
+// V14. Mata o mutante que zera `l1_allowed_for_language` (faria thiserror falhar).
+#[test]
+fn v14b_pass_allowed_external_in_core() { assert_verdict("v14b_pass", &[]); }
+
+// V5 leitura de hash: header com @prompt-hash CORRETO (igual ao hash do prompt) →
+// sem V5. Mata os mutantes de `read_hash` (qualquer hash errado → drift espúrio).
+#[test]
+fn v05b_pass_correct_hash_no_drift() { assert_verdict("v05b_pass", &[]); }
+
+// V1 existência de prompt: header aponta para um prompt INEXISTENTE → V1. Mata os
+// mutantes de `exists` que sempre retornam true (esconderiam o prompt ausente).
+#[test]
+fn v01b_fail_header_points_to_missing_prompt() { assert_verdict("v01b_fail", &["V1"]); }
+
+// V3 via [module_layers]: módulo mapeado a L4; L2 importando `crate::wiremod` →
+// V3. Mata o mutante que apaga o arm L4 de `layer_for_module` (viraria Unknown).
+#[test]
+fn vmod_l4_fail_module_mapped_to_l4() { assert_verdict("vmod_l4_fail", &["V3"]); }
+
+// Walker L0: um `.rs` em 00_nucleo (camada L0) com header → sem violação. Mata o
+// mutante que apaga o arm L0 de `resolve_file_layer` (o ficheiro viraria alienígena/V8).
+#[test]
+fn vl0_pass_rust_file_in_l0() { assert_verdict("vl0_pass", &[]); }
+
 // V14: prova a distinção do 0052 — `use serde::…` (externo real) FALHA, enquanto
 // `use corehelper::…` (first-party L1, mesma camada) no MESMO ficheiro NÃO falha.
 // Por isso o veredito é exatamente um V14, não dois.
