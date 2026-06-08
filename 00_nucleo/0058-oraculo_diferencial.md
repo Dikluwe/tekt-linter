@@ -68,7 +68,7 @@ cego-linter. Numa entrada sabidamente divergente, morde — não é cego.
 | Discordância | Natureza | Mecanismo (da fonte) |
 |---|---|---|
 | `lente_app → lente_catalogo` | **cego-linter** | `use lente_catalogo as cat;` — `classify_import` não tira o sufixo `" as cat"` antes de resolver o crate → cai em `LocalItem` → import invisível. **Cego a import de crate com alias.** |
-| `lente_cli → lente_catalogo` | **cego-linter** | cli não tem `use`; referencia `lente_catalogo::HELP_X` só dentro de atributos `#[arg(...)]` (clap). O linter só extrai `use`/`extern crate`. **Cego a referência de caminho fora de `use`.** |
+| `lente_cli → lente_catalogo` | **cego-linter** | ~~cli não tem `use`; só `lente_catalogo::HELP_X` em atributos `#[arg(...)]`.~~ **CORRIGIDO pelo [0059](0059-consertar_cego_1_3.md)**: cli **tem** `use lente_catalogo as cat;` (`saida.rs:19`) — era **#1 (alias)**, não #2. Este triage olhou só `args.rs` e errou o rótulo. O #1 fechou esta aresta. |
 
 ### Workspace 2 — bite-proof (sintético, multi-crate, compilável)
 

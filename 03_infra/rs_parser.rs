@@ -311,9 +311,15 @@ enum ImportClass {
 }
 
 /// Primeiro segmento de um path de `use`, normalizado `-`→`_`.
+/// Corta no primeiro de `::` ou ` as ` — o sufixo de alias de crate
+/// (`use lente_catalogo as cat;`) não pode contaminar o nome do crate (cego #1, 0059).
 fn first_segment(path: &str) -> String {
     let p = path.trim_start_matches('{').trim();
-    let end = p.find("::").unwrap_or(p.len());
+    let end = [p.find("::"), p.find(" as ")]
+        .into_iter()
+        .flatten()
+        .min()
+        .unwrap_or(p.len());
     p[..end].trim().replace('-', "_")
 }
 
@@ -369,7 +375,14 @@ fn classify_import(
     }
 
     // 4. Outro membro first-party → camada do membro (V3 enxerga direção entre crates).
-    if let Some(layer) = registry.member_layer(&seg) {
+    //    Resolve a renomeação por-membro do owner (chave → pacote real) antes de
+    //    testar a filiação — `use y::…` com `y = { package = "x" }` vê o crate `x`
+    //    (cego #3, 0059). Sem rename, `real == seg`.
+    let real = owner
+        .and_then(|o| o.renames.get(&seg))
+        .map(String::as_str)
+        .unwrap_or(seg.as_str());
+    if let Some(layer) = registry.member_layer(real) {
         return ImportClass::Resolved(layer);
     }
 
@@ -1112,6 +1125,7 @@ fn main() {}",
             dir: PathBuf::from(dir),
             layer,
             deps: deps.iter().map(|s| s.to_string()).collect(),
+            renames: Default::default(),
         }
     }
 

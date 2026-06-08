@@ -168,7 +168,18 @@ fn main() {
     // ── --emit-resolution (instrumentação 0058, fora do selo de veredito) ──────
     // Despeja a resolução de todo import (incl. Unknown) e sai — não roda regras.
     if cli.emit_resolution {
-        print!("{}", crystalline_lint::shell::cli::format_resolution(&all_parsed));
+        // Resolve o nome de superfície ao crate real via o registry do linter
+        // (renomeação por-membro), para o emit refletir a resolução do próprio linter.
+        let resolve_crate = |path: &Path, seg: &str| -> String {
+            crate_registry
+                .owner_of(path)
+                .and_then(|o| o.renames.get(seg).cloned())
+                .unwrap_or_else(|| seg.to_string())
+        };
+        print!(
+            "{}",
+            crystalline_lint::shell::cli::format_resolution(&all_parsed, &resolve_crate)
+        );
         return;
     }
 

@@ -86,7 +86,14 @@ fn linter_edges(
             Err(_) => continue,
         };
         let source = v["source"].as_str().unwrap_or("");
-        let target = norm(v["first_segment"].as_str().unwrap_or(""));
+        // `target_crate` é o crate resolvido pelo linter (pós-rename); cai p/
+        // `first_segment` se o emit for de uma versão anterior.
+        let target = norm(
+            v["target_crate"]
+                .as_str()
+                .or_else(|| v["first_segment"].as_str())
+                .unwrap_or(""),
+        );
         // alvo só conta se for um crate-membro (first-party); std/externas → fora (simétrico).
         if !member_names.contains(&target) {
             continue;

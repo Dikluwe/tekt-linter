@@ -1,5 +1,5 @@
 /target
 mutants.out*
 oraculo/target/
-oraculo/biteproof/target/
+oraculo/*/target/
 oraculo/Cargo.lock

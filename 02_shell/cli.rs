@@ -224,17 +224,27 @@ pub fn format_sarif(violations: &[Violation<'_>]) -> String {
 /// Cada linha: `{source, source_layer, import, first_segment, kind, target_layer,
 /// target_subdir, is_unknown}`. O `first_segment` é o candidato a crate/módulo-alvo
 /// (1º segmento do path, `-`→`_`) — a chave de aresta que o oráculo alinha contra a lente.
-pub fn format_resolution(parsed: &[ParsedFile<'_>]) -> String {
+/// `resolve_crate(source_file, first_segment) -> crate real` aplica a resolução do
+/// próprio linter (renomeação por-membro do `crate_registry`) ao nome de superfície,
+/// para o emit reportar o crate resolvido — o que o oráculo alinha. A closure vem de
+/// L4 (que tem o registry); L2 não depende de L3.
+pub fn format_resolution(
+    parsed: &[ParsedFile<'_>],
+    resolve_crate: &dyn Fn(&std::path::Path, &str) -> String,
+) -> String {
     let mut out = String::new();
     for file in parsed {
         let source = file.path.to_string_lossy();
         let source_layer = layer_str(&file.layer);
         for import in &file.imports {
+            let surface = first_segment(import.path);
+            let target_crate = resolve_crate(file.path, &surface);
             let line = json!({
                 "source": source,
                 "source_layer": source_layer,
                 "import": import.path,
-                "first_segment": first_segment(import.path),
+                "first_segment": surface,
+                "target_crate": target_crate, // resolvido (pós-rename) — chave de aresta do oráculo
                 "kind": import_kind_str(&import.kind),
                 "target_layer": layer_str(&import.target_layer),
                 "target_subdir": import.target_subdir,
@@ -248,9 +258,15 @@ pub fn format_resolution(parsed: &[ParsedFile<'_>]) -> String {
 }
 
 /// 1º segmento de um path de import, `-`→`_` (candidato a nome de crate/módulo-alvo).
+/// Corta no primeiro de `::` ou ` as ` (alias de crate — cego #1, 0059), para o
+/// oráculo enxergar a aresta real de `use crate_x as y;`.
 fn first_segment(path: &str) -> String {
     let p = path.trim_start_matches('{').trim();
-    let end = p.find("::").unwrap_or(p.len());
+    let end = [p.find("::"), p.find(" as ")]
+        .into_iter()
+        .flatten()
+        .min()
+        .unwrap_or(p.len());
     p[..end].trim().replace('-', "_")
 }
 
