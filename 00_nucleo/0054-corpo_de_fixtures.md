@@ -174,12 +174,17 @@ caem em três categorias:
    `@layer`. Mutar a tag não muda veredito algum (confirmado por `grep` nas regras).
 3. **Extração de interface/declaração/cobertura — lacuna conhecida, adiada (≈18).**
    `extract_public_interface`/`extract_type_sig`/`extract_named_children`/
-   `extract_trait_method_names` (V6 com tipos), `collect_type_param_names` (V12 com
-   genéricos), `check_cfg_test`/`has_impl_with_functions` (V2 em bordas). **Não são
-   equivalentes** — seriam mortos com fixtures V6/V12 que carreguem tipos e membros no
-   snapshot. Ficam **explicitamente adiados** para um prompt seguinte de enriquecimento do
-   corpo (tipos/genéricos na interface), por exercitarem detalhe de *extração* do parser,
-   não a lógica de decisão/classificação que este prompt centra.
+   `extract_trait_method_names` (V6 com tipos), `check_cfg_test`/
+   `has_impl_with_functions` (V2 em bordas), e a extração de tokens-macro (V4).
+   **Não são equivalentes** — seriam mortos com fixtures que carreguem tipos,
+   membros e as bordas de cobertura.
+
+   > **FECHADO pelo laudo [0055](0055-fechar_extracao_v6_v12_v2.md).** As fixtures
+   > V6 ricas (`v06b/c/d`), V2 de borda (`v02b/c/d`) e a macro proibida (`v04b`)
+   > mataram os 15 matáveis. Os restantes provaram-se equivalentes: `collect_type_param_names`
+   > é código morto sob a grammar pinada (e alimenta V11, não V6/V12 — a premissa
+   > original estava errada); a aritmética de linha:coluna e o `ImportKind` (253)
+   > não viram veredito. `rs_parser` ficou com **0 sobreviventes não-documentados**.
 
 ### Mutante sobrevivente documentado como equivalente
 
