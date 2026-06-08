@@ -73,7 +73,9 @@ fn main() {
         config.orphan_exceptions.keys().cloned().collect();
     let prompt_walker = FsPromptWalker::new(cli.path.clone(), orphan_exceptions);
     // Scan prompts only when V7 is enabled — avoids I/O when check is suppressed.
-    let all_prompts = if enabled.v7 {
+    // --emit-resolution não usa prompts e roda em workspaces arbitrários (sem
+    // 00_nucleo): pula o scan para não abortar (instrumentação 0058).
+    let all_prompts = if enabled.v7 && !cli.emit_resolution {
         match prompt_walker.scan() {
             Ok(ap) => Some(ap),
             Err(e) => {
@@ -162,6 +164,13 @@ fn main() {
 
     let (mut all_violations, all_parsed, project_index) =
         run_pipeline(&source_files, &source_errors, &parser, &enabled, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories);
+
+    // ── --emit-resolution (instrumentação 0058, fora do selo de veredito) ──────
+    // Despeja a resolução de todo import (incl. Unknown) e sai — não roda regras.
+    if cli.emit_resolution {
+        print!("{}", crystalline_lint::shell::cli::format_resolution(&all_parsed));
+        return;
+    }
 
     // ── V7/V8/V11 post-reduce ─────────────────────────────────────────────────
     let v7_level  = config.level_for("V7",  ViolationLevel::Warning);
