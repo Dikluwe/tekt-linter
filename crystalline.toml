@@ -25,6 +25,10 @@ temp     = "tmp"
 venv1    = ".venv"
 venv2    = "venv"
 pycache  = "__pycache__"
+# Corpo de fixtures (prompt 0054): workspaces deliberadamente quebrados, com
+# os seus próprios crystalline.toml/00_nucleo. Dados de teste, fora da topologia
+# de camadas do linter — excluídos do self-lint (file walker e prompt walker).
+fixtures = "tests"
 
 [excluded_files]
 # Ficheiros individuais excluídos por path relativo à raiz do projecto.
@@ -55,6 +59,7 @@ rules     = "rules"
 "00_nucleo/prompts/parsers/_template.md"       = "contrato editorial, não materializa directamente"
 "00_nucleo/prompts/parsers/zig.md"              = "documentação do parser zig"
 "00_nucleo/prompts/architecture-standards.md"  = "padrões globais de gestão de prompts"
+"00_nucleo/prompts/corpo-de-fixtures.md"        = "materializa fixtures+harness em tests/ (excluído), não arquivo Rust"
 
 # Exceções V12 — declarações permitidas em L4
 # true = permite struct_item em L4 (padrão — adapter structs são comuns)

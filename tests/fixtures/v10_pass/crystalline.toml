@@ -1,0 +1,46 @@
+[project]
+root = "."
+
+[languages]
+rust = { grammar = "tree-sitter-rust", enabled = true }
+
+[layers]
+L0  = "00_nucleo"
+L1  = "01_core"
+L2  = "02_shell"
+L3  = "03_infra"
+L4  = "04_wiring"
+lab = "lab"
+
+[module_layers]
+lab = "lab"
+entities  = "L1"
+contracts = "L1"
+rules     = "L1"
+shell     = "L2"
+infra     = "L3"
+
+[l1_ports]
+entities  = "entities"
+contracts = "contracts"
+rules     = "rules"
+
+[rules]
+V0  = { level = "fatal" }
+V1  = { level = "error" }
+V2  = { level = "error" }
+V3  = { level = "error" }
+V4  = { level = "error" }
+V5  = { level = "warning" }
+V6  = { level = "warning" }
+V7  = { level = "warning" }
+V8  = { level = "fatal" }
+V9  = { level = "error" }
+V10 = { level = "fatal" }
+V11 = { level = "error" }
+V12 = { level = "warning" }
+V13 = { level = "error" }
+V14 = { level = "error" }
+
+[l1_allowed_external]
+rust = ["thiserror"]
