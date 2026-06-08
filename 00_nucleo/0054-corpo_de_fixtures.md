@@ -159,17 +159,25 @@ A **classificação ciente de deps** — `classify_import`, `resolve_subdir`,
 de `resolve_subdir` **divergem** — a fixture V9 cross-crate não o mordia.
 
 Os 53 sobreviventes restantes estão **fora do escopo nomeado pelo prompt** (são
-maquinaria incidental do parser, não a decisão de regra nem a classificação) e
-caem em três categorias:
+maquinaria incidental do parser, não a decisão de regra nem a classificação).
 
-1. **Posição/metadado — equivalentes sob o oráculo de IDs (≈30).**
-   `find_first_error_pos` (17) e a aritmética `+1` de linha/coluna em `collect_tokens`,
-   `collect_imports` e `extract_declarations`. Mudam a **linha:coluna reportada**, nunca
-   *qual* regra dispara. O harness afirma **IDs + contagem** por contrato (a prova-de-
-   mordida é sobre o veredito), então estes são equivalentes para esse oráculo. Matá-los
-   exigiria um contrato de teste por-posição — mais frágil e de outra natureza.
-   (`find_first_error_pos` serve a V0/`PARSE`, que está fora do corpo V1–V14 deste prompt.)
-2. **`parse_layer_tag` (5) — equivalentes.** Produzem `PromptHeader.layer`, que **nenhuma
+> **Reclassificados pelo 0056** (após o 0055 matar os de extração): o rótulo
+> "equivalente" abaixo era impreciso — misturava **inerte** (saída que nenhuma
+> regra lê / código morto) com **fora-do-oráculo** (muda a posição reportada, que
+> o harness não testa). Ver a tabela final reconciliada no laudo
+> [0056](0056-reconciliar_sobreviventes.md). A afirmação correta é: **0 sobreviventes
+> que mudam veredito** — não "0 equivalentes".
+
+Originalmente descritos como três grupos:
+
+1. **Posição (fora-do-oráculo) — não equivalentes, mas não testados (≈30 no estado final).**
+   `find_first_error_pos` (19) e a aritmética `+1` de linha/coluna em `collect_tokens`,
+   `collect_imports` e `extract_declarations`. Mudam a **linha:coluna reportada** (saída
+   observável), nunca *qual* regra dispara. O harness afirma **IDs + contagem** por
+   contrato, então não os pega — é um **oráculo à parte**, não uma equivalência.
+   (`find_first_error_pos` serve a V0/`PARSE`, gated por `root.has_error()` — não decide
+   emissão, só a posição na mensagem.)
+2. **`parse_layer_tag` (5) — inerte.** Produzem `PromptHeader.layer`, que **nenhuma
    regra lê**: a camada efetiva do ficheiro vem de `resolve_file_layer` (path), não da tag
    `@layer`. Mutar a tag não muda veredito algum (confirmado por `grep` nas regras).
 3. **Extração de interface/declaração/cobertura — lacuna conhecida, adiada (≈18).**
@@ -204,12 +212,12 @@ caem em três categorias:
       real de first-party L1.
 - [x] Harness afirma IDs + contagem (multiset SARIF), não só sucesso/fracasso.
 - [x] `cargo-mutants` sobre o **motor de regras + classificação** (escopo nomeado):
-      0 sobreviventes não documentados (rules `01_core/rules/*.rs` = 0;
-      `classify_import`/`resolve_subdir` = 0; `crate_registry::empty` = 1 equivalente
-      documentado). A varredura do `rs_parser` inteiro (além do escopo) deixa 53
-      sobreviventes incidentais, todos categorizados: ~30 posição/metadado-equivalentes,
-      5 `parse_layer_tag`-equivalentes, ~18 de extração de interface **adiados** com
-      justificativa.
+      0 sobreviventes que mudam veredito (rules `01_core/rules/*.rs` = 0;
+      `classify_import`/`resolve_subdir` = 0; `crate_registry::empty` = 1 inerte). A
+      varredura do `rs_parser` inteiro (além do escopo) deixa sobreviventes incidentais,
+      reconciliados no [0056](0056-reconciliar_sobreviventes.md) como **inerte (8)** +
+      **fora-do-oráculo/posição (30)**, **0 mudam veredito** (após o 0055 fechar a
+      extração).
 - [x] Cobertura de ramos no código de **regra/classificação** sem ramo morto — provada
       pela mutação (que subsume cobertura de ramos): 0 sobreviventes ⇒ todo ramo de
       decisão é executado e *observado* por uma fixture.

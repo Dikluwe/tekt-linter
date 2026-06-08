@@ -61,6 +61,7 @@ rules     = "rules"
 "00_nucleo/prompts/architecture-standards.md"  = "padrões globais de gestão de prompts"
 "00_nucleo/prompts/corpo-de-fixtures.md"        = "materializa fixtures+harness em tests/ (excluído), não arquivo Rust"
 "00_nucleo/prompts/fechar-extracao-v6-v12-v2.md" = "fixtures de extração V6/V12/V2 em tests/ (excluído), não arquivo Rust"
+"00_nucleo/prompts/reconciliar-sobreviventes.md" = "reconciliação/documentação de mutantes — não materializa Rust"
 
 # Exceções V12 — declarações permitidas em L4
 # true = permite struct_item em L4 (padrão — adapter structs são comuns)
