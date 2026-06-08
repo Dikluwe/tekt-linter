@@ -65,22 +65,28 @@ Reforço de `compute_delta` (added/removed de `functions` e `types`): `v06c_fail
 `cargo-mutants 27.1.0`, `-j 4`.
 
 **`03_infra/rs_parser.rs`** (`178 mutantes`): de **53 → 38 sobreviventes**
-(127 mortos, 13 inviáveis). Os 15 de extração mortos pelas fixtures novas; os 38
-restantes são **todos equivalentes documentados** — `grep` por não-equivalente = vazio:
+(127 mortos, 13 inviáveis). Os 15 de extração que mudavam veredito foram mortos
+pelas fixtures novas.
 
-| Categoria | nº | Equivalência |
-|---|---|---|
-| `find_first_error_pos` | 17 | posição de erro de sintaxe (V0/`PARSE`, fora de V1–V14) |
-| `parse_layer_tag` | 5 | `PromptHeader.layer` — nenhuma regra lê (camada vem do path) |
-| `extract_declarations` (arit. linha:coluna) | 5 | posição reportada, nunca veredito |
-| `collect_tokens` (arit. linha:coluna) | 4 | idem |
-| `collect_imports` 247/266 (arit.) | 2 | idem |
-| `collect_imports` 253 (`&&`→`||`) | 1 | só altera `ImportKind`, não lido por veredito |
-| `collect_type_param_names` 786/788 | 2 | arms de grammar antiga — código morto sob `tree-sitter-rust 0.23` |
-| **Total** | **38** | **0 não-documentados** |
+> **Reconciliação dos 38 — ver laudo [0056](0056-reconciliar_sobreviventes.md).**
+> A itemização original aqui somava 36 (erro de `grep`: `find_first_error_pos`
+> são **19**, não 17 — 2 mutantes de substituição-de-função-inteira não casaram o
+> sufixo). E o rótulo único "equivalente" misturava duas naturezas. A classificação
+> correta, verificada contra `missed.txt` (soma = 38, exata):
+>
+> | Natureza | nº | Itens |
+> |---|---|---|
+> | **Muda veredito** | **0** | — |
+> | **Inerte** (saída não-lida / código morto) | **8** | `parse_layer_tag` (5) · `collect_imports:253` (1) · `collect_type_param_names:786/788` (2) |
+> | **Fora-do-oráculo** (posição) | **30** | `find_first_error_pos` (19) · aritmética linha:coluna em `collect_imports`/`collect_tokens`/`extract_declarations` (11) |
+>
+> O corpo é **completo para vereditos** (0 sobreviventes que mudam qual regra dispara
+> ou a contagem de IDs). Não é completo para a saída inteira: a **posição** de uma
+> violação e a posição de um erro de sintaxe (V0/`PARSE`) são um **oráculo à parte**,
+> hoje não testado pelo harness (que afirma IDs + contagem).
 
 **`01_core/rules/*.rs` + `crate_registry.rs`** (`103 mutantes`): **1 sobrevivente**,
-o equivalente já documentado no 0054 (`CrateRegistry::empty == Default::default()`).
+inerte, documentado no 0054 (`CrateRegistry::empty == Default::default()`).
 
 **Suíte**: `478 unit + 38 fixtures` verde; `crystalline-lint .` = 0.
 
