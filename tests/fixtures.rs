@@ -147,6 +147,49 @@ fn v12_fail_enum_in_wiring() { assert_verdict("v12_fail", &["V12"]); }
 #[test]
 fn v13_fail_mutable_static_in_core() { assert_verdict("v13_fail", &["V13"]); }
 
+// ── Fechamento da extração (0055) — V6/V12/V2/V4 ──────────────────────────────
+// Mata os sobreviventes de extração que o corpo 0054 deixou adiados. A fixture V6
+// do 0054 só variava `reexports`; estas exercitam `functions` e `types`, e a
+// extração de campos/variantes/métodos/genéricos.
+
+// V6 pass com interface RICA idêntica ao snapshot: função tipada, struct com
+// campos, enum com variantes, trait com método, struct genérico. Qualquer mutação
+// num extrator muda a interface lida → quebra a igualdade → V6 espúrio → falha aqui.
+#[test]
+fn v06b_pass_rich_interface_identical() { assert_verdict("v06b_pass", &[]); }
+
+// V6 fail com delta SÓ em functions (snapshot omite uma função do código).
+#[test]
+fn v06c_fail_functions_delta() { assert_verdict("v06c_fail", &["V6"]); }
+
+// V6 fail com delta SÓ em types (snapshot tem um struct com um campo a menos).
+#[test]
+fn v06d_fail_types_delta() { assert_verdict("v06d_fail", &["V6"]); }
+
+// V12 com genéricos no L4: enum genérico falha; struct adaptador genérico passa.
+#[test]
+fn v12b_fail_generic_enum_in_wiring() { assert_verdict("v12b_fail", &["V12"]); }
+#[test]
+fn v12b_pass_generic_struct_in_wiring() { assert_verdict("v12b_pass", &[]); }
+
+// V2 bordas de cobertura: impl SÓ com const (sem fn) é declaração-só → isento;
+// `#[cfg(feature=...)]` que NÃO é teste não conta como cobertura → ainda dispara.
+#[test]
+fn v02b_pass_impl_without_function_exempt() { assert_verdict("v02b_pass", &[]); }
+#[test]
+fn v02c_fail_cfg_not_test_still_uncovered() { assert_verdict("v02c_fail", &["V2"]); }
+
+// V2: "cfg(test)" como TEXTO num comentário (não atributo) não conta como cobertura
+// → ainda dispara. Prova que `check_cfg_test` chaveia no nó-atributo, não na mera
+// presença do texto — mata os mutantes que afrouxam o casamento de `kind`.
+#[test]
+fn v02d_fail_cfg_test_only_in_comment() { assert_verdict("v02d_fail", &["V2"]); }
+
+// V4 via macro com prefixo proibido (`std::fs::x!()`) — exercita o ramo
+// `macro_invocation` da extração de tokens, que o par V4 do 0054 (call) não tocava.
+#[test]
+fn v04b_fail_forbidden_macro_in_core() { assert_verdict("v04b_fail", &["V4"]); }
+
 // V14: prova a distinção do 0052 — `use serde::…` (externo real) FALHA, enquanto
 // `use corehelper::…` (first-party L1, mesma camada) no MESMO ficheiro NÃO falha.
 // Por isso o veredito é exatamente um V14, não dois.
