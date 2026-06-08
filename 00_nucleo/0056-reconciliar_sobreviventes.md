@@ -63,6 +63,14 @@ e a contagem de IDs. O corpo de fixtures é **completo para vereditos**. **Não*
 completo para a saída inteira: a **posição** de uma violação e a posição de um erro
 de sintaxe (V0/`PARSE`) são um **oráculo à parte**, hoje não exercitado pelo harness.
 
+> **Atualização (selo estendido pelo [0057](0057-mutacao_caminho_veredito.md)).** Quando
+> este laudo foi escrito, "completo para vereditos" cobria **{regras + classificação}**
+> (os ficheiros mutados em 0054–0056). O 0057 estendeu a mutação ao **caminho inteiro
+> lint→veredito** — config, walker, leitura de prompt, despacho e emissão SARIF — e
+> manteve **0 sobreviventes que mudam veredito**. O selo agora é: **completo para
+> vereditos de lint de Rust**, sem ressalva. Fora dele, nomeados: multi-linguagem,
+> caminho de *fix/update* e o oráculo de posição.
+
 Isso é a mesma lição do 0054 recorrendo um nível abaixo: um verificador só prova o
 que o seu oráculo consegue observar. O ganho permanece real e é exatamente esse —
 nem mais (não é "saída inteira correta"), nem menos (é "todo veredito é mordido").
