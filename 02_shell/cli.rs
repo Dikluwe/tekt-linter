@@ -10,6 +10,8 @@ use clap::{Parser, ValueEnum};
 use colored::Colorize;
 use serde_json::json;
 
+use crate::entities::layer::Layer;
+use crate::entities::parsed_file::{ImportKind, ParsedFile};
 use crate::entities::violation::{Violation, ViolationLevel};
 
 // ── CLI args ──────────────────────────────────────────────────────────────────
@@ -62,6 +64,12 @@ pub struct Cli {
     /// Preview changes without rewriting any file (requires --fix-hashes or --update-snapshot)
     #[arg(long)]
     pub dry_run: bool,
+
+    /// Emit the resolution of EVERY import as JSON Lines (incl. Unknown) and exit.
+    /// Instrumentation for the differential oracle (0058) — outside the verdict seal:
+    /// changes no rule, only dumps what `classify_import` resolved per import.
+    #[arg(long)]
+    pub emit_resolution: bool,
 }
 
 /// Returns Err with a user-facing message if the arg combination is invalid.
@@ -207,6 +215,64 @@ pub fn format_sarif(violations: &[Violation<'_>]) -> String {
     });
 
     serde_json::to_string_pretty(&output).unwrap_or_default()
+}
+
+/// Emite a resolução de todo import do workspace como JSON Lines (uma por linha),
+/// **incluindo os `Unknown`** (que o SARIF esconde, pois não geram violação).
+/// Instrumentação para o oráculo diferencial (0058) — fora do selo de veredito.
+///
+/// Cada linha: `{source, source_layer, import, first_segment, kind, target_layer,
+/// target_subdir, is_unknown}`. O `first_segment` é o candidato a crate/módulo-alvo
+/// (1º segmento do path, `-`→`_`) — a chave de aresta que o oráculo alinha contra a lente.
+pub fn format_resolution(parsed: &[ParsedFile<'_>]) -> String {
+    let mut out = String::new();
+    for file in parsed {
+        let source = file.path.to_string_lossy();
+        let source_layer = layer_str(&file.layer);
+        for import in &file.imports {
+            let line = json!({
+                "source": source,
+                "source_layer": source_layer,
+                "import": import.path,
+                "first_segment": first_segment(import.path),
+                "kind": import_kind_str(&import.kind),
+                "target_layer": layer_str(&import.target_layer),
+                "target_subdir": import.target_subdir,
+                "is_unknown": import.target_layer == Layer::Unknown,
+            });
+            out.push_str(&line.to_string());
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// 1º segmento de um path de import, `-`→`_` (candidato a nome de crate/módulo-alvo).
+fn first_segment(path: &str) -> String {
+    let p = path.trim_start_matches('{').trim();
+    let end = p.find("::").unwrap_or(p.len());
+    p[..end].trim().replace('-', "_")
+}
+
+fn layer_str(layer: &Layer) -> &'static str {
+    match layer {
+        Layer::L0 => "L0",
+        Layer::L1 => "L1",
+        Layer::L2 => "L2",
+        Layer::L3 => "L3",
+        Layer::L4 => "L4",
+        Layer::Lab => "Lab",
+        Layer::Unknown => "Unknown",
+    }
+}
+
+fn import_kind_str(kind: &ImportKind) -> &'static str {
+    match kind {
+        ImportKind::Direct => "Direct",
+        ImportKind::Glob => "Glob",
+        ImportKind::Alias => "Alias",
+        ImportKind::Named => "Named",
+    }
 }
 
 fn sarif_level(level: &ViolationLevel) -> &'static str {
@@ -400,6 +466,7 @@ mod tests {
             fix_hashes: false,
             update_snapshot: false,
             dry_run: false,
+            emit_resolution: false,
         }
     }
 

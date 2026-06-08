@@ -1,0 +1,17 @@
+# Oráculo diferencial linter × lente (prompt 0058).
+# Crate standalone — NÃO é membro do crate do linter (não acopla o build/self-lint
+# dele). Path-dep para a lente; invoca o binário do linter por caixa-preta.
+[package]
+name = "oraculo-diferencial"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "oraculo"
+path = "src/main.rs"
+
+[dependencies]
+# A lente como biblioteca (segunda computação independente).
+lente_wiring = { path = "../../tekt-cargo-dsm/04_wiring" }
+lente_core   = { path = "../../tekt-cargo-dsm/01_core/core" }
+serde_json   = "1"

@@ -29,6 +29,9 @@ pycache  = "__pycache__"
 # os seus próprios crystalline.toml/00_nucleo. Dados de teste, fora da topologia
 # de camadas do linter — excluídos do self-lint (file walker e prompt walker).
 fixtures = "tests"
+# Oráculo diferencial (0058): crate standalone que path-depende da lente e invoca o
+# binário do linter. Não é parte do crate do linter — fora da topologia de camadas.
+oraculo  = "oraculo"
 
 [excluded_files]
 # Ficheiros individuais excluídos por path relativo à raiz do projecto.
@@ -63,6 +66,7 @@ rules     = "rules"
 "00_nucleo/prompts/fechar-extracao-v6-v12-v2.md" = "fixtures de extração V6/V12/V2 em tests/ (excluído), não arquivo Rust"
 "00_nucleo/prompts/reconciliar-sobreviventes.md" = "reconciliação/documentação de mutantes — não materializa Rust"
 "00_nucleo/prompts/mutacao-caminho-veredito.md"  = "fixtures de config/walker em tests/ (excluído), não arquivo Rust"
+"00_nucleo/prompts/oraculo-diferencial.md"       = "oráculo diferencial: instrumentação --emit + harness cross-repo, não materializa regra"
 
 # Exceções V12 — declarações permitidas em L4
 # true = permite struct_item em L4 (padrão — adapter structs são comuns)
