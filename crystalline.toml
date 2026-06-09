@@ -70,6 +70,7 @@ rules     = "rules"
 "00_nucleo/prompts/consertar-cego-1-3.md"        = "conserto do resolvedor (alias/rename) + fixtures em tests/ (excluído)"
 "00_nucleo/prompts/consertar-cego-2.md"          = "conserto do cego #2 (path-ref fora do use) — estende rs_parser.rs (nucleado por parsers/rust.md) + fixtures em tests/ (excluído)"
 "00_nucleo/prompts/excluir-teste-gravidade.md"   = "política de regra (V3/V9/V14 excluem #[cfg(test)] por padrão) — revê rules/* + parsers/rust.md + linter-core.md + fixtures em tests/ (excluído)"
+"00_nucleo/prompts/versao-linter.md"             = "processo de release (versão, portões, CHANGELOG, tag) — não materializa Rust; toca Cargo.toml e CHANGELOG.md"
 
 # Exceções V12 — declarações permitidas em L4
 # true = permite struct_item em L4 (padrão — adapter structs são comuns)
