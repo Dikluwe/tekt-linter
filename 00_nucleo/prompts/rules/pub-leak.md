@@ -1,5 +1,5 @@
 # Prompt: Rule V9 - Pub Leak (pub-leak)
-Hash do Código: a626b323
+Hash do Código: 4feb24b1
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V9
@@ -148,3 +148,4 @@ Então retorna vec![] — crate externa, target_subdir = None
 | Data | Motivo | Arquivos afetados |
 |------|--------|-------------------|
 | 2026-03-14 | Criação inicial (ADR-0006) | pub_leak.rs |
+| 2026-06-09 | 0061: param `check_test_imports` (default false) — guard pula imports test-origin (`#[cfg(test)]`) antes do filtro de subdir | pub_leak.rs |

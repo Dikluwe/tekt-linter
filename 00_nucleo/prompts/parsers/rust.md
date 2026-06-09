@@ -1,5 +1,5 @@
 # Prompt: Rust Parser (parsers/rust)
-Hash do Código: 2b789712
+Hash do Código: e877b64d
 
 > **Nota de localização:** Este prompt foi movido de `prompts/rs-parser.md`
 > para `prompts/parsers/rust.md` pelo ADR-0009. É a implementação de
@@ -613,3 +613,4 @@ Então nenhum acesso a disco ocorre durante testes
 | 2026-03-22 | ADR-0011/0012: static_item extraction (V13) — StaticDeclaration; mod_item usa file_layer em vez de Unknown (corrige V14 false positives) | rs_parser.rs |
 | 2026-03-22 | ADR-0013: mod_item separado de imports → module_decls; extract_module_decls(); file_layer removido de extract_imports/collect_imports | rs_parser.rs |
 | 2026-06-08 | Cego #2 (0060): 2ª fase de extração — collect_path_refs() coleta referências cross-crate por caminho fora do `use` (scoped_identifier/scoped_type_identifier + varredura de token_tree de atributo/macro); guarda local/std (is_local_or_std_first_segment); dedup por 1º segmento contra os `use` (seen); residual de corpo de macro nomeado | rs_parser.rs |
+| 2026-06-09 | 0061: `Import.is_test_origin` marcado em collect_imports E collect_path_refs — `for_each_child_in_test_scope` propaga o escopo `#[cfg(test)]` (o `attribute_item` é IRMÃO que decora o item seguinte; `#![cfg(test)]` interno pela mesma via); reusa o critério de cfg(test) de `check_cfg_test` (is_cfg_test_attribute) | rs_parser.rs |

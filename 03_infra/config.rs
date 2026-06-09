@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash ad60b69b
+//! @prompt-hash 21f6c7ed
 //! @layer L3
-//! @updated 2026-03-23
+//! @updated 2026-06-09
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -91,6 +91,14 @@ pub struct CrystallineConfig {
     /// Exemplo: { "tracked_world_ref" = "TrackedWorld" }
     #[serde(default)]
     pub v11_blanket_exceptions: HashMap<String, String>,
+
+    /// Verificar imports nascidos em `#[cfg(test)]` na gravidade (V3/V9/V14) — 0061.
+    /// Default **`false`** (`None` ⇒ excluir teste): a gravidade afirma o grafo de
+    /// produção, e `#[cfg(test)]` é removido do build de release. A opção só **aperta**
+    /// (liga o teste-como-canário), então o default tem de ser o comportamento seguro
+    /// — a opção move para o menos seguro, nunca o contrário.
+    #[serde(default)]
+    pub check_test_imports: Option<bool>,
 
     #[serde(default)]
     pub analysis: AnalysisConfig,
@@ -197,6 +205,7 @@ impl Default for CrystallineConfig {
             l1_allowed_external: HashMap::new(),
             rules: HashMap::new(),
             v11_blanket_exceptions: HashMap::new(),
+            check_test_imports: None,
             analysis: AnalysisConfig {
                 lineage: LineageConfig {
                     strict_directories,

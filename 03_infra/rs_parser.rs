@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/rust.md
-//! @prompt-hash 02cb144a
+//! @prompt-hash a86e705a
 //! @layer L3
-//! @updated 2026-06-08
+//! @updated 2026-06-09
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -231,16 +231,54 @@ fn extract_imports<'a>(
     owner: Option<&MemberCrate>,
 ) -> Vec<Import<'a>> {
     let mut imports = Vec::new();
-    collect_imports(root, source, config, registry, owner, &mut imports);
+    // `cfg_test` arranca a false na raiz; vira true ao descer por um item
+    // `#[cfg(test)]` (0061) — marca a origem de cada import (test vs produção).
+    collect_imports(root, source, config, registry, owner, false, &mut imports);
 
     // Segunda fase (cego #2, 0060): referências cross-crate por caminho qualificado
     // FORA do `use`/`extern crate` — expressão, tipo, atributo/macro. Dedup por 1º
     // segmento contra os imports já coletados: um crate visto por `use` E por caminho
     // inline não pode virar duas arestas (secção C). `seen` parte dos `use` emitidos.
     let mut seen: HashSet<String> = imports.iter().map(|i| first_segment(i.path)).collect();
-    collect_path_refs(root, source, config, registry, owner, &mut seen, &mut imports);
+    collect_path_refs(root, source, config, registry, owner, false, &mut seen, &mut imports);
 
     imports
+}
+
+/// `true` se `node` é um atributo `cfg(test)` — `#[cfg(test)]` (externo) ou
+/// `#![cfg(test)]` (interno). Reusa o critério de `check_cfg_test` (0061).
+fn is_cfg_test_attribute(node: Node, source: &[u8]) -> bool {
+    matches!(node.kind(), "attribute_item" | "inner_attribute_item")
+        && node_text(node, source).contains("cfg(test)")
+}
+
+/// Visita cada filho de `node` calculando se está em escopo de teste (0061). Um
+/// `#[cfg(test)]` na grammar é **irmão** que decora o item imediatamente seguinte
+/// (verificado: o `attribute_item` precede o `mod_item`, não é seu filho) — então o
+/// flag pendente só se aplica ao próximo item não-atributo. O `#![cfg(test)]` interno
+/// é tratado pela mesma via: como `is_cfg_test_attribute` casa `inner_attribute_item`
+/// e atributos internos vêm sempre no início do bloco, o pendente marca todos os
+/// itens seguintes. O escopo herdado por `cfg_test` propaga sempre.
+fn for_each_child_in_test_scope(
+    node: Node,
+    source: &[u8],
+    cfg_test: bool,
+    mut visit: impl FnMut(Node, bool),
+) {
+    let mut pending = false;
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            let is_attr = matches!(child.kind(), "attribute_item" | "inner_attribute_item");
+            if is_cfg_test_attribute(child, source) {
+                pending = true;
+            }
+            visit(child, cfg_test || pending);
+            // O atributo externo consome-se ao passar o item que decora.
+            if !is_attr {
+                pending = false;
+            }
+        }
+    }
 }
 
 /// Coleta referências cross-crate por caminho qualificado fora do `use`/`extern
@@ -256,6 +294,7 @@ fn collect_path_refs<'a>(
     config: &CrystallineConfig,
     registry: &CrateRegistry,
     owner: Option<&MemberCrate>,
+    cfg_test: bool,
     seen: &mut HashSet<String>,
     imports: &mut Vec<Import<'a>>,
 ) {
@@ -270,22 +309,22 @@ fn collect_path_refs<'a>(
         // (`a::b` dentro de `a::b::c`) reincidem no mesmo 1º segmento → dedup os absorve.
         "scoped_identifier" | "scoped_type_identifier" => {
             let line = node.start_position().row + 1;
-            try_emit_path_ref(node_text(node, source), line, config, registry, owner, seen, imports);
+            try_emit_path_ref(node_text(node, source), line, config, registry, owner, cfg_test, seen, imports);
         }
         // Parte B — atributo/macro: conteúdo vem como `token_tree`; varrer por
         // sequências `ident :: ident`. Limite honesto: caminhos gerados DENTRO do
         // corpo de uma macro que a grammar não estrutura ficam invisíveis (residual).
         "token_tree" => {
-            scan_token_tree(node, source, config, registry, owner, seen, imports);
+            scan_token_tree(node, source, config, registry, owner, cfg_test, seen, imports);
         }
         _ => {}
     }
 
-    for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
-            collect_path_refs(child, source, config, registry, owner, seen, imports);
-        }
-    }
+    // O escopo de teste de cada filho é decidido pelos atributos `#[cfg(test)]`
+    // irmãos (0061), não herdado em bloco — ver `for_each_child_in_test_scope`.
+    for_each_child_in_test_scope(node, source, cfg_test, |child, child_cfg| {
+        collect_path_refs(child, source, config, registry, owner, child_cfg, seen, imports);
+    });
 }
 
 /// `true` se o 1º segmento é caminho local (`crate`/`self`/`super`/`Self`) ou
@@ -306,6 +345,7 @@ fn try_emit_path_ref<'a>(
     config: &CrystallineConfig,
     registry: &CrateRegistry,
     owner: Option<&MemberCrate>,
+    cfg_test: bool,
     seen: &mut HashSet<String>,
     imports: &mut Vec<Import<'a>>,
 ) {
@@ -322,7 +362,7 @@ fn try_emit_path_ref<'a>(
     if let ImportClass::Resolved(target_layer) = classify_import(path, config, registry, owner) {
         let target_subdir = resolve_subdir(path, config, &target_layer);
         seen.insert(key);
-        imports.push(Import { path, line, kind: ImportKind::Direct, target_layer, target_subdir });
+        imports.push(Import { path, line, kind: ImportKind::Direct, target_layer, target_subdir, is_test_origin: cfg_test });
     }
 }
 
@@ -340,6 +380,7 @@ fn scan_token_tree<'a>(
     config: &CrystallineConfig,
     registry: &CrateRegistry,
     owner: Option<&MemberCrate>,
+    cfg_test: bool,
     seen: &mut HashSet<String>,
     imports: &mut Vec<Import<'a>>,
 ) {
@@ -356,7 +397,7 @@ fn scan_token_tree<'a>(
         let prev_is_colon = i > 0 && node.child(i - 1).map(|c| c.kind() == "::").unwrap_or(false);
         if next_is_colon && !prev_is_colon {
             let line = child.start_position().row + 1;
-            try_emit_path_ref(node_text(child, source), line, config, registry, owner, seen, imports);
+            try_emit_path_ref(node_text(child, source), line, config, registry, owner, cfg_test, seen, imports);
         }
     }
 }
@@ -367,6 +408,7 @@ fn collect_imports<'a>(
     config: &CrystallineConfig,
     registry: &CrateRegistry,
     owner: Option<&MemberCrate>,
+    cfg_test: bool,
     imports: &mut Vec<Import<'a>>,
 ) {
     match node.kind() {
@@ -386,7 +428,7 @@ fn collect_imports<'a>(
             // — não emitir Import. O falso positivo do V14 (`Kind`) some sem tocar a regra.
             if let ImportClass::Resolved(target_layer) = classify_import(path, config, registry, owner) {
                 let target_subdir = resolve_subdir(path, config, &target_layer);
-                imports.push(Import { path, line, kind, target_layer, target_subdir });
+                imports.push(Import { path, line, kind, target_layer, target_subdir, is_test_origin: cfg_test });
             }
         }
         "extern_crate_declaration" => {
@@ -398,17 +440,16 @@ fn collect_imports<'a>(
                 .trim();
             if let ImportClass::Resolved(target_layer) = classify_import(path, config, registry, owner) {
                 let target_subdir = resolve_subdir(path, config, &target_layer);
-                imports.push(Import { path, line, kind: ImportKind::Direct, target_layer, target_subdir });
+                imports.push(Import { path, line, kind: ImportKind::Direct, target_layer, target_subdir, is_test_origin: cfg_test });
             }
         }
         _ => {}
     }
 
-    for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
-            collect_imports(child, source, config, registry, owner, imports);
-        }
-    }
+    // Escopo de teste por filho decidido pelos atributos `#[cfg(test)]` irmãos (0061).
+    for_each_child_in_test_scope(node, source, cfg_test, |child, child_cfg| {
+        collect_imports(child, source, config, registry, owner, child_cfg, imports);
+    });
 }
 
 /// Extract the path string from a `use_declaration` node.
@@ -1196,7 +1237,7 @@ mod tests {
 //! @prompt 00_nucleo/prompts/linter-core.md\n\
 //! @prompt-hash c0d309ae\n\
 //! @layer L1\n\
-//! @updated 2026-03-13\n\
+//! @updated 2026-06-09
 fn main() {}",
         );
         let parsed = parser.parse(&file).unwrap();
@@ -1517,6 +1558,86 @@ fn main() {}",
         let parsed = parser.parse(&file).unwrap();
         let n = parsed.imports.iter().filter(|i| first_segment(i.path) == "proj_wiring").count();
         assert_eq!(n, 1, "dois path-refs ao mesmo crate = uma aresta");
+    }
+
+    // ── is_test_origin: marca de origem test vs produção (0061) ──────────────
+    //
+    // Imports nascidos sob `#[cfg(test)]` (removidos do build de produção) são
+    // marcados — a gravidade os pula por padrão. Cobrir as DUAS vias de coleta:
+    // `use` (collect_imports) e path-ref (collect_path_refs).
+
+    #[test]
+    fn cfg_test_use_import_marked_test_origin() {
+        // `use` dentro de `#[cfg(test)] mod tests` → is_test_origin = true.
+        let parser = make_parser_with_registry(case_registry());
+        let file = source_file_at(
+            "/proj/shell/src/x.rs",
+            Layer::L2,
+            "#[cfg(test)]\nmod tests {\n    use proj_wiring::A;\n    fn t() { let _ = A; }\n}",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        let imp = import_to(&parsed, "proj_wiring").expect("import de teste coletado");
+        assert!(imp.is_test_origin, "use sob #[cfg(test)] é test-origin");
+    }
+
+    #[test]
+    fn cfg_test_pathref_marked_test_origin() {
+        // path-ref (0060) dentro de `#[cfg(test)] fn` → is_test_origin = true.
+        let parser = make_parser_with_registry(case_registry());
+        let file = source_file_at(
+            "/proj/shell/src/x.rs",
+            Layer::L2,
+            "#[cfg(test)]\nmod tests {\n    fn t() { proj_wiring::go(); }\n}",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        let imp = import_to(&parsed, "proj_wiring").expect("path-ref de teste coletado");
+        assert!(imp.is_test_origin, "path-ref sob #[cfg(test)] é test-origin");
+    }
+
+    #[test]
+    fn cfg_test_inner_attribute_marks_test_origin() {
+        // `#![cfg(test)]` interno marca toda a subárvore do módulo que o contém.
+        let parser = make_parser_with_registry(case_registry());
+        let file = source_file_at(
+            "/proj/shell/src/x.rs",
+            Layer::L2,
+            "mod tests {\n    #![cfg(test)]\n    use proj_wiring::A;\n    fn t() { let _ = A; }\n}",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        let imp = import_to(&parsed, "proj_wiring").expect("import coletado");
+        assert!(imp.is_test_origin, "use sob #![cfg(test)] interno é test-origin");
+    }
+
+    #[test]
+    fn production_import_not_test_origin() {
+        // `use` de nível superior (produção) → is_test_origin = false.
+        let parser = make_parser_with_registry(case_registry());
+        let file = source_file_at(
+            "/proj/shell/src/x.rs",
+            Layer::L2,
+            "use proj_wiring::A;\nfn f() { let _ = A; }",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        let imp = import_to(&parsed, "proj_wiring").expect("import de produção coletado");
+        assert!(!imp.is_test_origin, "use de produção não é test-origin");
+    }
+
+    #[test]
+    fn production_use_not_marked_when_cfg_test_sibling_mod_present() {
+        // O `#[cfg(test)]` é IRMÃO do `mod tests` na grammar — não pode contaminar o
+        // `use` de produção que o precede no mesmo nível. (Regressão do v14_fail.)
+        let parser = make_parser_with_registry(case_registry());
+        let file = source_file_at(
+            "/proj/shell/src/x.rs",
+            Layer::L2,
+            "use proj_wiring::A;\nfn f() { let _ = A; }\n\
+             #[cfg(test)]\nmod tests {\n    use proj_shared::B;\n    fn t() { let _ = B; }\n}",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        let prod = import_to(&parsed, "proj_wiring").expect("import de produção coletado");
+        assert!(!prod.is_test_origin, "use de produção NÃO é test-origin");
+        let test = import_to(&parsed, "proj_shared").expect("import de teste coletado");
+        assert!(test.is_test_origin, "use sob #[cfg(test)] mod É test-origin");
     }
 
     #[test]

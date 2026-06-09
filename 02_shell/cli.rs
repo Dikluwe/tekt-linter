@@ -249,6 +249,9 @@ pub fn format_resolution(
                 "target_layer": layer_str(&import.target_layer),
                 "target_subdir": import.target_subdir,
                 "is_unknown": import.target_layer == Layer::Unknown,
+                // Emite tudo, marcado (segue verdadeiro, 0061) — o oráculo projeta as
+                // arestas test-origin fora SIMETRICAMENTE, igual a lente as exclui.
+                "is_test_origin": import.is_test_origin,
             });
             out.push_str(&line.to_string());
             out.push('\n');

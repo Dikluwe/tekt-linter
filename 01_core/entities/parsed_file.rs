@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/violation-types.md
-//! @prompt-hash 86293f75
+//! @prompt-hash 3a54c50f
 //! @layer L1
-//! @updated 2026-03-22
+//! @updated 2026-06-09
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -34,6 +34,10 @@ pub struct Import<'a> {
     /// Some("internal") se import aponta para subdir não-porta.
     /// Usado por V9 para detectar imports fora das portas de L1.  (ADR-0006)
     pub target_subdir: Option<&'a str>,
+    /// `true` se o import nasce em código `#[cfg(test)]` — removido do build de
+    /// produção. A gravidade (V3/V9/V14) afirma o grafo de produção, então por
+    /// padrão pula imports test-origin; `check_test_imports` reactiva (0061).
+    pub is_test_origin: bool,
 }
 
 // ── ModuleDecl (ADR-0013) ─────────────────────────────────────────────────────
@@ -526,6 +530,7 @@ mod tests {
             kind: ImportKind::Direct,
             target_layer: Layer::Unknown,
             target_subdir: None,
+            is_test_origin: false,
         };
         assert_eq!(import.target_layer, Layer::Unknown);
     }
@@ -551,6 +556,7 @@ mod tests {
             kind: ImportKind::Direct,
             target_layer: Layer::L2,
             target_subdir: None,
+            is_test_origin: false,
         });
         f.tokens.push(Token {
             symbol: Cow::Borrowed("std::net::TcpStream"),
@@ -579,6 +585,7 @@ mod tests {
             kind: ImportKind::Named,
             target_layer: Layer::L1,
             target_subdir: Some("entities"),
+            is_test_origin: false,
         };
         assert_eq!(import.kind, ImportKind::Named);
         assert_eq!(import.target_subdir, Some("entities"));

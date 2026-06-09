@@ -257,6 +257,7 @@ mod tests {
             kind: ImportKind::Direct,
             target_layer: Layer::L1,
             target_subdir: Some("entities"),
+            is_test_origin: false,
         };
         let m = MockV9 { layer: Layer::L2, imports: vec![imp], path: Path::new("foo.rs") };
         assert_eq!(m.imports().len(), 1);

@@ -85,6 +85,13 @@ fn linter_edges(
             Ok(v) => v,
             Err(_) => continue,
         };
+        // Projeção simétrica (0061): a gravidade afirma o grafo de PRODUÇÃO, e a lente
+        // (grafo do compilador, sem `--cfg test`) exclui `#[cfg(test)]` por construção.
+        // O linter emite tudo, marcado; aqui removemos as arestas test-origin para
+        // comparar os dois pelo mesmo grafo de produção.
+        if v["is_test_origin"].as_bool().unwrap_or(false) {
+            continue;
+        }
         let source = v["source"].as_str().unwrap_or("");
         // `target_crate` é o crate resolvido pelo linter (pós-rename); cai p/
         // `first_segment` se o emit for de uma versão anterior.
