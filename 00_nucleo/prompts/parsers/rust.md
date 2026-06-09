@@ -1,5 +1,5 @@
 # Prompt: Rust Parser (parsers/rust)
-Hash do Código: 0a5796df
+Hash do Código: 2b789712
 
 > **Nota de localização:** Este prompt foi movido de `prompts/rs-parser.md`
 > para `prompts/parsers/rust.md` pelo ADR-0009. É a implementação de
@@ -135,6 +135,38 @@ Para cada import: `path` = fatia `&'a str` do buffer.
 `target_layer` via `LayerResolver` (crate:: é absoluto).
 `target_subdir` via `SubdirResolver`.
 `Layer::Lab` resolvido para imports de `lab/` — V10 usa este valor.
+
+#### Referências de caminho fora do `use` (cego #2, 0060)
+
+`collect_imports` faz duas fases. A 1ª varre `use`/`extern crate` (acima). A
+2ª (`collect_path_refs`) varre referências cross-crate por **caminho
+qualificado fora do `use`** — `crate_x::ITEM` em expressão, tipo ou atributo —
+que de outro modo somem (a aresta, e qualquer V3/V9/V14 que ela implique).
+
+| Posição | Nó AST | Exemplo | Parte |
+|---------|--------|---------|-------|
+| Expressão / chamada | `scoped_identifier` | `wiremod::FUNC()` | A (estruturada) |
+| Tipo / genérico | `scoped_type_identifier` | `let x: wiremod::T` | A (estruturada) |
+| Atributo / macro | `token_tree` (varrido) | `#[arg(default_value_t = wiremod::N)]` | B (frágil) |
+
+Para cada caminho coletado, o **1º segmento resolve pelo MESMO
+`classify_import`** — não duplicar lógica de camada. Só vira aresta se resolver
+a membro first-party ou dep externa de verdade. Caminho **local**
+(`crate::`/`self::`/`super::`/`Self`) e **stdlib** (`std`/`core`/`alloc`) são
+excluídos **antes** de classificar (`is_local_or_std_first_segment`) — a guarda
+contra trocar o falso-negativo por um falso-positivo (invariante 0058: 0
+só-linter; o resolvedor não inventa aresta que o compilador não vê).
+
+**Dedup (secção C):** um crate visto por `use` **e** por caminho inline não
+pode virar duas arestas. `seen` parte dos 1ºs segmentos dos `use` emitidos; um
+path-ref cujo 1º segmento já está em `seen` é descartado. N referências inline
+ao mesmo crate ⇒ uma aresta. Path-refs emitem `ImportKind::Direct`.
+
+**Cego residual (parte B, limite honesto):** caminhos gerados **dentro** do
+corpo de uma macro que a grammar não estrutura (não expostos como
+`scoped_identifier` nem como tokens `ident :: ident` num `token_tree` visível)
+podem permanecer invisíveis. É um cego **mais estreito**, nomeado — não o #2
+inteiro re-aberto.
 
 ### Tokens (V4)
 
@@ -580,3 +612,4 @@ Então nenhum acesso a disco ocorre durante testes
 | 2026-03-18 | ADR-0009 correcção: ImportKind semântico — tabela de mapeamento Rust→Direct/Glob/Alias/Named; nota sobre V4 usar file.language(); restrição de agnósticidade adicionada; critérios de ImportKind::Direct/Glob/Alias/Named adicionados | rs_parser.rs |
 | 2026-03-22 | ADR-0011/0012: static_item extraction (V13) — StaticDeclaration; mod_item usa file_layer em vez de Unknown (corrige V14 false positives) | rs_parser.rs |
 | 2026-03-22 | ADR-0013: mod_item separado de imports → module_decls; extract_module_decls(); file_layer removido de extract_imports/collect_imports | rs_parser.rs |
+| 2026-06-08 | Cego #2 (0060): 2ª fase de extração — collect_path_refs() coleta referências cross-crate por caminho fora do `use` (scoped_identifier/scoped_type_identifier + varredura de token_tree de atributo/macro); guarda local/std (is_local_or_std_first_segment); dedup por 1º segmento contra os `use` (seen); residual de corpo de macro nomeado | rs_parser.rs |
