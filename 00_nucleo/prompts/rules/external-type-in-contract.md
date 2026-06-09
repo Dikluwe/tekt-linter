@@ -1,5 +1,5 @@
 # Prompt: Rule V14 — External Type In Contract (external-type-in-contract)
-Hash do Código: 7c2593a2
+Hash do Código: 37b2cb8c
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V14
@@ -235,3 +235,4 @@ Então retorna duas violations — uma por import
 | Data | Motivo | Arquivos afetados |
 |------|--------|-------------------|
 | 2026-03-20 | Criação inicial (ADR-0012) | external_type_in_contract.rs |
+| 2026-06-09 | 0061: param `check_test_imports` (default false) — guard pula externos test-origin (`#[cfg(test)]`); dev-dep só de teste não contamina o contrato de produção de L1 | external_type_in_contract.rs |

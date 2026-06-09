@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash ad60b69b
+//! @prompt-hash 21f6c7ed
 //! @layer L4
-//! @updated 2026-03-23
+//! @updated 2026-06-09
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
@@ -163,7 +163,7 @@ fn main() {
     let (source_files, source_errors) = collect_walker_results(walker.files());
 
     let (mut all_violations, all_parsed, project_index) =
-        run_pipeline(&source_files, &source_errors, &parser, &enabled, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories);
+        run_pipeline(&source_files, &source_errors, &parser, &enabled, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false));
 
     // ── --emit-resolution (instrumentação 0058, fora do selo de veredito) ──────
     // Despeja a resolução de todo import (incl. Unknown) e sai — não roda regras.
@@ -265,7 +265,7 @@ fn main() {
                 v7: false, v8: false, v9: false, v10: false, v11: false, v12: false,
                 v13: false, v14: false,
             };
-            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v5_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories);
+            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v5_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false));
             violations.iter().filter(|v| v.rule_id == "V5").count()
         };
 
@@ -340,7 +340,7 @@ fn main() {
                 v7: false, v8: false, v9: false, v10: false, v11: false, v12: false,
                 v13: false, v14: false,
             };
-            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v6_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories);
+            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v6_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false));
             violations.iter().filter(|v| v.rule_id == "V6").count()
         };
 
@@ -490,6 +490,7 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
     wiring_config: &WiringConfig,
     l1_allowed: &L1AllowedExternalSet,
     strict_dirs: &[String],
+    check_test_imports: bool,
 ) -> (Vec<Violation<'a>>, Vec<ParsedFile<'a>>, ProjectIndex<'a>) {
     // Fase Map ─────────────────────────────────────────────────────────────────
 
@@ -506,7 +507,7 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
         .map(|source_file| -> (Vec<Violation<'a>>, Option<ParsedFile<'a>>, LocalIndex<'a>) {
             match parser.parse(source_file) {
                 Ok(parsed) => {
-                    let violations = run_checks(&parsed, enabled, l1_ports, wiring_config, l1_allowed, strict_dirs);
+                    let violations = run_checks(&parsed, enabled, l1_ports, wiring_config, l1_allowed, strict_dirs, check_test_imports);
                     let local = LocalIndex::from_parsed(&parsed);
                     (violations, Some(parsed), local)
                 }
@@ -562,20 +563,21 @@ fn run_checks<'a>(
     wiring_config: &WiringConfig,
     l1_allowed: &L1AllowedExternalSet,
     strict_dirs: &[String],
+    check_test_imports: bool,
 ) -> Vec<Violation<'a>> {
     let mut violations = Vec::new();
     let l1_allowed_lang = l1_allowed.for_language(&file.language);
     if enabled.v1  { violations.extend(prompt_header::check(file, strict_dirs)); }
     if enabled.v2  { violations.extend(test_file::check(file)); }
-    if enabled.v3  { violations.extend(forbidden_import::check(file)); }
+    if enabled.v3  { violations.extend(forbidden_import::check(file, check_test_imports)); }
     if enabled.v4  { violations.extend(impure_core::check(file)); }
     if enabled.v5  { violations.extend(prompt_drift::check(file)); }
     if enabled.v6  { violations.extend(prompt_stale::check(file)); }
-    if enabled.v9  { violations.extend(pub_leak::check(file, l1_ports)); }
+    if enabled.v9  { violations.extend(pub_leak::check(file, l1_ports, check_test_imports)); }
     if enabled.v10 { violations.extend(quarantine_leak::check(file)); }
     if enabled.v12 { violations.extend(wiring_logic_leak::check(file, wiring_config)); }
     if enabled.v13 { violations.extend(mutable_state_core::check(file)); }
-    if enabled.v14 { violations.extend(external_type_in_contract::check(file, l1_allowed_lang)); }
+    if enabled.v14 { violations.extend(external_type_in_contract::check(file, l1_allowed_lang, check_test_imports)); }
     violations
 }
 

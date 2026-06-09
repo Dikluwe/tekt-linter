@@ -628,3 +628,4 @@ Então retorna true
 | 2026-03-18 | ADR-0009 correcção: ImportKind reescrito como semântico (Direct/Glob/Alias/Named) — remove Use/ExternCrate/ModDecl/EsImport/PyImport que eram sintácticos; tabela de mapeamento por linguagem adicionada; nota em Token sobre V4 usar file.language(); restrição de agnósticidade de ImportKind documentada | parsed_file.rs |
 | 2026-03-22 | ADR-0011: StaticDeclaration<'a>, HasStaticDeclarations<'a>, static_declarations em ParsedFile | parsed_file.rs, rule_traits.rs |
 | 2026-03-22 | ADR-0012: L1AllowedExternal em entities/l1_allowed_external.rs | l1_allowed_external.rs |
+| 2026-06-09 | 0061: campo `Import.is_test_origin: bool` — `true` se o import nasce em `#[cfg(test)]` (removido do build de produção). A gravidade (V3/V9/V14) o pula por padrão | parsed_file.rs |

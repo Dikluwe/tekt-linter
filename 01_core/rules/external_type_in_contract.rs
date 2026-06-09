@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/external-type-in-contract.md
-//! @prompt-hash 814afa50
+//! @prompt-hash 994d0843
 //! @layer L1
-//! @updated 2026-03-22
+//! @updated 2026-06-09
 
 use std::borrow::Cow;
 
@@ -18,13 +18,22 @@ use crate::entities::violation::{Location, Violation, ViolationLevel};
 /// são permitidos. Stdlib (std, core, alloc) está sempre isenta.
 ///
 /// Error — aplica-se apenas a arquivos com `layer == L1`.
-pub fn check<'a, T: HasImports<'a>>(file: &T, allowed: &L1AllowedExternal) -> Vec<Violation<'a>> {
+///
+/// `check_test_imports` (default false, 0061): imports externos nascidos em
+/// `#[cfg(test)]` são pulados — um dev-dep só de teste não contamina o contrato
+/// de produção de L1.
+pub fn check<'a, T: HasImports<'a>>(
+    file: &T,
+    allowed: &L1AllowedExternal,
+    check_test_imports: bool,
+) -> Vec<Violation<'a>> {
     if *file.layer() != Layer::L1 {
         return vec![];
     }
 
     file.imports()
         .iter()
+        .filter(|import| check_test_imports || !import.is_test_origin)
         .filter(|import| import.target_layer == Layer::Unknown)
         .filter(|import| !allowed.is_allowed(package_name(import.path)))
         .map(|import| Violation {
@@ -94,6 +103,7 @@ mod tests {
             kind: ImportKind::Direct,
             target_layer: Layer::Unknown,
             target_subdir: None,
+            is_test_origin: false,
         }
     }
 
@@ -109,7 +119,7 @@ mod tests {
     fn unlisted_external_in_l1_triggers_v14() {
         let file = l1_file_with(vec![external_import("comemo::Tracked", 3)]);
         let allowed = whitelist(&["thiserror"]);
-        let violations = check(&file, &allowed);
+        let violations = check(&file, &allowed, false);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "V14");
         assert_eq!(violations[0].level, ViolationLevel::Error);
@@ -120,7 +130,7 @@ mod tests {
     fn listed_external_in_l1_is_allowed() {
         let file = l1_file_with(vec![external_import("thiserror::Error", 5)]);
         let allowed = whitelist(&["thiserror"]);
-        let violations = check(&file, &allowed);
+        let violations = check(&file, &allowed, false);
         assert!(violations.is_empty());
     }
 
@@ -129,7 +139,7 @@ mod tests {
         // std is always exempt (stdlib)
         let file = l1_file_with(vec![external_import("std::collections::HashMap", 2)]);
         let allowed = L1AllowedExternal::empty_for_rust();
-        let violations = check(&file, &allowed);
+        let violations = check(&file, &allowed, false);
         assert!(violations.is_empty());
     }
 
@@ -137,7 +147,7 @@ mod tests {
     fn core_import_with_empty_whitelist_is_allowed() {
         let file = l1_file_with(vec![external_import("core::fmt::Display", 2)]);
         let allowed = L1AllowedExternal::empty_for_rust();
-        let violations = check(&file, &allowed);
+        let violations = check(&file, &allowed, false);
         assert!(violations.is_empty());
     }
 
@@ -145,7 +155,7 @@ mod tests {
     fn tokio_not_in_whitelist_triggers_v14() {
         let file = l1_file_with(vec![external_import("tokio::sync::Mutex", 8)]);
         let allowed = whitelist(&["thiserror"]);
-        let violations = check(&file, &allowed);
+        let violations = check(&file, &allowed, false);
         assert_eq!(violations.len(), 1);
         assert!(violations[0].message.contains("tokio"));
     }
@@ -154,7 +164,7 @@ mod tests {
     fn serde_with_empty_whitelist_triggers_v14() {
         let file = l1_file_with(vec![external_import("serde::Serialize", 4)]);
         let allowed = L1AllowedExternal::empty_for_rust();
-        let violations = check(&file, &allowed);
+        let violations = check(&file, &allowed, false);
         assert_eq!(violations.len(), 1);
         assert!(violations[0].message.contains("serde"));
     }
@@ -163,7 +173,7 @@ mod tests {
     fn serde_in_whitelist_is_allowed() {
         let file = l1_file_with(vec![external_import("serde::Serialize", 4)]);
         let allowed = whitelist(&["serde", "thiserror"]);
-        let violations = check(&file, &allowed);
+        let violations = check(&file, &allowed, false);
         assert!(violations.is_empty());
     }
 
@@ -171,7 +181,7 @@ mod tests {
     fn l3_file_with_external_import_is_ignored() {
         let file = l3_file_with(vec![external_import("rayon::prelude", 1)]);
         let allowed = whitelist(&["thiserror"]);
-        let violations = check(&file, &allowed);
+        let violations = check(&file, &allowed, false);
         assert!(violations.is_empty());
     }
 
@@ -179,7 +189,7 @@ mod tests {
     fn l1_without_external_imports_returns_empty() {
         let file = l1_file_with(vec![]);
         let allowed = whitelist(&["thiserror"]);
-        let violations = check(&file, &allowed);
+        let violations = check(&file, &allowed, false);
         assert!(violations.is_empty());
     }
 
@@ -190,7 +200,7 @@ mod tests {
             external_import("tokio::runtime::Runtime", 7),
         ]);
         let allowed = whitelist(&["thiserror"]);
-        let violations = check(&file, &allowed);
+        let violations = check(&file, &allowed, false);
         assert_eq!(violations.len(), 2);
     }
 

@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/forbidden-import.md
-//! @prompt-hash d6bde6a2
+//! @prompt-hash 00dd34cc
 //! @layer L1
-//! @updated 2026-03-14
+//! @updated 2026-06-09
 
 use std::borrow::Cow;
 
@@ -22,9 +22,15 @@ use crate::entities::violation::{Location, Violation, ViolationLevel};
 /// L3 → L2, L4, Lab
 /// L4 → Lab
 /// L0, Lab → no restrictions
-pub fn check<'a, T: HasImports<'a>>(file: &T) -> Vec<Violation<'a>> {
+///
+/// `check_test_imports` (default false, 0061): a gravidade afirma o grafo de
+/// produção, então imports nascidos em `#[cfg(test)]` são pulados — `#[cfg(test)]`
+/// é removido do build de release. Ligada, o comportamento antigo (verifica teste)
+/// volta. É um **guard**, não lógica nova.
+pub fn check<'a, T: HasImports<'a>>(file: &T, check_test_imports: bool) -> Vec<Violation<'a>> {
     file.imports()
         .iter()
+        .filter(|import| check_test_imports || !import.is_test_origin)
         .filter(|import| is_forbidden(file.layer(), &import.target_layer))
         .map(|import| make_violation(file, import))
         .collect()
@@ -89,14 +95,14 @@ mod tests {
     }
 
     fn import(path: &'static str, line: usize, target_layer: Layer) -> Import<'static> {
-        Import { path, line, kind: ImportKind::Direct, target_layer, target_subdir: None }
+        Import { path, line, kind: ImportKind::Direct, target_layer, target_subdir: None, is_test_origin: false }
     }
 
     #[test]
     fn l2_importing_l3_is_violation() {
         let mut file = base_file(Layer::L2);
         file.imports.push(import("crate::infra::db", 4, Layer::L3));
-        let violations = check(&file);
+        let violations = check(&file, false);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "V3");
         assert_eq!(violations[0].location.line, 4);
@@ -106,14 +112,14 @@ mod tests {
     fn l1_importing_unknown_is_not_violation() {
         let mut file = base_file(Layer::L1);
         file.imports.push(import("reqwest::Client", 2, Layer::Unknown));
-        assert!(check(&file).is_empty());
+        assert!(check(&file, false).is_empty());
     }
 
     #[test]
     fn l4_importing_l1_is_allowed() {
         let mut file = base_file(Layer::L4);
         file.imports.push(import("crate::core::rules", 7, Layer::L1));
-        assert!(check(&file).is_empty());
+        assert!(check(&file, false).is_empty());
     }
 
     #[test]
@@ -121,7 +127,7 @@ mod tests {
         let mut file = base_file(Layer::L3);
         file.imports.push(import("crate::shell::api", 3, Layer::L2)); // forbidden
         file.imports.push(import("crate::core::entities", 7, Layer::L1)); // allowed
-        let violations = check(&file);
+        let violations = check(&file, false);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].location.line, 3);
     }
@@ -132,14 +138,14 @@ mod tests {
         file.imports.push(import("crate::core::foo", 1, Layer::L1));
         file.imports.push(import("crate::shell::bar", 2, Layer::L2));
         file.imports.push(import("crate::infra::baz", 3, Layer::L3));
-        assert!(check(&file).is_empty());
+        assert!(check(&file, false).is_empty());
     }
 
     #[test]
     fn l4_importing_lab_is_forbidden() {
         let mut file = base_file(Layer::L4);
         file.imports.push(import("lab::experiment", 5, Layer::Lab));
-        let violations = check(&file);
+        let violations = check(&file, false);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "V3");
     }
@@ -148,7 +154,7 @@ mod tests {
     fn violation_message_contains_layers_and_path() {
         let mut file = base_file(Layer::L1);
         file.imports.push(import("crate::infra::db", 9, Layer::L3));
-        let violations = check(&file);
+        let violations = check(&file, false);
         assert!(violations[0].message.contains("L1"));
         assert!(violations[0].message.contains("L3"));
         assert!(violations[0].message.contains("crate::infra::db"));
@@ -167,8 +173,9 @@ mod tests {
             kind: ImportKind::Named,
             target_layer: Layer::L3,
             target_subdir: None,
+            is_test_origin: false,
         });
-        let violations = check(&file);
+        let violations = check(&file, false);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "V3");
     }
@@ -183,8 +190,26 @@ mod tests {
             kind: ImportKind::Glob,
             target_layer: Layer::L3,
             target_subdir: None,
+            is_test_origin: false,
         });
-        assert_eq!(check(&file).len(), 1);
+        assert_eq!(check(&file, false).len(), 1);
+    }
+
+    #[test]
+    fn test_origin_import_skipped_by_default_checked_when_on() {
+        // Guard 0061: a MESMA aresta proibida (L2→L3) test-origin é pulada no default
+        // (check_test_imports=false) e volta a morder quando a opção liga.
+        let mut file = base_file(Layer::L2);
+        file.imports.push(Import {
+            path: "crate::infra::db",
+            line: 4,
+            kind: ImportKind::Direct,
+            target_layer: Layer::L3,
+            target_subdir: None,
+            is_test_origin: true,
+        });
+        assert!(check(&file, false).is_empty(), "test-origin pulado por padrão");
+        assert_eq!(check(&file, true).len(), 1, "ligada a opção, verifica teste");
     }
 
     #[test]
@@ -197,7 +222,8 @@ mod tests {
             kind: ImportKind::Alias,
             target_layer: Layer::L3,
             target_subdir: None,
+            is_test_origin: false,
         });
-        assert_eq!(check(&file).len(), 1);
+        assert_eq!(check(&file, false).len(), 1);
     }
 }

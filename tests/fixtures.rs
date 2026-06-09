@@ -282,3 +282,30 @@ fn v03i_pass_pathref_std() { assert_verdict("v03i_pass_pathref_std", &[]); }
 // Por isso o veredito é exatamente um V14, não dois.
 #[test]
 fn v14_fail_external_dep_in_core() { assert_verdict("v14_fail", &["V14"]); }
+
+// ── Excluir #[cfg(test)] da gravidade (0061) ──────────────────────────────────
+// A MESMA aresta proibida L1→L3 dentro de `#[cfg(test)]`: o default (excluir teste)
+// dá [], a opção `check_test_imports = true` reabre o gate → [V3]. O par
+// default-pass/on-fail é o bite-proof dos dois lados. Cobertas as DUAS vias de
+// coleta: `use` (collect_imports) e path-ref (collect_path_refs, do 0060).
+
+// Via `use` em `#[cfg(test)] mod` — default exclui.
+#[test]
+fn vtest_default_pass_use() { assert_verdict("vtest_default_pass", &[]); }
+
+// Mesma fonte, `check_test_imports = true` — o gate abre.
+#[test]
+fn vtest_on_fail_use() { assert_verdict("vtest_on_fail", &["V3"]); }
+
+// Via path-ref (fora do `use`) dentro de `#[cfg(test)] fn` — default exclui.
+#[test]
+fn vtest_pathref_default_pass() { assert_verdict("vtest_pathref_default_pass", &[]); }
+
+// Mesma fonte, opção ligada — path-ref test-origin volta a morder.
+#[test]
+fn vtest_pathref_on_fail() { assert_verdict("vtest_pathref_on_fail", &["V3"]); }
+
+// Não-regressão de produção: a MESMA aresta L1→L3 FORA de teste segue [V3] (a
+// mudança só tira arestas test-origin — produção nunca é test-origin).
+#[test]
+fn vtest_prod_fail() { assert_verdict("vtest_prod_fail", &["V3"]); }

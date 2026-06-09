@@ -1,5 +1,5 @@
 # Prompt: Crystalline Linter (crystalline-lint)
-Hash do Código: 9839e857
+Hash do Código: 7f1147cb
 
 **Camada**: L1 → L4 (sistema completo)
 **Criado em**: 2025-03-13
@@ -676,3 +676,4 @@ Então exit 0 — o linter passa em sua própria validação
 | 2026-03-20 | ADR-0010: [excluded_files] no crystalline.toml; lib.rs excluído por path relativo; lib.rs na estrutura de ficheiros com nota @layer L0; critério adicionado | linter-core.md, crystalline.toml, config.rs |
 | 2026-03-20 | Ordenação de violations após reduce: Fatal→Error→Warning, por path, por linha; sort_by adicionado ao pipeline; critério de determinismo adicionado; nota no PromptWalker sobre entradas inacessíveis | linter-core.md, main.rs |
 | 2026-03-23 | ADR-0014: V7 e V11 configuráveis via [rules]; `config.level_for` adicionado a CrystallineConfig; assinaturas de check_orphans e check_dangling_contracts com parâmetro `level`; pipeline global actualizado | linter-core.md, main.rs, config.rs, dangling_contract.rs, orphan_prompt.rs |
+| 2026-06-09 | 0061: `check_test_imports: Option<bool>` (default `None`⇒false) em CrystallineConfig; lido em main.rs (`unwrap_or(false)`) e passado por run_pipeline→run_checks a V3/V9/V14. Default seguro: a opção só aperta | linter-core.md, main.rs, config.rs |

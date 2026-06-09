@@ -242,6 +242,7 @@ fn collect_imports<'a>(
                                 kind: ImportKind::Direct,
                                 target_layer,
                                 target_subdir: None,
+                                is_test_origin: false,
                             });
                         }
                     }

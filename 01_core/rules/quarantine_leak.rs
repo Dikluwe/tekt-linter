@@ -71,11 +71,11 @@ mod tests {
     }
 
     fn lab_import(line: usize) -> Import<'static> {
-        Import { path: "crate::lab::algo", line, kind: ImportKind::Direct, target_layer: Layer::Lab, target_subdir: None }
+        Import { path: "crate::lab::algo", line, kind: ImportKind::Direct, target_layer: Layer::Lab, target_subdir: None, is_test_origin: false }
     }
 
     fn non_lab_import() -> Import<'static> {
-        Import { path: "crate::entities::Layer", line: 1, kind: ImportKind::Direct, target_layer: Layer::L1, target_subdir: None }
+        Import { path: "crate::entities::Layer", line: 1, kind: ImportKind::Direct, target_layer: Layer::L1, target_subdir: None, is_test_origin: false }
     }
 
     #[test]
@@ -151,6 +151,7 @@ mod tests {
             kind: ImportKind::Direct,
             target_layer: Layer::Unknown,
             target_subdir: None,
+            is_test_origin: false,
         });
         assert!(check(&file).is_empty());
     }
@@ -184,6 +185,7 @@ mod tests {
             kind: ImportKind::Direct,
             target_layer: Layer::L3,
             target_subdir: None,
+            is_test_origin: false,
         });
         assert!(check(&file).is_empty(), "L2→L3 deve ser V3, não V10");
     }

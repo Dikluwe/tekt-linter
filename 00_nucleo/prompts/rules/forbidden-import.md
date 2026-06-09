@@ -1,5 +1,5 @@
 # Prompt: Rule V3 - Forbidden Import (forbidden-import)
-Hash do Código: 608dfddd
+Hash do Código: 8a9a2d8e
 
 **Camada**: L1 (Core - Rules)
 **Regra**: V3
@@ -109,3 +109,4 @@ Então retorna vec![] — Lab não tem restrições de import
 |------|--------|-------------------|
 | 2025-03-13 | Criação inicial | forbidden_import.rs |
 | 2025-03-13 | Gap 3: removida menção a regex, alinhado com Import.target_layer | forbidden_import.rs |
+| 2026-06-09 | 0061: param `check_test_imports` (default false) — guard pula imports test-origin (`#[cfg(test)]`); a gravidade afirma o grafo de produção. Ligada, volta a verificar teste | forbidden_import.rs |

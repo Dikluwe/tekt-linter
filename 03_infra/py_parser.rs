@@ -484,6 +484,7 @@ fn process_import_statement<'a>(
                         kind: ImportKind::Direct,
                         target_layer: target_layer.clone(),
                         target_subdir,
+                        is_test_origin: false,
                     });
                     // Last segment as local name: "os.path" → "path", "os" → "os"
                     let local = module.rsplit('.').next().unwrap_or(module);
@@ -509,6 +510,7 @@ fn process_import_statement<'a>(
                             kind: ImportKind::Alias,
                             target_layer: target_layer.clone(),
                             target_subdir,
+                            is_test_origin: false,
                         });
                         if !alias.is_empty() {
                             name_map.insert(alias, (target_layer, target_subdir));
@@ -590,6 +592,7 @@ fn process_import_from_statement<'a>(
         kind,
         target_layer: target_layer.clone(),
         target_subdir,
+        is_test_origin: false,
     });
 
     // Extract imported names for import_name_map

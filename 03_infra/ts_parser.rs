@@ -407,6 +407,7 @@ fn collect_imports<'a>(
                     kind,
                     target_layer,
                     target_subdir,
+                    is_test_origin: false,
                 });
             }
         }
@@ -425,6 +426,7 @@ fn collect_imports<'a>(
                         kind,
                         target_layer,
                         target_subdir,
+                        is_test_origin: false,
                     });
                 }
             }
