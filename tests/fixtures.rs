@@ -249,6 +249,34 @@ fn v03c_fail_alias_use_resolves_crate() { assert_verdict("v03c_fail_alias", &["V
 #[test]
 fn v03d_fail_renamed_dep_resolves_crate() { assert_verdict("v03d_fail_rename", &["V3"]); }
 
+// ── Conserto do cego #2 (0060) — referência cross-crate por caminho fora do `use` ─
+// `wiremod::ITEM` (L4) num ficheiro L2, SEM `use`. A aresta L2→L4 (e o V3) só aparece
+// DEPOIS do conserto — antes, a extração só visitava `use`/`extern crate`.
+// Positivas: cada posição estruturada/atributo morde exatamente um V3.
+
+// A — expressão: `wiremod::go();` num corpo de função.
+#[test]
+fn v03e_fail_pathref_expr() { assert_verdict("v03e_fail_pathref_expr", &["V3"]); }
+
+// A — tipo: `-> wiremod::Thing` em posição de tipo.
+#[test]
+fn v03f_fail_pathref_type() { assert_verdict("v03f_fail_pathref_type", &["V3"]); }
+
+// B — atributo: `#[arg(default_value_t = wiremod::N)]` (varredura de token_tree).
+#[test]
+fn v03g_fail_pathref_attr() { assert_verdict("v03g_fail_pathref_attr", &["V3"]); }
+
+// Negativas (guarda contra falso-positivo): caminho local e stdlib NÃO criam aresta.
+// Local é bite-proof: o módulo interno `wire` está mapeado L4, logo se a guarda
+// `crate::` caísse, `crate::wire::Thing` resolveria L2→L4 e um V3 espúrio nasceria.
+#[test]
+fn v03h_pass_pathref_local() { assert_verdict("v03h_pass_pathref_local", &[]); }
+
+// Std é robustez: stdlib é isento a jusante por construção, então a sua referência
+// inline tem de continuar a dar 0 violação.
+#[test]
+fn v03i_pass_pathref_std() { assert_verdict("v03i_pass_pathref_std", &[]); }
+
 // V14: prova a distinção do 0052 — `use serde::…` (externo real) FALHA, enquanto
 // `use corehelper::…` (first-party L1, mesma camada) no MESMO ficheiro NÃO falha.
 // Por isso o veredito é exatamente um V14, não dois.

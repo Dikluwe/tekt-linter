@@ -1,10 +1,11 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/rust.md
-//! @prompt-hash 339156aa
+//! @prompt-hash 02cb144a
 //! @layer L3
-//! @updated 2026-03-22
+//! @updated 2026-06-08
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 
 use tree_sitter::{Node, Parser as TsParser};
 
@@ -231,7 +232,133 @@ fn extract_imports<'a>(
 ) -> Vec<Import<'a>> {
     let mut imports = Vec::new();
     collect_imports(root, source, config, registry, owner, &mut imports);
+
+    // Segunda fase (cego #2, 0060): referências cross-crate por caminho qualificado
+    // FORA do `use`/`extern crate` — expressão, tipo, atributo/macro. Dedup por 1º
+    // segmento contra os imports já coletados: um crate visto por `use` E por caminho
+    // inline não pode virar duas arestas (secção C). `seen` parte dos `use` emitidos.
+    let mut seen: HashSet<String> = imports.iter().map(|i| first_segment(i.path)).collect();
+    collect_path_refs(root, source, config, registry, owner, &mut seen, &mut imports);
+
     imports
+}
+
+/// Coleta referências cross-crate por caminho qualificado fora do `use`/`extern
+/// crate` — `scoped_identifier` (expressão), `scoped_type_identifier` (tipo),
+/// caminhos em tipos genéricos, e qualificações de chamada (todas `scoped_*`),
+/// além de `token_tree` de atributos/macros (parte B). Resolve o 1º segmento pelo
+/// MESMO `classify_import`; emite só se cross-crate first-party ou externo de
+/// verdade. Local (`crate::`/`self::`/`super::`) e `std`/`core`/`alloc` ficam fora
+/// — a guarda contra trocar o falso-negativo por falso-positivo (0058: 0 só-linter).
+fn collect_path_refs<'a>(
+    node: Node,
+    source: &'a [u8],
+    config: &CrystallineConfig,
+    registry: &CrateRegistry,
+    owner: Option<&MemberCrate>,
+    seen: &mut HashSet<String>,
+    imports: &mut Vec<Import<'a>>,
+) {
+    // `use`/`extern crate` já foram coletados na 1ª fase com o `ImportKind`
+    // correcto — não reprocessar as suas sub-árvores como path-refs.
+    if matches!(node.kind(), "use_declaration" | "extern_crate_declaration") {
+        return;
+    }
+
+    match node.kind() {
+        // Parte A — posições estruturadas: expressão e tipo. Caminhos aninhados
+        // (`a::b` dentro de `a::b::c`) reincidem no mesmo 1º segmento → dedup os absorve.
+        "scoped_identifier" | "scoped_type_identifier" => {
+            let line = node.start_position().row + 1;
+            try_emit_path_ref(node_text(node, source), line, config, registry, owner, seen, imports);
+        }
+        // Parte B — atributo/macro: conteúdo vem como `token_tree`; varrer por
+        // sequências `ident :: ident`. Limite honesto: caminhos gerados DENTRO do
+        // corpo de uma macro que a grammar não estrutura ficam invisíveis (residual).
+        "token_tree" => {
+            scan_token_tree(node, source, config, registry, owner, seen, imports);
+        }
+        _ => {}
+    }
+
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            collect_path_refs(child, source, config, registry, owner, seen, imports);
+        }
+    }
+}
+
+/// `true` se o 1º segmento é caminho local (`crate`/`self`/`super`/`Self`) ou
+/// stdlib (`std`/`core`/`alloc`) — nunca uma aresta cross-crate. Excluir ANTES de
+/// classificar: senão `crate::shell::X` inline viraria uma aresta intra-crate espúria.
+fn is_local_or_std_first_segment(path: &str) -> bool {
+    matches!(
+        first_segment(path).as_str(),
+        "crate" | "self" | "super" | "Self" | "std" | "core" | "alloc"
+    )
+}
+
+/// Resolve e (se cross-crate de verdade e ainda não vista) emite uma aresta para
+/// um caminho qualificado fora do `use`. `path` é fatia do buffer (`&'a str`).
+fn try_emit_path_ref<'a>(
+    path: &'a str,
+    line: usize,
+    config: &CrystallineConfig,
+    registry: &CrateRegistry,
+    owner: Option<&MemberCrate>,
+    seen: &mut HashSet<String>,
+    imports: &mut Vec<Import<'a>>,
+) {
+    if is_local_or_std_first_segment(path) {
+        return;
+    }
+    let key = first_segment(path);
+    if key.is_empty() || seen.contains(&key) {
+        return;
+    }
+    // Reusar a resolução existente — não duplicar lógica de camada. `classify_import`
+    // só devolve `Resolved` para membro first-party, self-import, ou dep externa
+    // declarada; item local (não membro/dep/std) cai em `LocalItem` e não vira aresta.
+    if let ImportClass::Resolved(target_layer) = classify_import(path, config, registry, owner) {
+        let target_subdir = resolve_subdir(path, config, &target_layer);
+        seen.insert(key);
+        imports.push(Import { path, line, kind: ImportKind::Direct, target_layer, target_subdir });
+    }
+}
+
+/// Varre os filhos directos de um `token_tree` (atributo/macro) por inícios de
+/// caminho — um `identifier` seguido de `::` e **não** precedido por `::` (i.e. o
+/// começo de um caminho, não um segmento intermédio) — e resolve o **1º segmento**
+/// (secção B). Granularidade de crate: emite apenas o nome do crate, sem
+/// reconstruir o caminho completo a partir dos tokens. O `classify_import`/`V3`/
+/// `V14` precisam só do 1º segmento; a **precisão de sub-caminho** (caminho
+/// completo e, logo, o subdir do V9 a partir de atributos) é o **residual nomeado**
+/// da parte B — caminhos em corpos de macro não-estruturados também ficam aqui.
+fn scan_token_tree<'a>(
+    node: Node,
+    source: &'a [u8],
+    config: &CrystallineConfig,
+    registry: &CrateRegistry,
+    owner: Option<&MemberCrate>,
+    seen: &mut HashSet<String>,
+    imports: &mut Vec<Import<'a>>,
+) {
+    let n = node.child_count();
+    for i in 0..n {
+        let child = match node.child(i) {
+            Some(c) => c,
+            None => continue,
+        };
+        if child.kind() != "identifier" {
+            continue;
+        }
+        let next_is_colon = node.child(i + 1).map(|c| c.kind() == "::").unwrap_or(false);
+        let prev_is_colon = i > 0 && node.child(i - 1).map(|c| c.kind() == "::").unwrap_or(false);
+        if next_is_colon && !prev_is_colon {
+            let line = child.start_position().row + 1;
+            try_emit_path_ref(node_text(child, source), line, config, registry, owner, seen, imports);
+        }
+    }
 }
 
 fn collect_imports<'a>(
@@ -1270,6 +1397,126 @@ fn main() {}",
         let file = source_file_at("/proj/core/src/x.rs", Layer::L1, "use EnumLocal::*;\nfn f() {}");
         let parsed = parser.parse(&file).unwrap();
         assert!(parsed.imports.iter().all(|i| !i.path.starts_with("EnumLocal")));
+    }
+
+    // ── path-ref cross-crate fora do `use` (cego #2, 0060) ───────────────────
+    //
+    // `collect_imports` deve enxergar referências cross-crate por caminho
+    // qualificado fora do `use`/`extern crate` — em expressão, tipo e atributo —
+    // sem inventar aresta para caminho local (`crate::`/`self::`/`super::`) ou `std`.
+
+    /// Helper: o Import cujo 1º segmento (normalizado) é `seg`, se houver.
+    fn import_to<'a>(parsed: &'a ParsedFile<'a>, seg: &str) -> Option<&'a Import<'a>> {
+        parsed.imports.iter().find(|i| first_segment(i.path) == seg)
+    }
+
+    #[test]
+    fn pathref_expression_collected_as_cross_crate() {
+        // A. expressão: L2 chama `proj_wiring::go()` (L4) sem `use` → aresta L2→L4.
+        let parser = make_parser_with_registry(case_registry());
+        let file = source_file_at(
+            "/proj/shell/src/x.rs",
+            Layer::L2,
+            "fn f() { proj_wiring::go(); }",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        let imp = import_to(&parsed, "proj_wiring").expect("path-ref de expressão coletado");
+        assert_eq!(imp.target_layer, Layer::L4);
+    }
+
+    #[test]
+    fn pathref_type_position_collected_as_cross_crate() {
+        // A. tipo: L2 com tipo de retorno `proj_wiring::T` (L4) sem `use` → aresta L2→L4.
+        let parser = make_parser_with_registry(case_registry());
+        let file = source_file_at(
+            "/proj/shell/src/x.rs",
+            Layer::L2,
+            "fn f() -> proj_wiring::T { todo!() }",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        let imp = import_to(&parsed, "proj_wiring").expect("path-ref de tipo coletado");
+        assert_eq!(imp.target_layer, Layer::L4);
+    }
+
+    #[test]
+    fn pathref_attribute_token_tree_collected_as_cross_crate() {
+        // B. atributo: L2 com `#[arg(default_value_t = proj_wiring::N)]` (L4) → aresta L2→L4.
+        let parser = make_parser_with_registry(case_registry());
+        let file = source_file_at(
+            "/proj/shell/src/x.rs",
+            Layer::L2,
+            "struct S {\n  #[arg(default_value_t = proj_wiring::N)]\n  field: u32,\n}",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        let imp = import_to(&parsed, "proj_wiring").expect("path-ref de atributo coletado");
+        assert_eq!(imp.target_layer, Layer::L4);
+    }
+
+    #[test]
+    fn pathref_local_crate_path_creates_no_import() {
+        // Negativa: `crate::interno::Foo` inline é local — não pode virar aresta.
+        let parser = make_parser_with_registry(case_registry());
+        let file = source_file_at(
+            "/proj/shell/src/x.rs",
+            Layer::L2,
+            "fn f() { let _x = crate::interno::Foo; }",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        assert!(parsed.imports.iter().all(|i| !i.path.contains("interno")));
+    }
+
+    #[test]
+    fn pathref_super_path_creates_no_import() {
+        // Negativa: `super::X` inline é local — não pode virar aresta.
+        let parser = make_parser_with_registry(case_registry());
+        let file = source_file_at(
+            "/proj/shell/src/x.rs",
+            Layer::L2,
+            "fn f() { let _x = super::Algo; }",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        assert!(parsed.imports.iter().all(|i| first_segment(i.path) != "super"));
+    }
+
+    #[test]
+    fn pathref_std_path_creates_no_import() {
+        // Negativa: `std::cmp::max(...)` inline é stdlib — não pode virar aresta.
+        let parser = make_parser_with_registry(case_registry());
+        let file = source_file_at(
+            "/proj/shell/src/x.rs",
+            Layer::L2,
+            "fn f() { let _x = std::cmp::max(1, 2); }",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        assert!(parsed.imports.iter().all(|i| first_segment(i.path) != "std"));
+    }
+
+    #[test]
+    fn pathref_deduped_against_use_of_same_crate() {
+        // C. dedup: `use proj_wiring::A;` + `proj_wiring::go()` inline → UMA aresta.
+        let parser = make_parser_with_registry(case_registry());
+        let file = source_file_at(
+            "/proj/shell/src/x.rs",
+            Layer::L2,
+            "use proj_wiring::A;\nfn f() { proj_wiring::go(); }",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        let n = parsed.imports.iter().filter(|i| first_segment(i.path) == "proj_wiring").count();
+        assert_eq!(n, 1, "uso + path-ref do mesmo crate = uma aresta");
+    }
+
+    #[test]
+    fn pathref_multiple_inline_refs_dedup_to_one_edge() {
+        // C. dedup: dois path-refs inline ao mesmo crate → UMA aresta.
+        let parser = make_parser_with_registry(case_registry());
+        let file = source_file_at(
+            "/proj/shell/src/x.rs",
+            Layer::L2,
+            "fn f() { proj_wiring::a(); proj_wiring::b(); }",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        let n = parsed.imports.iter().filter(|i| first_segment(i.path) == "proj_wiring").count();
+        assert_eq!(n, 1, "dois path-refs ao mesmo crate = uma aresta");
     }
 
     #[test]

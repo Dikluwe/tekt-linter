@@ -68,6 +68,7 @@ rules     = "rules"
 "00_nucleo/prompts/mutacao-caminho-veredito.md"  = "fixtures de config/walker em tests/ (excluído), não arquivo Rust"
 "00_nucleo/prompts/oraculo-diferencial.md"       = "oráculo diferencial: instrumentação --emit + harness cross-repo, não materializa regra"
 "00_nucleo/prompts/consertar-cego-1-3.md"        = "conserto do resolvedor (alias/rename) + fixtures em tests/ (excluído)"
+"00_nucleo/prompts/consertar-cego-2.md"          = "conserto do cego #2 (path-ref fora do use) — estende rs_parser.rs (nucleado por parsers/rust.md) + fixtures em tests/ (excluído)"
 
 # Exceções V12 — declarações permitidas em L4
 # true = permite struct_item em L4 (padrão — adapter structs são comuns)
