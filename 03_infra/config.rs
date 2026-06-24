@@ -12,10 +12,28 @@ use serde::Deserialize;
 use crate::entities::layer::Layer;
 use crate::entities::violation::ViolationLevel;
 
+const LANGUAGES: &[&str] = &["rust", "python", "typescript", "c", "cpp", "zig"];
+
+fn is_language_key(key: &str) -> bool {
+    LANGUAGES.contains(&key)
+}
+
 /// Entrada individual de `[rules]` — nível configurável por regra.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct RuleEntry {
     pub level: Option<String>,
+}
+
+/// Entrada de `[l1_allowed_external]` — suporta formato legacy e type-level.
+///
+/// Legacy: `rust = ["thiserror"]` (lista de crates autorizadas crate-wide).
+/// Type-level: `[l1_allowed_external.ecow] types = ["EcoString"]` (itens
+/// explicitamente autorizados de uma crate).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum AllowedExternalEntry {
+    Legacy(Vec<String>),
+    TypeLevel { types: Vec<String> },
 }
 
 /// Configuração de exceções para V12 — lida de `[wiring_exceptions]`.
@@ -75,10 +93,16 @@ pub struct CrystallineConfig {
     pub excluded_files: HashMap<String, String>,
     /// Pacotes externos permitidos em L1 por linguagem.
     /// Se ausente, L1 não pode importar nenhum externo.
-    /// Chave: "rust", "typescript", "python"
-    /// Valor: lista de nomes de pacote
+    ///
+    /// Suporta dois formatos:
+    /// - Legacy: `rust = ["thiserror"]` — chave é linguagem, valor é lista de
+    ///   crates autorizadas crate-wide.
+    /// - Type-level: `[l1_allowed_external.ecow] types = ["EcoString"]` — chave
+    ///   é nome da crate, valor é lista de itens autorizados. Crate-keys sem
+    ///   language explícito são atribuídos a Rust (adequado a projetos Rust-only
+    ///   como typst-cristalino).
     #[serde(default)]
-    pub l1_allowed_external: HashMap<String, Vec<String>>,
+    pub l1_allowed_external: HashMap<String, AllowedExternalEntry>,
     /// Níveis configuráveis por regra — lidos de `[rules]`.
     /// Exemplo: { "V11" => RuleEntry { level: Some("warning") } }
     #[serde(default)]
@@ -127,13 +151,33 @@ impl CrystallineConfig {
             .unwrap_or(default)
     }
 
-    /// Returns the set of allowed external packages for a given language.
-    /// Returns an empty set if the language is not present in the config.
-    pub fn l1_allowed_for_language(&self, language: &str) -> HashSet<String> {
-        self.l1_allowed_external
-            .get(language)
-            .map(|v| v.iter().cloned().collect())
-            .unwrap_or_default()
+    /// Returns the map of allowed external crates → allowed items for a given
+    /// language. An empty item set means crate-wide allowance (legacy).
+    /// Returns an empty map if the language is not present in the config.
+    pub fn l1_allowed_for_language(&self, language: &str) -> HashMap<String, HashSet<String>> {
+        let mut result = HashMap::new();
+        for (key, entry) in &self.l1_allowed_external {
+            match entry {
+                AllowedExternalEntry::Legacy(crates) => {
+                    if key == language {
+                        for c in crates {
+                            result.insert(c.clone(), HashSet::new());
+                        }
+                    }
+                }
+                AllowedExternalEntry::TypeLevel { types } => {
+                    if is_language_key(key) {
+                        // type-level por linguagem não é suportado; ignora.
+                        continue;
+                    }
+                    // Crate-key sem language explícita: atribui a Rust.
+                    if language == "rust" {
+                        result.insert(key.clone(), types.iter().cloned().collect());
+                    }
+                }
+            }
+        }
+        result
     }
 
     /// Resolve a Rust module name (e.g. "entities") to a Layer.
@@ -259,6 +303,33 @@ mod tests {
     fn l1_allowed_for_language_returns_empty_for_missing_key() {
         let config = CrystallineConfig::default();
         assert!(config.l1_allowed_for_language("rust").is_empty());
+    }
+
+    #[test]
+    fn l1_allowed_for_language_parses_legacy_format() {
+        let toml = r#"
+[l1_allowed_external]
+rust = ["thiserror", "serde"]
+"#;
+        let config: CrystallineConfig = toml::from_str(toml).unwrap();
+        let allowed = config.l1_allowed_for_language("rust");
+        assert!(allowed.contains_key("thiserror"));
+        assert!(allowed.contains_key("serde"));
+        assert!(allowed["thiserror"].is_empty());
+        assert!(config.l1_allowed_for_language("python").is_empty());
+    }
+
+    #[test]
+    fn l1_allowed_for_language_parses_type_level_format() {
+        let toml = r#"
+[l1_allowed_external.ecow]
+types = ["EcoString", "EcoVec"]
+"#;
+        let config: CrystallineConfig = toml::from_str(toml).unwrap();
+        let allowed = config.l1_allowed_for_language("rust");
+        assert_eq!(allowed.get("ecow").map(|s| s.len()), Some(2));
+        assert!(allowed["ecow"].contains("EcoString"));
+        assert!(config.l1_allowed_for_language("python").is_empty());
     }
 
     #[test]
