@@ -105,6 +105,13 @@ fn v12_pass_clean() { assert_verdict("v12_pass", &[]); }
 fn v13_pass_clean() { assert_verdict("v13_pass", &[]); }
 #[test]
 fn v14_pass_clean() { assert_verdict("v14_pass", &[]); }
+#[test]
+fn v15_pass_clean() { assert_verdict("v15_pass", &[]); }
+
+// V15 negativa: "@prompt" em comentário // normal, fora do bloco de
+// doc-header, não conta — só as linhas //! do topo alimentam prompt_refs.
+#[test]
+fn v15b_pass_prompt_mentioned_in_plain_comment() { assert_verdict("v15b_pass", &[]); }
 
 // ── Caminhos que FALHAM — conjunto fixado de violações ──────────────────────────
 
@@ -146,6 +153,12 @@ fn v11_fail_dangling_contract() { assert_verdict("v11_fail", &["V11"]); }
 fn v12_fail_enum_in_wiring() { assert_verdict("v12_fail", &["V12"]); }
 #[test]
 fn v13_fail_mutable_static_in_core() { assert_verdict("v13_fail", &["V13"]); }
+
+// V15: duas linhas `//! @prompt` no doc-header — a regra de linhagem é
+// um ficheiro, um prompt; --fix-hashes é indefinido com multi-@prompt,
+// por isso o lint bloqueia em vez de corrigir ambiguamente.
+#[test]
+fn v15_fail_multi_prompt_header() { assert_verdict("v15_fail", &["V15"]); }
 
 // ── Fechamento da extração (0055) — V6/V12/V2/V4 ──────────────────────────────
 // Mata os sobreviventes de extração que o corpo 0054 deixou adiados. A fixture V6

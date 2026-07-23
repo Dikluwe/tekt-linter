@@ -288,7 +288,7 @@ pub struct PromptHeader<'a> {
 // Direção correta: entities → contracts (nunca entities → rules)
 
 use crate::entities::rule_traits::{
-    HasCoverage, HasHashes, HasImports, HasModuleDecls, HasPromptFilesystem,
+    HasCoverage, HasHashes, HasImports, HasModuleDecls, HasPromptFilesystem, HasPromptRefs,
     HasPublicInterface, HasPubLeak, HasStaticDeclarations, HasTokens, HasWiringPurity,
 };
 
@@ -298,6 +298,18 @@ impl<'a> HasPromptFilesystem<'a> for ParsedFile<'a> {
     }
     fn prompt_file_exists(&self) -> bool {
         self.prompt_file_exists
+    }
+    fn path(&self) -> &'a Path {
+        self.path
+    }
+}
+
+impl<'a> HasPromptRefs<'a> for ParsedFile<'a> {
+    fn layer(&self) -> &Layer {
+        &self.layer
+    }
+    fn prompt_refs(&self) -> &[&'a str] {
+        &self.prompt_refs
     }
     fn path(&self) -> &'a Path {
         self.path
@@ -422,6 +434,13 @@ pub struct ParsedFile<'a> {
     /// For V1: true if prompt_header.prompt_path exists in 00_nucleo/.
     pub prompt_file_exists: bool,
 
+    /// For V15: every `@prompt` value found in the doc-header block
+    /// (`//!` lines at the top), in order of appearance.
+    /// Populated only by RustParser — other parsers produce `vec![]`.
+    /// `len() <= 1` is the legitimate state (um ficheiro, um prompt);
+    /// `len() >= 2` is V15 MultiPromptHeader.
+    pub prompt_refs: Vec<&'a str>,
+
     /// For V2: true if #[cfg(test)] is present in AST or foo_test.rs exists adjacent.
     pub has_test_coverage: bool,
 
@@ -477,6 +496,7 @@ mod tests {
             language: Language::Rust,
             prompt_header: None,
             prompt_file_exists: false,
+            prompt_refs: vec![],
             has_test_coverage: false,
             imports: vec![],
             tokens: vec![],
@@ -735,5 +755,25 @@ mod tests {
         let f = base_file(); // layer == L1, declarations empty
         assert_eq!(HasWiringPurity::layer(&f), &Layer::L1);
         assert!(HasWiringPurity::declarations(&f).is_empty());
+    }
+
+    // ── prompt_refs / HasPromptRefs (V15) ───────────────────────────────────
+
+    #[test]
+    fn prompt_refs_empty_by_default() {
+        let f = base_file();
+        assert!(f.prompt_refs.is_empty());
+    }
+
+    #[test]
+    fn has_prompt_refs_returns_layer_refs_and_path() {
+        use crate::entities::rule_traits::HasPromptRefs;
+        let mut f = base_file();
+        f.prompt_refs.push("00_nucleo/prompts/a.md");
+        f.prompt_refs.push("00_nucleo/prompts/b.md");
+        assert_eq!(HasPromptRefs::layer(&f), &Layer::L1);
+        assert_eq!(HasPromptRefs::prompt_refs(&f).len(), 2);
+        assert_eq!(HasPromptRefs::prompt_refs(&f)[1], "00_nucleo/prompts/b.md");
+        assert_eq!(HasPromptRefs::path(&f), Path::new("01_core/foo.rs"));
     }
 }

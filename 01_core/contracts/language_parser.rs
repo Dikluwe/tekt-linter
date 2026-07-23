@@ -40,6 +40,7 @@ mod tests {
             language: Language::Rust,
             prompt_header: None,
             prompt_file_exists: false,
+            prompt_refs: vec![],
             has_test_coverage: false,
             imports: vec![],
             tokens: vec![],

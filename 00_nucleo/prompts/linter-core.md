@@ -178,6 +178,15 @@ em L2/L3. Opera sobre `ProjectIndex`. Error (bloqueante).
 Declaração de tipo em L4. `impl Trait for Type`, `class implements`
 e `class(Protocol/ABC)` são permitidos. Warning por padrão.
 
+**V13 — Mutable State In Core**
+Estado global mutável viola a pureza de L1 (e.g., `static Mutex<T>`). O estado deve ser injectado por parâmetro, não partilhado globalmente. Error.
+
+**V14 — External Type In Contract**
+L1 é fechada por defeito para dependências externas. Apenas pacotes (e itens) explicitamente autorizados em `[l1_allowed_external]` são permitidos. Error.
+
+**V15 — MultiPromptHeader**
+Um ficheiro deve ter apenas um cabeçalho `@prompt`. Múltiplos cabeçalhos causam comportamento indefinido com `--fix-hashes` (causa raiz: prompts táticos de passo promovidos por engano a L0 perene). Error.
+
 ---
 
 ## Flags CLI
@@ -190,7 +199,7 @@ ARGS:
 OPTIONS:
   --format <fmt>         sarif | text | json             [padrão: text]
   --fail-on <level>      error | warning                [padrão: error]
-  --checks <list>        v0,v1,...,v12                  [padrão: all]
+  --checks <list>        v0,v1,...,v15                  [padrão: all]
   --no-drift             desabilita V5
   --no-stale             desabilita V6
   --machine-readable     alias para --format sarif
@@ -287,6 +296,9 @@ V9  = { level = "error" }
 V10 = { level = "fatal" }
 V11 = { level = "error" }
 V12 = { level = "warning" }
+V13 = { level = "error" }
+V14 = { level = "error" }
+V15 = { level = "error" }
 ```
 
 ---
@@ -313,7 +325,10 @@ V12 = { level = "warning" }
           { "id": "V9",  "name": "PubLeak",            "defaultConfiguration": { "level": "error" } },
           { "id": "V10", "name": "QuarantineLeak",     "defaultConfiguration": { "level": "error" } },
           { "id": "V11", "name": "DanglingContract",   "defaultConfiguration": { "level": "error" } },
-          { "id": "V12", "name": "WiringLogicLeak",    "defaultConfiguration": { "level": "warning" } }
+          { "id": "V12", "name": "WiringLogicLeak",    "defaultConfiguration": { "level": "warning" } },
+          { "id": "V13", "name": "MutableStateInCore", "defaultConfiguration": { "level": "error" } },
+          { "id": "V14", "name": "ExternalTypeInContract", "defaultConfiguration": { "level": "error" } },
+          { "id": "V15", "name": "MultiPromptHeader",  "defaultConfiguration": { "level": "error" } }
         ]
       }
     }
@@ -513,7 +528,10 @@ crystalline-lint/
 │   │   │   ├── pub-leak.md           (V9)
 │   │   │   ├── quarantine-leak.md    (V10)
 │   │   │   ├── dangling-contract.md  (V11)
-│   │   │   └── wiring-logic-leak.md  (V12)
+│   │   │   ├── wiring-logic-leak.md  (V12)
+│   │   │   ├── mutable-state-core.md (V13)
+│   │   │   ├── external-type-in-contract.md (V14)
+│   │   │   └── multi-prompt-header.md (V15)
 │   │   ├── file-walker.md
 │   │   ├── prompt-walker.md
 │   │   ├── sarif-formatter.md
@@ -555,7 +573,10 @@ crystalline-lint/
 │       ├── pub_leak.rs               (V9)
 │       ├── quarantine_leak.rs        (V10)
 │       ├── dangling_contract.rs      (V11)
-│       └── wiring_logic_leak.rs      (V12)
+│       ├── wiring_logic_leak.rs      (V12)
+│       ├── mutable_state_core.rs     (V13)
+│       ├── external_type_in_contract.rs (V14)
+│       └── multi_prompt_header.rs    (V15)
 │
 ├── 02_shell/
 │   ├── cli.rs
@@ -650,7 +671,7 @@ Então V12 Warning
 
 Dado --format sarif
 Quando crystalline-lint rodar
-Então stdout é SARIF 2.1.0 válido com V0–V12
+Então stdout é SARIF 2.1.0 válido com V0–V15
 
 Dado o próprio projeto crystalline-lint
 Quando crystalline-lint rodar sobre si mesmo

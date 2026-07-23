@@ -9,6 +9,7 @@ pub mod dangling_contract;
 pub mod external_type_in_contract;
 pub mod forbidden_import;
 pub mod impure_core;
+pub mod multi_prompt_header;
 pub mod mutable_state_core;
 pub mod orphan_prompt;
 pub mod prompt_drift;

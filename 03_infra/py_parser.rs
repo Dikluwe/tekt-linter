@@ -167,6 +167,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for PyParser<R, S>
             language: file.language.clone(),
             prompt_header,
             prompt_file_exists,
+            prompt_refs: vec![],
             has_test_coverage,
             imports,
             tokens,

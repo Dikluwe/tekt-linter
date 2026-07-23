@@ -4,6 +4,19 @@ Todas as mudanças notáveis deste projeto são registadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [Unreleased]
+
+### Added
+
+- **V15 `MultiPromptHeader`** — arquivo `.rs` em L1–L4 com 2+ linhas
+  `//! @prompt` no doc-header passa a ser **erro bloqueante de lint**.
+  A regra de linhagem é um ficheiro, um prompt; com multi-`@prompt` o
+  `--fix-hashes` comportava-se de forma indefinida (hash certo no header
+  errado). O lint agora bloqueia com mensagem que lista os prompts
+  encontrados, em vez de silêncio ou correcção ambígua. `ParsedFile`
+  ganha o campo `prompt_refs` (populado apenas pelo RustParser) e o
+  default de `--checks` passa a incluir `v15`.
+
 ## [0.2.0] — 2026-06-09
 
 Primeira versão versionada e taggeada. Sobre a base `0.1.0` (não taggeada —

@@ -62,6 +62,9 @@ crystalline-lint --update-snapshot --dry-run .
 | V10 | `QuarantineLeak` | **fatal** | Arquivo de produção (L1–L4) importa de `lab/`. Bloqueia CI incondicionalmente — não configurável |
 | V11 | `DanglingContract` | **error** | Trait em `L1/contracts/` sem `impl` correspondente em L2 ou L3. Verificado globalmente após análise completa |
 | V12 | `WiringLogicLeak` | **warning** | `struct`, `enum` ou `impl` sem trait declarado em L4. L4 não cria tipos — apenas liga os que existem |
+| V13 | `MutableStateInCore` | **error** | Estado global mutável (`static mut`, `Mutex`, `Atomic*`, etc.) declarado em L1 |
+| V14 | `ExternalTypeInContract` | **error** | Dependência externa não autorizada em L1 (fora de `[l1_allowed_external]`) |
+| V15 | `MultiPromptHeader` | **error** | Arquivo `.rs` em L1–L4 com 2+ linhas `//! @prompt` no doc-header. A regra de linhagem é um ficheiro, um prompt — com multi-`@prompt` o `--fix-hashes` é indefinido, por isso o lint bloqueia em vez de corrigir ambiguamente |
 
 **Sobre níveis Fatal (V0, V8, V10):** a ausência de violações garante
 que todos os arquivos foram lidos e analisados com sucesso. Fatal
@@ -191,6 +194,9 @@ V9  = { level = "error" }
 V10 = { level = "fatal" }
 V11 = { level = "error" }
 V12 = { level = "warning" }
+V13 = { level = "error" }
+V14 = { level = "error" }
+V15 = { level = "error" }
 ```
 
 ---
@@ -359,7 +365,10 @@ crystalline-lint/
 │   │   │   ├── pub-leak.md           (V9)
 │   │   │   ├── quarantine-leak.md    (V10)
 │   │   │   ├── dangling-contract.md  (V11)
-│   │   │   └── wiring-logic-leak.md  (V12)
+│   │   │   ├── wiring-logic-leak.md  (V12)
+│   │   │   ├── mutable-state-core.md (V13)
+│   │   │   ├── external-type-in-contract.md (V14)
+│   │   │   └── multi-prompt-header.md (V15)
 │   │   ├── file-walker.md
 │   │   ├── prompt-walker.md
 │   │   ├── sarif-formatter.md

@@ -91,6 +91,17 @@ pub trait HasStaticDeclarations<'a> {
     fn path(&self) -> &'a Path;
 }
 
+// ── V15 ───────────────────────────────────────────────────────────────────────
+
+/// Para V15 — verifica unicidade da linhagem @prompt (um ficheiro, um prompt).
+/// `prompt_refs()` expõe todos os valores `@prompt` do bloco de doc-header,
+/// em ordem. `len() >= 2` em L1–L4 é violação.
+pub trait HasPromptRefs<'a> {
+    fn layer(&self) -> &Layer;
+    fn prompt_refs(&self) -> &[&'a str];
+    fn path(&self) -> &'a Path;
+}
+
 // ── V12 ───────────────────────────────────────────────────────────────────────
 
 /// Para V12 — verifica declarações de tipo em L4.
@@ -202,6 +213,17 @@ mod tests {
         fn path(&self) -> &'static Path { self.path }
     }
 
+    struct MockV15 {
+        layer: Layer,
+        refs: Vec<&'static str>,
+        path: &'static Path,
+    }
+    impl HasPromptRefs<'static> for MockV15 {
+        fn layer(&self) -> &Layer { &self.layer }
+        fn prompt_refs(&self) -> &[&'static str] { &self.refs }
+        fn path(&self) -> &'static Path { self.path }
+    }
+
     #[test]
     fn mock_v1_implements_has_prompt_filesystem() {
         let m = MockV1 { path: Path::new("foo.rs") };
@@ -286,5 +308,17 @@ mod tests {
         };
         assert_eq!(m.layer(), &Layer::L3);
         assert!(m.declarations().is_empty());
+    }
+
+    #[test]
+    fn mock_v15_implements_has_prompt_refs() {
+        let m = MockV15 {
+            layer: Layer::L2,
+            refs: vec!["00_nucleo/prompts/a.md", "00_nucleo/prompts/b.md"],
+            path: Path::new("02_shell/cli.rs"),
+        };
+        assert_eq!(m.layer(), &Layer::L2);
+        assert_eq!(m.prompt_refs().len(), 2);
+        assert_eq!(m.path(), Path::new("02_shell/cli.rs"));
     }
 }
