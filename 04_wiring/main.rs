@@ -38,8 +38,8 @@ use crystalline_lint::infra::snapshot_writer;
 use crystalline_lint::infra::walker::FileWalker;
 use crystalline_lint::rules::{
     alien_file, dangling_contract, external_type_in_contract, forbidden_import, impure_core,
-    mutable_state_core, orphan_prompt, prompt_drift, prompt_header, prompt_stale, pub_leak,
-    quarantine_leak, test_file, wiring_logic_leak,
+    multi_prompt_header, mutable_state_core, orphan_prompt, prompt_drift, prompt_header,
+    prompt_stale, pub_leak, quarantine_leak, test_file, wiring_logic_leak,
 };
 use crystalline_lint::rules::pub_leak::L1Ports;
 use crystalline_lint::shell::cli::{validate_args, Cli, EnabledChecks, OutputFormat};
@@ -263,7 +263,7 @@ fn main() {
             let v5_only = EnabledChecks {
                 v1: false, v2: false, v3: false, v4: false, v5: true, v6: false,
                 v7: false, v8: false, v9: false, v10: false, v11: false, v12: false,
-                v13: false, v14: false,
+                v13: false, v14: false, v15: false,
             };
             let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v5_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false));
             violations.iter().filter(|v| v.rule_id == "V5").count()
@@ -338,7 +338,7 @@ fn main() {
             let v6_only = EnabledChecks {
                 v1: false, v2: false, v3: false, v4: false, v5: false, v6: true,
                 v7: false, v8: false, v9: false, v10: false, v11: false, v12: false,
-                v13: false, v14: false,
+                v13: false, v14: false, v15: false,
             };
             let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v6_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false));
             violations.iter().filter(|v| v.rule_id == "V6").count()
@@ -578,6 +578,7 @@ fn run_checks<'a>(
     if enabled.v12 { violations.extend(wiring_logic_leak::check(file, wiring_config)); }
     if enabled.v13 { violations.extend(mutable_state_core::check(file)); }
     if enabled.v14 { violations.extend(external_type_in_contract::check(file, l1_allowed_lang, check_test_imports)); }
+    if enabled.v15 { violations.extend(multi_prompt_header::check(file)); }
     violations
 }
 

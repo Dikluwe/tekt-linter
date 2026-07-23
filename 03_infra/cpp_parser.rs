@@ -122,6 +122,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for CppParser<R, S
             language: file.language.clone(),
             prompt_header,
             prompt_file_exists,
+            prompt_refs: vec![],
             has_test_coverage,
             imports,
             tokens,

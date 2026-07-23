@@ -274,6 +274,7 @@ mod tests {
                 updated: None,
             }),
             prompt_file_exists: true,
+            prompt_refs: vec![],
             has_test_coverage: true,
             imports: vec![],
             tokens: vec![],

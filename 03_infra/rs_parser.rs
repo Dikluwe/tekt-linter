@@ -90,7 +90,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
         let source = file.content.as_bytes();
 
         // ── Header ────────────────────────────────────────────────────────────
-        let mut prompt_header = extract_header(&file.content);
+        let (mut prompt_header, prompt_refs) = extract_header(&file.content);
 
         let prompt_file_exists = prompt_header
             .as_ref()
@@ -159,6 +159,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
             language: file.language.clone(),
             prompt_header,
             prompt_file_exists,
+            prompt_refs,
             has_test_coverage,
             imports,
             tokens,
@@ -176,11 +177,14 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
 
 // ── Header extraction ─────────────────────────────────────────────────────────
 
-fn extract_header<'a>(source: &'a str) -> Option<PromptHeader<'a>> {
+fn extract_header<'a>(source: &'a str) -> (Option<PromptHeader<'a>>, Vec<&'a str>) {
     let mut prompt_path: Option<&'a str> = None;
     let mut prompt_hash: Option<&'a str> = None;
     let mut layer: Option<Layer> = None;
     let mut updated: Option<&'a str> = None;
+    // V15: todos os valores `@prompt` do bloco, em ordem — len() >= 2 é
+    // MultiPromptHeader (um ficheiro, um prompt).
+    let mut prompt_refs: Vec<&'a str> = Vec::new();
 
     for line in source.lines() {
         let trimmed = line.trim();
@@ -192,6 +196,9 @@ fn extract_header<'a>(source: &'a str) -> Option<PromptHeader<'a>> {
         if let Some(val) = content.strip_prefix("@prompt-hash ") {
             prompt_hash = Some(val.trim());
         } else if let Some(val) = content.strip_prefix("@prompt ") {
+            prompt_refs.push(val.trim());
+            // Comportamento de último-valor preservado para V1/V5 — é V15
+            // quem bloqueia o caso ambíguo multi-@prompt.
             prompt_path = Some(val.trim());
         } else if let Some(val) = content.strip_prefix("@layer ") {
             layer = Some(parse_layer_tag(val.trim()));
@@ -200,13 +207,14 @@ fn extract_header<'a>(source: &'a str) -> Option<PromptHeader<'a>> {
         }
     }
 
-    prompt_path.map(|path| PromptHeader {
+    let header = prompt_path.map(|path| PromptHeader {
         prompt_path: path,
         prompt_hash,
         current_hash: None, // filled in after header extraction
         layer: layer.unwrap_or(Layer::Unknown),
         updated,
-    })
+    });
+    (header, prompt_refs)
 }
 
 fn parse_layer_tag(tag: &str) -> Layer {
@@ -1245,6 +1253,63 @@ fn main() {}",
         assert_eq!(header.prompt_path, "00_nucleo/prompts/linter-core.md");
         assert_eq!(header.prompt_hash, Some("c0d309ae"));
         assert_eq!(header.layer, Layer::L1);
+    }
+
+    // ── prompt_refs (V15) ───────────────────────────────────────────────────
+
+    #[test]
+    fn prompt_refs_single_for_normal_header() {
+        let parser = make_parser();
+        let file = source_file(
+            "//! @prompt 00_nucleo/prompts/linter-core.md\n\
+//! @layer L1
+fn main() {}",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        assert_eq!(parsed.prompt_refs, vec!["00_nucleo/prompts/linter-core.md"]);
+    }
+
+    #[test]
+    fn prompt_refs_empty_without_header() {
+        let parser = make_parser();
+        let file = source_file("fn main() {}");
+        let parsed = parser.parse(&file).unwrap();
+        assert!(parsed.prompt_refs.is_empty());
+    }
+
+    #[test]
+    fn prompt_refs_collects_all_prompt_lines_in_order() {
+        let parser = make_parser();
+        let file = source_file(
+            "//! @prompt 00_nucleo/prompts/a.md\n\
+//! @prompt-hash c0d309ae\n\
+//! @prompt 00_nucleo/prompts/b.md\n\
+//! @layer L1
+fn main() {}",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        assert_eq!(
+            parsed.prompt_refs,
+            vec!["00_nucleo/prompts/a.md", "00_nucleo/prompts/b.md"]
+        );
+        // Último valor preservado para V1/V5 — V15 bloqueia o caso.
+        assert_eq!(
+            parsed.prompt_header.unwrap().prompt_path,
+            "00_nucleo/prompts/b.md"
+        );
+    }
+
+    #[test]
+    fn prompt_refs_ignores_prompt_outside_doc_header() {
+        let parser = make_parser();
+        let file = source_file(
+            "//! @prompt 00_nucleo/prompts/a.md\n\
+//! @layer L1
+fn main() {}
+// @prompt 00_nucleo/prompts/nao-conta.md",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        assert_eq!(parsed.prompt_refs, vec!["00_nucleo/prompts/a.md"]);
     }
 
     #[test]
