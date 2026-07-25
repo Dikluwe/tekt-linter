@@ -50,6 +50,9 @@ fn forbidden_symbols_for(language: &Language) -> &'static [&'static str] {
             "std.fs", "std.io", "std.net", "std.os", "std.process",
             "std.time", "std.crypto",
         ],
+        Language::Go => &[
+            "os", "net", "net/http", "io/ioutil", "os/exec", "database/sql",
+        ],
         Language::Unknown => &[],
     }
 }
