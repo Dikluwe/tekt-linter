@@ -100,6 +100,7 @@ fn language_for_path(path: &Path) -> Option<Language> {
         "c" | "h" => Some(Language::C),
         "cpp" | "hpp" | "cc" | "cxx" | "hxx" => Some(Language::Cpp),
         "zig" => Some(Language::Zig),
+        "go" => Some(Language::Go),
         _ => None,
     }
 }
@@ -151,6 +152,10 @@ fn check_adjacent_test(path: &Path) -> bool {
         Some("rs") => {
             if stem.ends_with("_test") { return false; }
             dir.join(format!("{}_test.rs", stem)).exists()
+        }
+        Some("go") => {
+            if stem.ends_with("_test") { return true; }
+            dir.join(format!("{}_test.go", stem)).exists()
         }
         Some("ts") | Some("tsx") => {
             if stem.contains(".test") || stem.contains(".spec") { return false; }

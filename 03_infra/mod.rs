@@ -18,4 +18,5 @@ pub mod snapshot_writer;
 pub mod ts_parser;
 pub mod walker;
 pub mod zig_parser;
+pub mod go_parser;
 

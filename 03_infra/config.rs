@@ -12,7 +12,7 @@ use serde::Deserialize;
 use crate::entities::layer::Layer;
 use crate::entities::violation::ViolationLevel;
 
-const LANGUAGES: &[&str] = &["rust", "python", "typescript", "c", "cpp", "zig"];
+const LANGUAGES: &[&str] = &["rust", "python", "typescript", "c", "cpp", "zig", "go"];
 
 fn is_language_key(key: &str) -> bool {
     LANGUAGES.contains(&key)

@@ -15,7 +15,7 @@ pub enum Layer {
     Unknown,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Language {
     Rust,
     TypeScript,
@@ -23,6 +23,7 @@ pub enum Language {
     C,
     Cpp,
     Zig,
+    Go,
     Unknown,
 }
 

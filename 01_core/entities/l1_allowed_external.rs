@@ -73,6 +73,28 @@ impl L1AllowedExternal {
         Self { allowed, exempt_prefixes: vec![] }
     }
 
+    /// Go — stdlib isenta por padrão.
+    pub fn for_go(allowed: HashMap<String, HashSet<String>>) -> Self {
+        Self {
+            allowed,
+            exempt_prefixes: vec![
+                "fmt".to_string(),
+                "strings".to_string(),
+                "time".to_string(),
+                "context".to_string(),
+                "sync".to_string(),
+                "os".to_string(),
+                "path".to_string(),
+                "filepath".to_string(),
+                "bytes".to_string(),
+                "io".to_string(),
+                "errors".to_string(),
+                "testing".to_string(),
+                "log".to_string(),
+            ],
+        }
+    }
+
     // ── Helpers de conveniência ────────────────────────────────────────────────
 
     pub fn empty_for_rust() -> Self {
@@ -136,6 +158,7 @@ pub struct L1AllowedExternalSet {
     pub c:          L1AllowedExternal,
     pub cpp:        L1AllowedExternal,
     pub zig:        L1AllowedExternal,
+    pub go:         L1AllowedExternal,
 }
 
 impl L1AllowedExternalSet {
@@ -148,6 +171,7 @@ impl L1AllowedExternalSet {
             Language::C          => &self.c,
             Language::Cpp        => &self.cpp,
             Language::Zig        => &self.zig,
+            Language::Go         => &self.go,
             Language::Unknown    => &self.rust, // fallback conservador
         }
     }

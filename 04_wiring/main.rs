@@ -34,6 +34,7 @@ use crystalline_lint::infra::cpp_parser::CppParser;
 use crystalline_lint::infra::rs_parser::RustParser;
 use crystalline_lint::infra::ts_parser::TsParser;
 use crystalline_lint::infra::zig_parser::ZigParser;
+use crystalline_lint::infra::go_parser::GoParser;
 use crystalline_lint::infra::snapshot_writer;
 use crystalline_lint::infra::walker::FileWalker;
 use crystalline_lint::rules::{
@@ -56,8 +57,13 @@ fn main() {
     }
 
     // ── Config ────────────────────────────────────────────────────────────────
-    let config = if cli.config.exists() {
-        CrystallineConfig::load(&cli.config).unwrap_or_else(|e| {
+    let config_path = if cli.config.is_relative() {
+        cli.path.join(&cli.config)
+    } else {
+        cli.config.clone()
+    };
+    let config = if config_path.exists() {
+        CrystallineConfig::load(&config_path).unwrap_or_else(|e| {
             eprintln!("crystalline-lint: config error: {e}");
             process::exit(1);
         })
@@ -66,7 +72,7 @@ fn main() {
     };
 
     // ── Phase 0: scan all prompts (sequential, before pipeline) ───────────────
-    let nucleo_root = PathBuf::from(".");
+    let nucleo_root = cli.path.clone();
     let enabled = EnabledChecks::from_cli(&cli.checks, cli.no_drift, cli.no_stale);
 
     let orphan_exceptions: std::collections::HashSet<String> =
@@ -88,7 +94,11 @@ fn main() {
     };
 
     // ── L1Ports from config ───────────────────────────────────────────────────
-    let l1_ports = L1Ports::new(config.l1_ports.keys().cloned().collect());
+    let mut port_set: std::collections::HashSet<String> = config.l1_ports.keys().cloned().collect();
+    for v in config.l1_ports.values() {
+        port_set.insert(v.clone());
+    }
+    let l1_ports = L1Ports::new(port_set);
 
     // ── WiringConfig for V12 ──────────────────────────────────────────────────
     let wiring_config = WiringConfig {
@@ -103,6 +113,7 @@ fn main() {
         c:          L1AllowedExternal::for_c(config.l1_allowed_for_language("c")),
         cpp:        L1AllowedExternal::for_cpp(config.l1_allowed_for_language("cpp")),
         zig:        L1AllowedExternal::for_zig(config.l1_allowed_for_language("zig")),
+        go:         L1AllowedExternal::for_go(config.l1_allowed_for_language("go")),
     };
 
     // ── Crate registry (membro→camada + deps) para classificação ciente (0052) ─
@@ -149,6 +160,12 @@ fn main() {
             cli.path.clone(),
         ),
         zig: ZigParser::new(
+            shared_prompt_reader.clone(),
+            shared_snapshot_reader.clone(),
+            config.clone(),
+            cli.path.clone(),
+        ),
+        go: GoParser::new(
             shared_prompt_reader.clone(),
             shared_snapshot_reader.clone(),
             config.clone(),
@@ -257,6 +274,12 @@ fn main() {
                     config.clone(),
                     cli.path.clone(),
                 ),
+                go: GoParser::new(
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
+                    config.clone(),
+                    cli.path.clone(),
+                ),
             };
             let rewalker = FileWalker::new(cli.path.clone(), config.clone());
             let (re_files, re_errors) = collect_walker_results(rewalker.files());
@@ -332,6 +355,12 @@ fn main() {
                     config.clone(),
                     cli.path.clone(),
                 ),
+                go: GoParser::new(
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
+                    config.clone(),
+                    cli.path.clone(),
+                ),
             };
             let rewalker = FileWalker::new(cli.path.clone(), config.clone());
             let (re_files, re_errors) = collect_walker_results(rewalker.files());
@@ -380,6 +409,7 @@ struct MultiParser {
     c:    CParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
     cpp:  CppParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
     zig:  ZigParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
+    go:   GoParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
 }
 
 impl LanguageParser for MultiParser {
@@ -391,6 +421,7 @@ impl LanguageParser for MultiParser {
             Language::C          => self.c.parse(file),
             Language::Cpp        => self.cpp.parse(file),
             Language::Zig        => self.zig.parse(file),
+            Language::Go         => self.go.parse(file),
             _ => Err(ParseError::UnsupportedLanguage {
                 path: file.path.clone(),
                 language: file.language.clone(),
