@@ -51,7 +51,7 @@ crystalline-lint --update-snapshot --dry-run .
 |----|------|-------|-----------|
 | V0 | `UnreadableSource` | **fatal** | Arquivo ilegível. Bloqueia CI incondicionalmente — não configurável |
 | V1 | `MissingPromptHeader` | **error** | Arquivo em L1–L4 sem `//! @prompt` ou com prompt referenciado inexistente |
-| V2 | `MissingTestFile` | **error** | Arquivo em L1 sem cobertura de teste detectável no AST nem ficheiro de teste adjacente. Arquivos apenas declarativos são isentos (Rust: `#[cfg(test)]` ou `_test.rs`; TypeScript: `.test.ts`/`.spec.ts`; Python: `_test.py`/`test_*.py`) |
+| V2 | `MissingTestFile` | **error** | Arquivo em L1 sem cobertura de teste detectável no AST nem ficheiro de teste adjacente. Arquivos apenas declarativos são isentos (Rust: `#[cfg(test)]` ou `_test.rs`; TypeScript: `.test.ts`/`.spec.ts`; Python: `_test.py`/`test_*.py`; Go: `*_test.go`; Zig: blocos `test` ou `*_test.zig`) |
 | V3 | `ForbiddenImport` | **error** | Import viola a direção do fluxo de dependência entre camadas |
 | V4 | `ImpureCore` | **error** | Símbolo de I/O detectado em L1 via AST. Lista de símbolos proibidos seleccionada por linguagem (`forbidden_symbols_for(language)`) — aliases de importação não burlam a regra em nenhuma linguagem |
 | V5 | `PromptDrift` | **warning** | Hash em `@prompt-hash` diverge do hash real do prompt em `00_nucleo/` |
@@ -64,7 +64,7 @@ crystalline-lint --update-snapshot --dry-run .
 | V12 | `WiringLogicLeak` | **warning** | `struct`, `enum` ou `impl` sem trait declarado em L4. L4 não cria tipos — apenas liga os que existem |
 | V13 | `MutableStateInCore` | **error** | Estado global mutável (`static mut`, `Mutex`, `Atomic*`, etc.) declarado em L1 |
 | V14 | `ExternalTypeInContract` | **error** | Dependência externa não autorizada em L1 (fora de `[l1_allowed_external]`) |
-| V15 | `MultiPromptHeader` | **error** | Arquivo `.rs` em L1–L4 com 2+ linhas `//! @prompt` no doc-header. A regra de linhagem é um ficheiro, um prompt — com multi-`@prompt` o `--fix-hashes` é indefinido, por isso o lint bloqueia em vez de corrigir ambiguamente |
+| V15 | `MultiPromptHeader` | **error** | Arquivo com 2+ linhas `@prompt` no doc-header. A regra de linhagem é um ficheiro, um prompt — com multi-`@prompt` o `--fix-hashes` é indefinido, por isso o lint bloqueia em vez de corrigir ambiguamente |
 
 **Sobre níveis Fatal (V0, V8, V10):** a ausência de violações garante
 que todos os arquivos foram lidos e analisados com sucesso. Fatal
@@ -74,7 +74,7 @@ independentemente de qualquer configuração.
 **Sobre V4:** a lista de símbolos proibidos é seleccionada por linguagem
 via `forbidden_symbols_for(language)`. Em Rust, aliases de importação
 são resolvidos para FQN antes da verificação — `use std::fs as f; f::read(...)`
-é detectado como `std::fs::read`. Em TypeScript e Python, call expressions
+é detectado como `std::fs::read`. Em TypeScript, Python, Go e Zig, call expressions
 e imports proibidos são verificados directamente sobre o AST.
 
 **Sobre V11:** opera sobre o índice global do projeto após a análise

@@ -9,8 +9,8 @@
 ## O que é
 
 `crystalline-lint` é um linter arquitectural que verifica se um projecto
-segue a Arquitetura Cristalina (Tekt). Analisa ficheiros Rust, TypeScript
-e Python e reporta violations estruturais em SARIF ou texto.
+segue a Arquitetura Cristalina (Tekt). Analisa ficheiros Rust, TypeScript,
+Python, C, C++, Go e Zig e reporta violações estruturais em SARIF ou texto.
 
 O linter valida o próprio código contra as suas próprias regras — se o
 projecto usa `crystalline-lint`, o linter deve passar com zero violations
