@@ -24,6 +24,8 @@ pub enum Language {
     Cpp,
     Zig,
     Go,
+    Java,
+    Elixir,
     Unknown,
 }
 

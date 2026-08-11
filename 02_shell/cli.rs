@@ -206,7 +206,7 @@ pub fn format_sarif(violations: &[Violation<'_>]) -> String {
         "runs": [{
             "tool": {
                 "driver": {
-                    "name": "crystalline-lint",
+                    "name": "tekt-linter",
                     "version": env!("CARGO_PKG_VERSION"),
                     "informationUri": "https://github.com/crystalline/lint",
                     "rules": rules

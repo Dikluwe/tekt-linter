@@ -21,14 +21,14 @@ use crate::entities::parsed_file::{
 };
 use crate::infra::config::CrystallineConfig;
 
-pub struct GoParser<R: PromptReader, S: PromptSnapshotReader> {
+pub struct JavaParser<R: PromptReader, S: PromptSnapshotReader> {
     pub prompt_reader: R,
     pub snapshot_reader: S,
     pub config: CrystallineConfig,
     pub project_root: PathBuf,
 }
 
-impl<R: PromptReader, S: PromptSnapshotReader> GoParser<R, S> {
+impl<R: PromptReader, S: PromptSnapshotReader> JavaParser<R, S> {
     pub fn new(
         prompt_reader: R,
         snapshot_reader: S,
@@ -44,13 +44,13 @@ impl<R: PromptReader, S: PromptSnapshotReader> GoParser<R, S> {
     }
 }
 
-impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for GoParser<R, S> {
+impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for JavaParser<R, S> {
     fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
         if file.content.is_empty() {
             return Err(ParseError::EmptySource { path: file.path.clone() });
         }
 
-        if file.language != Language::Go {
+        if file.language != Language::Java {
             return Err(ParseError::UnsupportedLanguage {
                 path: file.path.clone(),
                 language: file.language.clone(),
@@ -59,12 +59,12 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for GoParser<R, S>
 
         let mut engine = TsParserEngine::new();
         engine
-            .set_language(&tree_sitter_go::LANGUAGE.into())
+            .set_language(&tree_sitter_java::LANGUAGE.into())
             .map_err(|_| ParseError::SyntaxError {
                 path: file.path.clone(),
                 line: 0,
                 column: 0,
-                message: "Failed to load Go grammar".to_string(),
+                message: "Failed to load Java grammar".to_string(),
             })?;
 
         let tree = engine
@@ -93,24 +93,19 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for GoParser<R, S>
             .map(|h| vec![h.prompt_path])
             .unwrap_or_default();
 
-        let is_test_file = file
-            .path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map_or(false, |name| name.ends_with("_test.go"));
+        let filename = file.path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        let is_test_file = filename.ends_with("Test.java")
+            || filename.ends_with("Tests.java")
+            || filename.starts_with("Test")
+            || filename.ends_with("_test.java");
 
-        let is_decl_only = file
-            .path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map_or(false, |name| name == "interfaces.go" || name == "types.go");
-
-        let has_test_coverage = is_test_file || file.has_adjacent_test || is_decl_only;
+        let has_test_annotation = has_test_annotations(root, source);
+        let has_test_coverage = is_test_file || file.has_adjacent_test || has_test_annotation;
 
         let mut imports = Vec::new();
         let mut declarations = Vec::new();
+        collect_imports_and_decls(root, source, &mut imports, &mut declarations);
 
-        collect_nodes(root, source, &mut imports, &mut declarations);
         let tokens = extract_tokens(root, source, &imports);
 
         Ok(ParsedFile {
@@ -203,107 +198,51 @@ fn extract_header(content: &str) -> Option<PromptHeader<'_>> {
     }
 }
 
-fn collect_nodes<'a>(
+fn collect_imports_and_decls<'a>(
     node: Node,
     source: &'a [u8],
     imports: &mut Vec<Import<'a>>,
     declarations: &mut Vec<Declaration<'a>>,
 ) {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "import_declaration" => {
-                extract_imports(child, source, imports);
-            }
-            "function_declaration" | "method_declaration" => {
-                if let Some(name_node) = child.child_by_field_name("name") {
-                    if let Ok(name) = name_node.utf8_text(source) {
-                        if name.chars().next().map_or(false, |c| c.is_uppercase()) {
-                            declarations.push(Declaration {
-                                name,
-                                kind: DeclarationKind::Impl,
-                                line: child.start_position().row + 1,
-                            });
-                        }
-                    }
-                }
-            }
-            "type_declaration" => {
-                let mut type_cursor = child.walk();
-                for type_child in child.children(&mut type_cursor) {
-                    if type_child.kind() == "type_spec" {
-                        if let Some(name_node) = type_child.child_by_field_name("name") {
-                            if let Ok(name) = name_node.utf8_text(source) {
-                                if name.chars().next().map_or(false, |c| c.is_uppercase()) {
-                                    declarations.push(Declaration {
-                                        name,
-                                        kind: DeclarationKind::Struct,
-                                        line: type_child.start_position().row + 1,
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {
-                if child.child_count() > 0 {
-                    collect_nodes(child, source, imports, declarations);
-                }
+    if node.kind() == "import_declaration" {
+        if let Ok(text) = node.utf8_text(source) {
+            let clean = text.trim_start_matches("import").trim_end_matches(';').trim();
+            let target_layer = if clean.contains("01_core") {
+                Layer::L1
+            } else if clean.contains("02_shell") {
+                Layer::L2
+            } else if clean.contains("03_infra") {
+                Layer::L3
+            } else if clean.contains("04_wiring") {
+                Layer::L4
+            } else {
+                Layer::Unknown
+            };
+
+            imports.push(Import {
+                path: clean,
+                line: node.start_position().row + 1,
+                kind: ImportKind::Direct,
+                target_layer,
+                target_subdir: None,
+                is_test_origin: false,
+            });
+        }
+    } else if node.kind() == "class_declaration" || node.kind() == "interface_declaration" {
+        if let Some(name_node) = node.child_by_field_name("name") {
+            if let Ok(name) = name_node.utf8_text(source) {
+                declarations.push(Declaration {
+                    name,
+                    kind: DeclarationKind::Struct,
+                    line: node.start_position().row + 1,
+                });
             }
         }
     }
-}
 
-fn extract_imports<'a>(node: Node, source: &'a [u8], imports: &mut Vec<Import<'a>>) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if child.kind() == "import_spec" || child.kind() == "interpreted_string_literal" || child.kind() == "raw_string_literal" {
-            let text = if child.kind() == "import_spec" {
-                let mut inner_cursor = child.walk();
-                let found = child.children(&mut inner_cursor)
-                    .find(|c| c.kind() == "interpreted_string_literal" || c.kind() == "raw_string_literal");
-                found.and_then(|c| c.utf8_text(source).ok())
-            } else {
-                child.utf8_text(source).ok()
-            };
-
-            if let Some(raw_path) = text {
-                let clean_path = raw_path.trim_matches('"').trim_matches('`');
-                let target_layer = if clean_path.contains("01_core") {
-                    Layer::L1
-                } else if clean_path.contains("02_shell") {
-                    Layer::L2
-                } else if clean_path.contains("03_infra") {
-                    Layer::L3
-                } else if clean_path.contains("04_wiring") {
-                    Layer::L4
-                } else {
-                    Layer::Unknown
-                };
-
-                let target_subdir = if clean_path.contains("01_core/domain") {
-                    Some("domain")
-                } else if clean_path.contains("01_core/parser") {
-                    Some("parser")
-                } else if clean_path.contains("01_core/usecase") {
-                    Some("usecase")
-                } else {
-                    None
-                };
-
-                imports.push(Import {
-                    path: clean_path,
-                    line: child.start_position().row + 1,
-                    kind: ImportKind::Direct,
-                    target_layer,
-                    target_subdir,
-                    is_test_origin: false,
-                });
-            }
-        } else if child.child_count() > 0 {
-            extract_imports(child, source, imports);
-        }
+        collect_imports_and_decls(child, source, imports, declarations);
     }
 }
 
@@ -323,18 +262,24 @@ fn extract_tokens<'a>(root: Node, source: &'a [u8], imports: &[Import<'a>]) -> V
 }
 
 fn collect_call_tokens<'a>(node: Node, source: &'a [u8], tokens: &mut Vec<Token<'a>>) {
-    if node.kind() == "call_expression" {
-        if let Some(func) = node.child_by_field_name("function") {
-            if let Ok(text) = func.utf8_text(source) {
-                if !text.is_empty() {
-                    let pos = node.start_position();
-                    tokens.push(Token {
-                        symbol: Cow::Borrowed(text),
-                        line: pos.row + 1,
-                        column: pos.column,
-                        kind: TokenKind::CallExpression,
-                    });
-                }
+    if node.kind() == "method_invocation" || node.kind() == "field_access" {
+        if let Ok(text) = node.utf8_text(source) {
+            if text.starts_with("java.io")
+                || text.starts_with("java.net")
+                || text.starts_with("java.nio.file")
+                || text.starts_with("java.lang.ProcessBuilder")
+                || text.starts_with("java.sql")
+                || text.starts_with("javax.sql")
+                || text.starts_with("System.out")
+                || text.starts_with("System.err")
+            {
+                let pos = node.start_position();
+                tokens.push(Token {
+                    symbol: Cow::Borrowed(text),
+                    line: pos.row + 1,
+                    column: pos.column,
+                    kind: TokenKind::CallExpression,
+                });
             }
         }
     }
@@ -343,4 +288,22 @@ fn collect_call_tokens<'a>(node: Node, source: &'a [u8], tokens: &mut Vec<Token<
     for child in node.children(&mut cursor) {
         collect_call_tokens(child, source, tokens);
     }
+}
+
+fn has_test_annotations(node: Node, source: &[u8]) -> bool {
+    if node.kind() == "marker_annotation" || node.kind() == "annotation" {
+        if let Ok(text) = node.utf8_text(source) {
+            if text.contains("@Test") || text.contains("@ParameterizedTest") {
+                return true;
+            }
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if has_test_annotations(child, source) {
+            return true;
+        }
+    }
+    false
 }

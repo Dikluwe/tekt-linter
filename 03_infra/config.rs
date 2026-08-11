@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 21f6c7ed
+//! @prompt-hash d9053635
 //! @layer L3
 //! @updated 2026-06-09
 
@@ -12,7 +12,9 @@ use serde::Deserialize;
 use crate::entities::layer::Layer;
 use crate::entities::violation::ViolationLevel;
 
-const LANGUAGES: &[&str] = &["rust", "python", "typescript", "c", "cpp", "zig", "go"];
+const LANGUAGES: &[&str] = &[
+    "rust", "python", "typescript", "c", "cpp", "zig", "go", "java", "elixir",
+];
 
 fn is_language_key(key: &str) -> bool {
     LANGUAGES.contains(&key)

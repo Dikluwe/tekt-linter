@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 21f6c7ed
+//! @prompt-hash d9053635
 //! @layer L4
 //! @updated 2026-06-09
 
@@ -35,6 +35,8 @@ use crystalline_lint::infra::rs_parser::RustParser;
 use crystalline_lint::infra::ts_parser::TsParser;
 use crystalline_lint::infra::zig_parser::ZigParser;
 use crystalline_lint::infra::go_parser::GoParser;
+use crystalline_lint::infra::java_parser::JavaParser;
+use crystalline_lint::infra::elixir_parser::ElixirParser;
 use crystalline_lint::infra::snapshot_writer;
 use crystalline_lint::infra::walker::FileWalker;
 use crystalline_lint::rules::{
@@ -114,6 +116,8 @@ fn main() {
         cpp:        L1AllowedExternal::for_cpp(config.l1_allowed_for_language("cpp")),
         zig:        L1AllowedExternal::for_zig(config.l1_allowed_for_language("zig")),
         go:         L1AllowedExternal::for_go(config.l1_allowed_for_language("go")),
+        java:       L1AllowedExternal::for_java(config.l1_allowed_for_language("java")),
+        elixir:     L1AllowedExternal::for_elixir(config.l1_allowed_for_language("elixir")),
     };
 
     // ── Crate registry (membro→camada + deps) para classificação ciente (0052) ─
@@ -166,6 +170,18 @@ fn main() {
             cli.path.clone(),
         ),
         go: GoParser::new(
+            shared_prompt_reader.clone(),
+            shared_snapshot_reader.clone(),
+            config.clone(),
+            cli.path.clone(),
+        ),
+        java: JavaParser::new(
+            shared_prompt_reader.clone(),
+            shared_snapshot_reader.clone(),
+            config.clone(),
+            cli.path.clone(),
+        ),
+        elixir: ElixirParser::new(
             shared_prompt_reader.clone(),
             shared_snapshot_reader.clone(),
             config.clone(),
@@ -280,6 +296,18 @@ fn main() {
                     config.clone(),
                     cli.path.clone(),
                 ),
+                java: JavaParser::new(
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
+                    config.clone(),
+                    cli.path.clone(),
+                ),
+                elixir: ElixirParser::new(
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
+                    config.clone(),
+                    cli.path.clone(),
+                ),
             };
             let rewalker = FileWalker::new(cli.path.clone(), config.clone());
             let (re_files, re_errors) = collect_walker_results(rewalker.files());
@@ -361,6 +389,18 @@ fn main() {
                     config.clone(),
                     cli.path.clone(),
                 ),
+                java: JavaParser::new(
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
+                    config.clone(),
+                    cli.path.clone(),
+                ),
+                elixir: ElixirParser::new(
+                    shared_prompt_reader.clone(),
+                    shared_snapshot_reader.clone(),
+                    config.clone(),
+                    cli.path.clone(),
+                ),
             };
             let rewalker = FileWalker::new(cli.path.clone(), config.clone());
             let (re_files, re_errors) = collect_walker_results(rewalker.files());
@@ -410,6 +450,8 @@ struct MultiParser {
     cpp:  CppParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
     zig:  ZigParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
     go:   GoParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
+    java: JavaParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
+    elixir: ElixirParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
 }
 
 impl LanguageParser for MultiParser {
@@ -422,6 +464,8 @@ impl LanguageParser for MultiParser {
             Language::Cpp        => self.cpp.parse(file),
             Language::Zig        => self.zig.parse(file),
             Language::Go         => self.go.parse(file),
+            Language::Java       => self.java.parse(file),
+            Language::Elixir     => self.elixir.parse(file),
             _ => Err(ParseError::UnsupportedLanguage {
                 path: file.path.clone(),
                 language: file.language.clone(),

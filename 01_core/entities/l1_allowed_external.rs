@@ -101,6 +101,35 @@ impl L1AllowedExternal {
         }
     }
 
+    /// Java — stdlib basica (java.util, java.lang, java.math) isenta por padrão.
+    pub fn for_java(allowed: HashMap<String, HashSet<String>>) -> Self {
+        Self {
+            allowed,
+            exempt_prefixes: vec![
+                "java.util".to_string(),
+                "java.lang".to_string(),
+                "java.math".to_string(),
+            ],
+        }
+    }
+
+    /// Elixir — módulos padrão do Kernel/Stdlib isentos por padrão.
+    pub fn for_elixir(allowed: HashMap<String, HashSet<String>>) -> Self {
+        Self {
+            allowed,
+            exempt_prefixes: vec![
+                "Kernel".to_string(),
+                "Enum".to_string(),
+                "Map".to_string(),
+                "List".to_string(),
+                "String".to_string(),
+                "Tuple".to_string(),
+                "Module".to_string(),
+                "ExUnit".to_string(),
+            ],
+        }
+    }
+
     // ── Helpers de conveniência ────────────────────────────────────────────────
 
     pub fn empty_for_rust() -> Self {
@@ -146,10 +175,10 @@ impl L1AllowedExternal {
 
     /// Verifica se um crate está listado, independentemente de itens.
     pub fn is_crate_allowed(&self, package_name: &str) -> bool {
-        if self.exempt_prefixes.iter().any(|p| package_name == p) {
+        if self.exempt_prefixes.iter().any(|p| package_name == p || package_name.starts_with(&format!("{p}."))) {
             return true;
         }
-        self.allowed.contains_key(package_name)
+        self.allowed.keys().any(|k| package_name == k || package_name.starts_with(&format!("{k}.")))
     }
 }
 
@@ -165,6 +194,8 @@ pub struct L1AllowedExternalSet {
     pub cpp:        L1AllowedExternal,
     pub zig:        L1AllowedExternal,
     pub go:         L1AllowedExternal,
+    pub java:       L1AllowedExternal,
+    pub elixir:     L1AllowedExternal,
 }
 
 impl L1AllowedExternalSet {
@@ -178,6 +209,8 @@ impl L1AllowedExternalSet {
             Language::Cpp        => &self.cpp,
             Language::Zig        => &self.zig,
             Language::Go         => &self.go,
+            Language::Java       => &self.java,
+            Language::Elixir     => &self.elixir,
             Language::Unknown    => &self.rust, // fallback conservador
         }
     }

@@ -53,6 +53,14 @@ fn forbidden_symbols_for(language: &Language) -> &'static [&'static str] {
         Language::Go => &[
             "os", "net", "net/http", "io/ioutil", "os/exec", "database/sql",
         ],
+        Language::Java => &[
+            "java.io", "java.net", "java.nio.file", "java.lang.ProcessBuilder",
+            "java.sql", "javax.sql", "System.out", "System.err", "System.currentTimeMillis",
+        ],
+        Language::Elixir => &[
+            "File", "File.Stream", "IO", "Path", "System.cmd",
+            "HTTPoison", "Req", "Ecto",
+        ],
         Language::Unknown => &[],
     }
 }

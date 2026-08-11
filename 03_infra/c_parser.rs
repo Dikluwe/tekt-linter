@@ -157,6 +157,7 @@ fn node_text<'a>(node: Node, source: &'a [u8]) -> &'a str {
     std::str::from_utf8(&source[node.start_byte()..node.end_byte()]).unwrap_or("")
 }
 
+#[allow(dead_code)]
 fn node_has_child_kind(node: Node, kind: &str) -> bool {
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {

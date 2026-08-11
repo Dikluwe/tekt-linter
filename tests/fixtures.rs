@@ -54,7 +54,7 @@ fn violations(name: &str) -> Vec<String> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     // O SARIF deve estar bem-formado: presença do driver é uma sanidade barata.
     assert!(
-        stdout.contains("\"crystalline-lint\""),
+        stdout.contains("\"tekt-linter\""),
         "saída SARIF inesperada para {name}:\nstdout:\n{stdout}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
@@ -127,6 +127,10 @@ fn v04_fail_io_in_core() { assert_verdict("v04_fail", &["V4"]); }
 fn v04_go_fail_io_in_core() { assert_verdict("v04_go_fail", &["V4"]); }
 #[test]
 fn v04_zig_fail_io_in_core() { assert_verdict("v04_zig_fail", &["V4"]); }
+#[test]
+fn v04_java_fail_io_in_core() { assert_verdict("v04_java_fail", &["V4"]); }
+#[test]
+fn v04_elixir_fail_io_in_core() { assert_verdict("v04_elixir_fail", &["V4"]); }
 #[test]
 fn v05_fail_hash_drift() { assert_verdict("v05_fail", &["V5"]); }
 #[test]
