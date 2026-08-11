@@ -3,7 +3,8 @@
 //! @layer L3
 //! @updated 2026-07-25
 
-use std::path::{Path, PathBuf};
+use std::borrow::Cow;
+use std::path::PathBuf;
 
 use tree_sitter::{Node, Parser as TsParserEngine};
 
@@ -15,6 +16,7 @@ use crate::contracts::prompt_snapshot_reader::PromptSnapshotReader;
 use crate::entities::layer::{Language, Layer};
 use crate::entities::parsed_file::{
     Declaration, DeclarationKind, Import, ImportKind, ParsedFile, PromptHeader, PublicInterface,
+    Token, TokenKind,
 };
 use crate::infra::config::CrystallineConfig;
 
@@ -108,6 +110,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for GoParser<R, S>
         let mut declarations = Vec::new();
 
         collect_nodes(root, source, &mut imports, &mut declarations);
+        let tokens = extract_tokens(root, source, &imports);
 
         Ok(ParsedFile {
             path: &file.path,
@@ -128,7 +131,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for GoParser<R, S>
                 types: vec![],
                 reexports: vec![],
             },
-            tokens: vec![],
+            tokens,
             declarations,
             static_declarations: vec![],
         })
@@ -144,7 +147,14 @@ fn extract_header(content: &str) -> Option<PromptHeader<'_>> {
     for line in content.lines().take(30) {
         let trimmed = line.trim();
 
-        if let Some(pos) = trimmed.find("@prompt ") {
+        if let Some(pos) = trimmed.find("@prompt-hash ") {
+            let val = trimmed[pos + 13..].trim();
+            if let Some(end) = val.find(|c: char| c.is_whitespace() || c == '*') {
+                prompt_hash = Some(val[..end].trim());
+            } else {
+                prompt_hash = Some(val.trim());
+            }
+        } else if let Some(pos) = trimmed.find("@prompt ") {
             let val = trimmed[pos + 8..].trim();
             if let Some(end) = val.find(|c: char| c.is_whitespace() || c == '*') {
                 prompt_path = Some(val[..end].trim());
@@ -168,14 +178,6 @@ fn extract_header(content: &str) -> Option<PromptHeader<'_>> {
                 "LAB" => Some(Layer::Lab),
                 _ => Some(Layer::Unknown),
             };
-        }
-        if let Some(pos) = trimmed.find("@prompt-hash ") {
-            let val = trimmed[pos + 13..].trim();
-            if let Some(end) = val.find(|c: char| c.is_whitespace() || c == '*') {
-                prompt_hash = Some(val[..end].trim());
-            } else {
-                prompt_hash = Some(val.trim());
-            }
         }
         if let Some(pos) = trimmed.find("@updated ") {
             let val = trimmed[pos + 9..].trim();
@@ -301,5 +303,43 @@ fn extract_imports<'a>(node: Node, source: &'a [u8], imports: &mut Vec<Import<'a
         } else if child.child_count() > 0 {
             extract_imports(child, source, imports);
         }
+    }
+}
+
+fn extract_tokens<'a>(root: Node, source: &'a [u8], imports: &[Import<'a>]) -> Vec<Token<'a>> {
+    let mut tokens: Vec<Token<'a>> = imports
+        .iter()
+        .map(|imp| Token {
+            symbol: Cow::Borrowed(imp.path),
+            line: imp.line,
+            column: 1,
+            kind: TokenKind::CallExpression,
+        })
+        .collect();
+
+    collect_call_tokens(root, source, &mut tokens);
+    tokens
+}
+
+fn collect_call_tokens<'a>(node: Node, source: &'a [u8], tokens: &mut Vec<Token<'a>>) {
+    if node.kind() == "call_expression" {
+        if let Some(func) = node.child_by_field_name("function") {
+            if let Ok(text) = func.utf8_text(source) {
+                if !text.is_empty() {
+                    let pos = node.start_position();
+                    tokens.push(Token {
+                        symbol: Cow::Borrowed(text),
+                        line: pos.row + 1,
+                        column: pos.column,
+                        kind: TokenKind::CallExpression,
+                    });
+                }
+            }
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_call_tokens(child, source, tokens);
     }
 }

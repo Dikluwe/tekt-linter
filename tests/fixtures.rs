@@ -124,6 +124,10 @@ fn v03_fail_cross_crate_l2_to_l4() { assert_verdict("v03_fail", &["V3"]); }
 #[test]
 fn v04_fail_io_in_core() { assert_verdict("v04_fail", &["V4"]); }
 #[test]
+fn v04_go_fail_io_in_core() { assert_verdict("v04_go_fail", &["V4"]); }
+#[test]
+fn v04_zig_fail_io_in_core() { assert_verdict("v04_zig_fail", &["V4"]); }
+#[test]
 fn v05_fail_hash_drift() { assert_verdict("v05_fail", &["V5"]); }
 #[test]
 fn v06_fail_interface_stale() { assert_verdict("v06_fail", &["V6"]); }

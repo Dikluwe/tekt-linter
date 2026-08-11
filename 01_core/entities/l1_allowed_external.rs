@@ -68,9 +68,9 @@ impl L1AllowedExternal {
         Self { allowed, exempt_prefixes: vec![] }
     }
 
-    /// Zig — nenhum prefixo isento automático.
+    /// Zig — stdlib (std) é isenta por padrão.
     pub fn for_zig(allowed: HashMap<String, HashSet<String>>) -> Self {
-        Self { allowed, exempt_prefixes: vec![] }
+        Self { allowed, exempt_prefixes: vec!["std".to_string()] }
     }
 
     /// Go — stdlib isenta por padrão.
@@ -91,6 +91,12 @@ impl L1AllowedExternal {
                 "errors".to_string(),
                 "testing".to_string(),
                 "log".to_string(),
+                "net".to_string(),
+                "math".to_string(),
+                "sort".to_string(),
+                "strconv".to_string(),
+                "encoding".to_string(),
+                "reflect".to_string(),
             ],
         }
     }

@@ -169,7 +169,7 @@ fn extract_header<'a>(source: &'a str) -> Option<PromptHeader<'a>> {
         if !trimmed.starts_with("//") {
             break;
         }
-        let content = trimmed.trim_start_matches('/').trim();
+        let content = trimmed.trim_start_matches('/').trim_start_matches('!').trim();
 
         if let Some(val) = content.strip_prefix("@prompt-hash ") {
             prompt_hash = Some(val.trim());
@@ -373,17 +373,23 @@ fn extract_tokens<'a>(root: Node, source: &'a [u8]) -> Vec<Token<'a>> {
 }
 
 fn collect_tokens<'a>(node: Node, source: &'a [u8], tokens: &mut Vec<Token<'a>>) {
-    if node.kind() == "call_expr" {
-        if let Some(func) = node.child(0) {
-            let symbol = Cow::Borrowed(node_text(func, source));
-            let pos = node.start_position();
-            tokens.push(Token {
-                symbol,
-                line: pos.row + 1,
-                column: pos.column,
-                kind: TokenKind::CallExpression,
-            });
-        }
+    let text = node_text(node, source);
+    if text.starts_with("std.fs")
+        || text.starts_with("std.io")
+        || text.starts_with("std.net")
+        || text.starts_with("std.os")
+        || text.starts_with("std.process")
+        || text.starts_with("std.time")
+        || text.starts_with("std.crypto")
+    {
+        let pos = node.start_position();
+        tokens.push(Token {
+            symbol: Cow::Borrowed(text),
+            line: pos.row + 1,
+            column: pos.column,
+            kind: TokenKind::CallExpression,
+        });
+        return;
     }
 
     for i in 0..node.child_count() {
