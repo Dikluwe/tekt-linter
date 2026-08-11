@@ -1,0 +1,55 @@
+name: CI / CD & Self-Linting Pipeline
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  ci-build-test-lint:
+    name: Build, Test & Self-Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cargo Check
+        run: cargo check --all-targets
+
+      - name: Cargo Unit & Integration Tests
+        run: cargo test --all-targets
+
+      - name: Cargo Clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Install cargo-mutants
+        uses: taiki-e/install-action@cargo-mutants
+
+      - name: Run Mutation Testing
+        run: cargo mutants --no-times
+
+      - name: Run Self-Linting (tekt-linter)
+        run: cargo run -- .
+
+      - name: Generate SARIF Security Report
+        run: cargo run -- --format sarif . > tekt-linter-results.sarif
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true
+        with:
+          sarif_file: tekt-linter-results.sarif

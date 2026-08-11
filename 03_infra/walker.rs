@@ -101,6 +101,8 @@ fn language_for_path(path: &Path) -> Option<Language> {
         "cpp" | "hpp" | "cc" | "cxx" | "hxx" => Some(Language::Cpp),
         "zig" => Some(Language::Zig),
         "go" => Some(Language::Go),
+        "java" => Some(Language::Java),
+        "ex" | "exs" => Some(Language::Elixir),
         _ => None,
     }
 }
@@ -181,9 +183,20 @@ fn check_adjacent_test(path: &Path) -> bool {
         Some("cpp") | Some("cc") | Some("cxx") => {
             if stem.ends_with("_test") || stem.starts_with("test_") { return false; }
             dir.join(format!("{}_test.cpp", stem)).exists()
-                || dir.join(format!("test_{}.cpp", stem)).exists()
                 || dir.join(format!("{}_test.cc", stem)).exists()
+                || dir.join(format!("test_{}.cpp", stem)).exists()
                 || dir.join(format!("test_{}.cc", stem)).exists()
+        }
+        Some("java") => {
+            if stem.ends_with("Test") || stem.ends_with("Tests") || stem.starts_with("Test") || stem.ends_with("_test") { return true; }
+            dir.join(format!("{}Test.java", stem)).exists()
+                || dir.join(format!("{}_test.java", stem)).exists()
+                || dir.join(format!("Test{}.java", stem)).exists()
+        }
+        Some("ex") | Some("exs") => {
+            if stem.ends_with("_test") { return true; }
+            dir.join(format!("{}_test.exs", stem)).exists()
+                || dir.join(format!("{}_test.ex", stem)).exists()
         }
         _ => false,
     }

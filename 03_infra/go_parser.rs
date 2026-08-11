@@ -1,7 +1,8 @@
 //! Crystalline Lineage
-//! @prompt 00_nucleo/prompts/parsers/go.md
+//! @prompt 00_nucleo/prompts/linter-core.md
+//! @prompt-hash d9053635
 //! @layer L3
-//! @updated 2026-07-25
+//! @updated 2026-08-11
 
 use std::borrow::Cow;
 use std::path::PathBuf;

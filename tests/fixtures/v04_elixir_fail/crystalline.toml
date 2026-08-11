@@ -1,0 +1,20 @@
+[project]
+root = "."
+
+[layers]
+L0  = "00_nucleo"
+L1  = "01_core"
+L2  = "02_shell"
+L3  = "03_infra"
+L4  = "04_wiring"
+lab = "lab"
+
+[rules]
+V0  = { level = "fatal" }
+V1  = { level = "error" }
+V2  = { level = "error" }
+V3  = { level = "error" }
+V4  = { level = "error" }
+
+[l1_allowed_external]
+elixir = ["File"]
