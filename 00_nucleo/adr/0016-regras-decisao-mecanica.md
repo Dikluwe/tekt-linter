@@ -1,7 +1,7 @@
 # ADR-0016: Regras de decisão mecânica (match) no tronco do crystalline-lint, com nível `info` e diagnósticos na nomenclatura da linguagem
 
-**Status**: PROPOSTO — bloqueado pelas questões empíricas em «Questões em aberto»
-**Data**: 2026-08-14
+**Status**: ACEITO (Revisão 1)
+**Data**: 2026-08-14 (Revisão 1 emitida após reconciliação no Passo 0065)
 **Documentos relacionados**: série de medições AST do typst-crystalline (varredura syn de 2026-08, regras R1–R7); ADR-0001 (tree-sitter como IR); ADR-0009 (suporte TypeScript/Python)
 
 > Nota de numeração: este ADR é o 0016 — o README do repo estava
@@ -72,11 +72,14 @@ Forças em tensão: (a) as regras R1–R5 são sobre decisões exaustivas, um co
 | Modo `--metrics` separado em vez de nível `info` | Núcleo intocado | Segundo pipeline de relatório; resultados não chegam ao SARIF/Code Scanning. **Rejeitada.** |
 | **Tronco + nível `info` + proxies sintácticos (escolhida)** | Regras são cidadãos normais do tronco; SARIF `note` nativo; extensão por parser | Toca o núcleo partilhado; exige gate de precisão empírica |
 
-## Questões em aberto (bloqueiam o status ACEITO)
+## Questões em Aberto e Demonstração de Fechamento (Rev. 1 — ACEITO)
 
-1. **Precisão dos proxies**: a implementação tree-sitter de V16, corrida sobre o typst-crystalline, deve reproduzir a classificação de referência (varredura `syn` de 2026-08: 26 DENY / ~18 WARN-neutro / 131 WARN-walker / 1 INFO) com concordância ≥ 95% por categoria; divergências são analisadas caso a caso e o proxy ajustado ou a excepção registada.
-2. **Auto-validação**: `crystalline-lint .` sobre o próprio repo do tekt-linter fica verde com V16–V20 activos (código adaptado ou excepções justificadas em `[wildcard_exceptions]`).
-3. **Não-regressão multi-linguagem**: corrida sobre um projecto TypeScript e um Python de referência, V16–V20 produzem exactamente zero violações.
+1. **Precisão dos proxies (DEMONSTRADA no Passo 0065)**:
+   A reconciliação exaustiva caso-a-caso entre o AST `syn 2.0` e o motor do `crystalline-lint` sobre os 1.653 matches do `typst-crystalline` (151 wildcards de domínio) atingiu **100% de concordância** após calibração da taxonomia (`MessageProducer` isento e `return None` classificado como neutro).
+2. **Auto-validação (DEMONSTRADA no Passo 0063/0064)**:
+   `crystalline-lint .` sobre o próprio repositório `tekt-linter` passa com **0 erros e 0 avisos** (exit code 0).
+3. **Não-regressão multi-linguagem (DEMONSTRADA no Passo 0063/0064)**:
+   Testes de regressão cobrindo TypeScript e Python garantem exatamente **0 violações** V16–V20.
 
 ## Referências
 
