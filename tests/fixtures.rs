@@ -330,3 +330,56 @@ fn vtest_pathref_on_fail() { assert_verdict("vtest_pathref_on_fail", &["V3"]); }
 // mudança só tira arestas test-origin — produção nunca é test-origin).
 #[test]
 fn vtest_prod_fail() { assert_verdict("vtest_prod_fail", &["V3"]); }
+
+#[path = "fixtures/ghost_variant.rs"]
+mod ghost_variant;
+
+// ── Não-regressão V16–V20 em TypeScript e Python (ADR-0016) ───────────────────
+
+#[test]
+fn non_regression_v16_to_v20_on_typescript() {
+    use crystalline_lint::entities::layer::{Language, Layer};
+    use crystalline_lint::entities::rule_traits::HasDecisionArms;
+    use crystalline_lint::rules::wildcard_saturation;
+    use std::collections::HashMap;
+    use std::path::Path;
+
+    struct MockTsFile {
+        path: &'static Path,
+    }
+    impl HasDecisionArms<'static> for MockTsFile {
+        fn layer(&self) -> &Layer { &Layer::L1 }
+        fn decision_exprs(&self) -> &[crystalline_lint::entities::rule_traits::DecisionExpr<'static>] { &[] }
+        fn path(&self) -> &'static Path { self.path }
+        fn language(&self) -> &Language { &Language::TypeScript }
+    }
+
+    let file = MockTsFile { path: Path::new("01_core/index.ts") };
+    let exceptions = HashMap::new();
+    let viols = wildcard_saturation::check(&file, &exceptions);
+    assert!(viols.is_empty(), "TypeScript file must produce zero V16 violations");
+}
+
+#[test]
+fn non_regression_v16_to_v20_on_python() {
+    use crystalline_lint::entities::layer::{Language, Layer};
+    use crystalline_lint::entities::rule_traits::HasDecisionArms;
+    use crystalline_lint::rules::wildcard_saturation;
+    use std::collections::HashMap;
+    use std::path::Path;
+
+    struct MockPyFile {
+        path: &'static Path,
+    }
+    impl HasDecisionArms<'static> for MockPyFile {
+        fn layer(&self) -> &Layer { &Layer::L1 }
+        fn decision_exprs(&self) -> &[crystalline_lint::entities::rule_traits::DecisionExpr<'static>] { &[] }
+        fn path(&self) -> &'static Path { self.path }
+        fn language(&self) -> &Language { &Language::Python }
+    }
+
+    let file = MockPyFile { path: Path::new("01_core/main.py") };
+    let exceptions = HashMap::new();
+    let viols = wildcard_saturation::check(&file, &exceptions);
+    assert!(viols.is_empty(), "Python file must produce zero V16 violations");
+}

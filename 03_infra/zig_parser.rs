@@ -132,6 +132,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for ZigParser<R, S
             declarations,
             static_declarations,
             module_decls: vec![],
+            decision_exprs: vec![],
         })
     }
 }

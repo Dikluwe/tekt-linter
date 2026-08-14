@@ -34,7 +34,7 @@ pub struct Cli {
     /// Comma-separated list of checks to run (e.g. v1,v2,...,v12)
     /// V11 (dangling-contract) is opt-in — not included in the default because
     /// rule_traits in L1/contracts/ are implemented by ParsedFile (L1), not L2/L3.
-    #[arg(long, default_value = "v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15")]
+    #[arg(long, default_value = "v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15,v16,v17,v18,v19,v20")]
     pub checks: String,
 
     /// Disable V5 drift detection
@@ -115,6 +115,11 @@ pub struct EnabledChecks {
     pub v13: bool,
     pub v14: bool,
     pub v15: bool,
+    pub v16: bool,
+    pub v17: bool,
+    pub v18: bool,
+    pub v19: bool,
+    pub v20: bool,
 }
 
 impl EnabledChecks {
@@ -145,6 +150,11 @@ impl EnabledChecks {
             v13: has("v13"),
             v14: has("v14"),
             v15: has("v15"),
+            v16: has("v16"),
+            v17: has("v17"),
+            v18: has("v18"),
+            v19: has("v19"),
+            v20: has("v20"),
         }
     }
 }
@@ -162,6 +172,7 @@ pub fn format_text(violations: &[Violation<'_>]) -> String {
             ViolationLevel::Fatal => "fatal".red().bold().to_string(),
             ViolationLevel::Error => "error".red().bold().to_string(),
             ViolationLevel::Warning => "warning".yellow().bold().to_string(),
+            ViolationLevel::Info => "info".blue().bold().to_string(),
         };
         out.push_str(&format!(
             "{}: {} [{}]\n   --> {}:{}\n\n",
@@ -301,6 +312,7 @@ fn sarif_level(level: &ViolationLevel) -> &'static str {
         ViolationLevel::Fatal => "error",
         ViolationLevel::Error => "error",
         ViolationLevel::Warning => "warning",
+        ViolationLevel::Info => "note",
     }
 }
 
@@ -322,6 +334,11 @@ fn sarif_rules() -> Vec<serde_json::Value> {
         sarif_rule("V13", "MutableStateInCore",    "Global mutable state in L1 core", "error"),
         sarif_rule("V14", "ExternalTypeInContract", "Unauthorized external dependency in L1", "error"),
         sarif_rule("V15", "MultiPromptHeader",      "Multiple @prompt headers in one file", "error"),
+        sarif_rule("V16", "WildcardSaturation",     "Catchall arm discards domain enum information", "warning"),
+        sarif_rule("V17", "CompoundGuard",          "Compound boolean logic in pattern guard", "warning"),
+        sarif_rule("V18", "RangePatternInMatch",    "Range pattern in domain match expression", "warning"),
+        sarif_rule("V19", "OrPatternAlternatives",  "Decision arm condenses multiple or-pattern alternatives", "note"),
+        sarif_rule("V20", "DeepPatternNesting",     "Pattern nesting depth exceeds threshold", "note"),
     ]
 }
 
@@ -361,7 +378,9 @@ pub fn should_fail(violations: &[Violation<'_>], fail_on: &FailLevel) -> bool {
         }
         match fail_on {
             FailLevel::Error => v.level == ViolationLevel::Error,
-            FailLevel::Warning => true,
+            FailLevel::Warning => {
+                v.level == ViolationLevel::Error || v.level == ViolationLevel::Warning
+            }
         }
     })
 }
@@ -605,6 +624,11 @@ mod tests {
         assert!(checks.v10);
         assert!(checks.v11);
         assert!(checks.v12);
+        assert!(checks.v16);
+        assert!(checks.v17);
+        assert!(checks.v18);
+        assert!(checks.v19);
+        assert!(checks.v20);
     }
 
     #[test]
@@ -676,11 +700,27 @@ mod tests {
     }
 
     #[test]
-    fn sarif_driver_rules_has_16_entries() {
-        // SARIF driver.rules deve conter exatamente 16 entradas (V0 a V15)
+    fn sarif_driver_rules_has_21_entries() {
+        // SARIF driver.rules deve conter exatamente 21 entradas (V0 a V20)
         let out = format_sarif(&[]);
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
         let rules = parsed["runs"][0]["tool"]["driver"]["rules"].as_array().unwrap();
-        assert_eq!(rules.len(), 16, "expected 16 rules (V0 to V15), got {}", rules.len());
+        assert_eq!(rules.len(), 21, "expected 21 rules (V0 to V20), got {}", rules.len());
     }
+    #[test]
+    fn sarif_info_mapped_to_note() {
+        let v = vec![make_violation("V19", ViolationLevel::Info)];
+        let out = format_sarif(&v);
+        let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(parsed["runs"][0]["results"][0]["ruleId"], "V19");
+        assert_eq!(parsed["runs"][0]["results"][0]["level"], "note");
+    }
+
+    #[test]
+    fn should_not_fail_on_info_even_when_fail_on_warning() {
+        let v = vec![make_violation("V19", ViolationLevel::Info)];
+        assert!(!should_fail(&v, &FailLevel::Warning));
+        assert!(!should_fail(&v, &FailLevel::Error));
+    }
+
 }

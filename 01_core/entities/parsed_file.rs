@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/violation-types.md
-//! @prompt-hash 3a54c50f
+//! @prompt-hash 45a6321f
 //! @layer L1
 //! @updated 2026-06-09
 
@@ -288,8 +288,9 @@ pub struct PromptHeader<'a> {
 // Direção correta: entities → contracts (nunca entities → rules)
 
 use crate::entities::rule_traits::{
-    HasCoverage, HasHashes, HasImports, HasModuleDecls, HasPromptFilesystem, HasPromptRefs,
-    HasPublicInterface, HasPubLeak, HasStaticDeclarations, HasTokens, HasWiringPurity,
+    DecisionExpr, HasCoverage, HasDecisionArms, HasHashes, HasImports,
+    HasModuleDecls, HasPromptFilesystem, HasPromptRefs, HasPublicInterface, HasPubLeak,
+    HasStaticDeclarations, HasTokens, HasWiringPurity,
 };
 
 impl<'a> HasPromptFilesystem<'a> for ParsedFile<'a> {
@@ -417,6 +418,21 @@ impl<'a> HasModuleDecls<'a> for ParsedFile<'a> {
     }
 }
 
+impl<'a> HasDecisionArms<'a> for ParsedFile<'a> {
+    fn layer(&self) -> &Layer {
+        &self.layer
+    }
+    fn decision_exprs(&self) -> &[DecisionExpr<'a>] {
+        &self.decision_exprs
+    }
+    fn path(&self) -> &'a Path {
+        self.path
+    }
+    fn language(&self) -> &Language {
+        &self.language
+    }
+}
+
 // ── ParsedFile ────────────────────────────────────────────────────────────────
 
 /// Intermediate representation consumed by all V1–V6 rules.
@@ -481,6 +497,10 @@ pub struct ParsedFile<'a> {
     /// For future structural rules: `mod foo;` declarations — only Rust.
     /// Separated from `imports` to distinguish dependency vs module structure — ADR-0013.
     pub module_decls: Vec<ModuleDecl<'a>>,
+
+    /// For V16–V20: decision expressions (match / switch / case arms).
+    /// Populated only by RustParser in this phase; other parsers produce `vec![]`.
+    pub decision_exprs: Vec<DecisionExpr<'a>>,
 }
 
 #[cfg(test)]
@@ -508,6 +528,7 @@ mod tests {
             declarations: vec![],
             static_declarations: vec![],
             module_decls: vec![],
+            decision_exprs: vec![],
         }
     }
 

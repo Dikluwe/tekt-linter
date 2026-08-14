@@ -133,6 +133,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for CParser<R, S> 
             declarations,
             static_declarations,
             module_decls: vec![],
+            decision_exprs: vec![],
         })
     }
 }
@@ -460,7 +461,9 @@ fn extract_declarations<'a>(root: Node, source: &'a [u8]) -> Vec<Declaration<'a>
                     let d_kind = match sig.kind {
                         TypeKind::Struct => DeclarationKind::Struct,
                         TypeKind::Enum => DeclarationKind::Enum,
-                        _ => DeclarationKind::TypeAlias,
+                        TypeKind::Class => DeclarationKind::Class,
+                        TypeKind::Interface => DeclarationKind::Interface,
+                        TypeKind::Trait | TypeKind::TypeAlias => DeclarationKind::TypeAlias,
                     };
                     decls.push(Declaration {
                         kind: d_kind,

@@ -1,5 +1,5 @@
 # Prompt: Types of Violations (violation-types)
-Hash do Código: f0776e27
+Hash do Código: c801f9fb
 
 **Camada**: L1 (Core - Entities)
 **Criado em**: 2025-03-13
@@ -57,11 +57,12 @@ use std::path::{Path, PathBuf};
 /// independentemente de configuração.
 /// Error: violações arquiteturais bloqueantes (V1–V4, V9, V11).
 /// Warning: divergências não bloqueantes por padrão (V5–V7, V12).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ViolationLevel {
-    Fatal,
-    Error,
+    Info,
     Warning,
+    Error,
+    Fatal,
 }
 
 /// ADR-0005: path usa Cow<'a, Path>.
@@ -629,3 +630,4 @@ Então retorna true
 | 2026-03-22 | ADR-0011: StaticDeclaration<'a>, HasStaticDeclarations<'a>, static_declarations em ParsedFile | parsed_file.rs, rule_traits.rs |
 | 2026-03-22 | ADR-0012: L1AllowedExternal em entities/l1_allowed_external.rs | l1_allowed_external.rs |
 | 2026-06-09 | 0061: campo `Import.is_test_origin: bool` — `true` se o import nasce em `#[cfg(test)]` (removido do build de produção). A gravidade (V3/V9/V14) o pula por padrão | parsed_file.rs |
+| 2026-08-14 | ADR-0016 / 0063: ViolationLevel::Info (Info < Warning < Error < Fatal), SARIF `note`, HasDecisionArms e decision_exprs para V16–V20 | violation.rs, parsed_file.rs, rule_traits.rs |

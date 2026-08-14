@@ -106,6 +106,14 @@ V11 = { level = "error" }
 V12 = { level = "warning" }
 V13 = { level = "error" }
 V14 = { level = "error" }
+V15 = { level = "error" }
+V16 = { level = "warning", languages = ["rust"] }
+V17 = { level = "warning", languages = ["rust"] }
+V18 = { level = "warning", languages = ["rust"] }
+V19 = { level = "info", languages = ["rust"] }
+V20 = { level = "info", languages = ["rust"] }
+
+[wildcard_exceptions]
 
 [l1_allowed_external]
 # Pacotes externos explicitamente autorizados em L1.

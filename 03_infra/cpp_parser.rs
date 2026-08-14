@@ -134,6 +134,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for CppParser<R, S
             declarations,
             static_declarations,
             module_decls: vec![],
+            decision_exprs: vec![],
         })
     }
 }
@@ -455,7 +456,8 @@ fn extract_declarations<'a>(root: Node, source: &'a [u8]) -> Vec<Declaration<'a>
                         TypeKind::Struct => DeclarationKind::Struct,
                         TypeKind::Enum => DeclarationKind::Enum,
                         TypeKind::Class => DeclarationKind::Class,
-                        _ => DeclarationKind::TypeAlias,
+                        TypeKind::Interface => DeclarationKind::Interface,
+                        TypeKind::Trait | TypeKind::TypeAlias => DeclarationKind::TypeAlias,
                     };
                     decls.push(Declaration {
                         kind: d_kind,

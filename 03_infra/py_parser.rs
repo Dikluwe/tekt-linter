@@ -179,6 +179,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for PyParser<R, S>
             declarations,
             static_declarations: vec![],
             module_decls: vec![],
+            decision_exprs: vec![],
         })
     }
 }
@@ -926,8 +927,12 @@ fn extract_fn_sig<'a>(node: Node, source: &'a [u8]) -> Option<FunctionSignature<
         name,
         params,
         return_type: match return_type {
-            Some(s) if !s.is_empty() && s != "None" => {
-                Some(Box::leak(s.into_boxed_str()) as &'static str)
+            Some(s) if !s.is_empty() => {
+                if s != "None" {
+                    Some(Box::leak(s.into_boxed_str()) as &'static str)
+                } else {
+                    None
+                }
             }
             _ => None,
         },
