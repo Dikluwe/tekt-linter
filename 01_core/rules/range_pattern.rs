@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/wildcard-saturation.md
-//! @prompt-hash f9af51c3
+//! @prompt-hash d67549d6
 //! @layer L1
 //! @updated 2026-08-14
 

@@ -133,6 +133,7 @@ pub enum ScrutineeForm {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BodyForm {
     ErrorBarrier,
+    MessageProducer,
     EnumPath,
     LiteralNeutral,
     LiteralOther,
