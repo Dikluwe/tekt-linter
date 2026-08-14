@@ -116,6 +116,78 @@ pub trait HasWiringPurity<'a> {
     fn path(&self) -> &'a Path;
 }
 
+
+// ── V16–V20 (Decisões Mecânicas — ADR-0016) ──────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScrutineeForm {
+    Path,
+    FieldAccess,
+    MethodCall,
+    Index,
+    Literal,
+    Tuple,
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BodyForm {
+    ErrorBarrier,
+    EnumPath,
+    LiteralNeutral,
+    LiteralOther,
+    Call,
+    EmptyBlock,
+    Continue,
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecisionExpr<'a> {
+    pub snippet_scrutinee: &'a str,
+    pub scrutinee_form: ScrutineeForm,
+    pub arms: Vec<DecisionArm<'a>>,
+    pub line: usize,
+    pub column: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecisionArm<'a> {
+    pub pattern_snippet: &'a str,
+    pub is_catchall: bool,
+    pub bound_ident_used_in_body: bool,
+    pub qualified_prefixes: Vec<&'a str>,
+    pub has_guard: bool,
+    pub guard_is_compound: bool,
+    pub pattern_is_range: bool,
+    pub pattern_depth: u8,
+    pub or_alternatives: u16,
+    pub body_form: BodyForm,
+    pub body_snippet: &'a str,
+    pub line: usize,
+    pub column: usize,
+}
+
+/// Para V16–V20 — inspeciona braços de decisão (match/switch/case).
+pub trait HasDecisionArms<'a> {
+    fn layer(&self) -> &Layer;
+    fn decision_exprs(&self) -> &[DecisionExpr<'a>];
+    fn path(&self) -> &'a Path;
+    fn language(&self) -> &Language;
+}
+
+/// Termo idiomático para catch-all na linguagem do arquivo analisado (ADR-0016 §5).
+pub fn decision_arm_term_for(language: &Language) -> &'static str {
+    match language {
+        Language::Rust => "wildcard `_ =>`",
+        Language::Python => "`case _`",
+        Language::TypeScript => "cláusula `default:`",
+        Language::Go => "cláusula `default:`",
+        Language::Zig => "—",
+        Language::C | Language::Cpp | Language::Java | Language::Elixir | Language::Unknown => "wildcard",
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -321,4 +393,40 @@ mod tests {
         assert_eq!(m.prompt_refs().len(), 2);
         assert_eq!(m.path(), Path::new("02_shell/cli.rs"));
     }
+
+    struct MockV16 {
+        layer: Layer,
+        language: Language,
+        exprs: Vec<DecisionExpr<'static>>,
+        path: &'static Path,
+    }
+    impl HasDecisionArms<'static> for MockV16 {
+        fn layer(&self) -> &Layer { &self.layer }
+        fn decision_exprs(&self) -> &[DecisionExpr<'static>] { &self.exprs }
+        fn path(&self) -> &'static Path { self.path }
+        fn language(&self) -> &Language { &self.language }
+    }
+
+    #[test]
+    fn mock_v16_implements_has_decision_arms() {
+        let m = MockV16 {
+            layer: Layer::L1,
+            language: Language::Rust,
+            exprs: vec![],
+            path: Path::new("01_core/entities/layer.rs"),
+        };
+        assert_eq!(m.layer(), &Layer::L1);
+        assert_eq!(m.language(), &Language::Rust);
+        assert!(m.decision_exprs().is_empty());
+    }
+
+    #[test]
+    fn decision_arm_terms_are_idiomatic() {
+        assert_eq!(decision_arm_term_for(&Language::Rust), "wildcard `_ =>`");
+        assert_eq!(decision_arm_term_for(&Language::Python), "`case _`");
+        assert_eq!(decision_arm_term_for(&Language::TypeScript), "cláusula `default:`");
+        assert_eq!(decision_arm_term_for(&Language::Go), "cláusula `default:`");
+        assert_eq!(decision_arm_term_for(&Language::Zig), "—");
+    }
+
 }

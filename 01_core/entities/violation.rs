@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/violation-types.md
-//! @prompt-hash 3a54c50f
+//! @prompt-hash 45a6321f
 //! @layer L1
 //! @updated 2026-03-14
 
@@ -12,8 +12,15 @@ use std::path::Path;
 /// independentemente de configuração.
 /// Error: violações arquiteturais bloqueantes (V1–V4).
 /// Warning: divergências não bloqueantes por padrão (V5–V6).
+/// Fatal: erros de infraestrutura que impedem análise completa (V0).
+/// Fatal não pode ser suprimido por --fail-on — bloqueia CI
+/// independentemente de configuração.
+/// Error: violações arquiteturais bloqueantes (V1–V4).
+/// Warning: divergências não bloqueantes por padrão (V5–V6).
+/// Info: métricas, advisories e avisos puramente informativos (V19–V20).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ViolationLevel {
+    Info,
     Warning,
     Error,
     Fatal,
@@ -65,9 +72,18 @@ mod tests {
 
     #[test]
     fn violation_levels_are_distinct() {
+        assert_ne!(ViolationLevel::Info, ViolationLevel::Warning);
         assert_ne!(ViolationLevel::Error, ViolationLevel::Warning);
         assert_ne!(ViolationLevel::Fatal, ViolationLevel::Error);
         assert_ne!(ViolationLevel::Fatal, ViolationLevel::Warning);
+        assert_ne!(ViolationLevel::Fatal, ViolationLevel::Info);
+    }
+
+    #[test]
+    fn violation_level_ordering() {
+        assert!(ViolationLevel::Info < ViolationLevel::Warning);
+        assert!(ViolationLevel::Warning < ViolationLevel::Error);
+        assert!(ViolationLevel::Error < ViolationLevel::Fatal);
     }
 
     #[test]

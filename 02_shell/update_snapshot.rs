@@ -286,6 +286,7 @@ mod tests {
             declarations: vec![],
             static_declarations: vec![],
             module_decls: vec![],
+            decision_exprs: vec![],
         }
     }
 

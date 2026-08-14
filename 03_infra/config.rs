@@ -24,6 +24,7 @@ fn is_language_key(key: &str) -> bool {
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct RuleEntry {
     pub level: Option<String>,
+    pub languages: Option<Vec<String>>,
 }
 
 /// Entrada de `[l1_allowed_external]` — suporta formato legacy e type-level.
@@ -77,6 +78,10 @@ pub struct CrystallineConfig {
     /// Exemplo: { "00_nucleo/prompts/template.md" = "template" }
     #[serde(default)]
     pub orphan_exceptions: HashMap<String, String>,
+    /// Exceções declaradas para V16 — lidas de `[wildcard_exceptions]`.
+    /// Exemplo: { "01_core/src/entities/gradient.rs:221" = "hub intencional" }
+    #[serde(default)]
+    pub wildcard_exceptions: HashMap<String, String>,
     /// Configuração de exceções V12 — lida de `[wiring_exceptions]`.
     #[serde(default)]
     pub wiring_exceptions: WiringExceptionsConfig,
@@ -148,6 +153,7 @@ impl CrystallineConfig {
                 "fatal" | "Fatal" => Some(ViolationLevel::Fatal),
                 "error" | "Error" => Some(ViolationLevel::Error),
                 "warning" | "Warning" => Some(ViolationLevel::Warning),
+                "info" | "Info" => Some(ViolationLevel::Info),
                 _ => None,
             })
             .unwrap_or(default)
@@ -244,6 +250,7 @@ impl Default for CrystallineConfig {
             excluded,
             l1_ports,
             orphan_exceptions: HashMap::new(),
+            wildcard_exceptions: HashMap::new(),
             wiring_exceptions: WiringExceptionsConfig::default(),
             ts_aliases: HashMap::new(),
             py_aliases: HashMap::new(),
@@ -344,7 +351,7 @@ types = ["EcoString", "EcoVec"]
     #[test]
     fn level_for_returns_configured_level_when_declared() {
         let mut config = CrystallineConfig::default();
-        config.rules.insert("V11".to_string(), RuleEntry { level: Some("warning".to_string()) });
+        config.rules.insert("V11".to_string(), RuleEntry { level: Some("warning".to_string()), languages: None });
         assert_eq!(config.level_for("V11", ViolationLevel::Error), ViolationLevel::Warning);
     }
 
@@ -353,4 +360,26 @@ types = ["EcoString", "EcoVec"]
         let config = CrystallineConfig::default();
         assert_eq!(config.level_for("V99", ViolationLevel::Warning), ViolationLevel::Warning);
     }
+    #[test]
+    fn level_for_returns_info_when_configured() {
+        let mut config = CrystallineConfig::default();
+        config.rules.insert("V19".to_string(), RuleEntry { level: Some("info".to_string()), languages: None });
+        assert_eq!(config.level_for("V19", ViolationLevel::Warning), ViolationLevel::Info);
+    }
+
+    #[test]
+    fn wildcard_exceptions_and_rule_languages_parse() {
+        let toml = r#"
+[rules.V16]
+languages = ["rust"]
+level = "warning"
+
+[wildcard_exceptions]
+"01_core/gradient.rs:221" = "hub intencional"
+"#;
+        let config: CrystallineConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.rules.get("V16").unwrap().languages.as_ref().unwrap(), &vec!["rust"]);
+        assert_eq!(config.wildcard_exceptions.get("01_core/gradient.rs:221").unwrap(), "hub intencional");
+    }
+
 }

@@ -39,10 +39,13 @@ use crystalline_lint::infra::java_parser::JavaParser;
 use crystalline_lint::infra::elixir_parser::ElixirParser;
 use crystalline_lint::infra::snapshot_writer;
 use crystalline_lint::infra::walker::FileWalker;
+use std::collections::HashMap;
 use crystalline_lint::rules::{
-    alien_file, dangling_contract, external_type_in_contract, forbidden_import, impure_core,
-    multi_prompt_header, mutable_state_core, orphan_prompt, prompt_drift, prompt_header,
-    prompt_stale, pub_leak, quarantine_leak, test_file, wiring_logic_leak,
+    alien_file, compound_guard, dangling_contract, deep_pattern_nesting,
+    external_type_in_contract, forbidden_import, impure_core, multi_prompt_header,
+    mutable_state_core, or_pattern_alternatives, orphan_prompt, prompt_drift,
+    prompt_header, prompt_stale, pub_leak, quarantine_leak, range_pattern, test_file,
+    wildcard_saturation, wiring_logic_leak,
 };
 use crystalline_lint::rules::pub_leak::L1Ports;
 use crystalline_lint::shell::cli::{validate_args, Cli, EnabledChecks, OutputFormat};
@@ -196,7 +199,7 @@ fn main() {
     let (source_files, source_errors) = collect_walker_results(walker.files());
 
     let (mut all_violations, all_parsed, project_index) =
-        run_pipeline(&source_files, &source_errors, &parser, &enabled, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false));
+        run_pipeline(&source_files, &source_errors, &parser, &enabled, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false), &config.wildcard_exceptions);
 
     // ── --emit-resolution (instrumentação 0058, fora do selo de veredito) ──────
     // Despeja a resolução de todo import (incl. Unknown) e sai — não roda regras.
@@ -314,9 +317,10 @@ fn main() {
             let v5_only = EnabledChecks {
                 v1: false, v2: false, v3: false, v4: false, v5: true, v6: false,
                 v7: false, v8: false, v9: false, v10: false, v11: false, v12: false,
-                v13: false, v14: false, v15: false,
+                v13: false, v14: false, v15: false, v16: false, v17: false, v18: false,
+                v19: false, v20: false,
             };
-            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v5_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false));
+            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v5_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false), &config.wildcard_exceptions);
             violations.iter().filter(|v| v.rule_id == "V5").count()
         };
 
@@ -407,9 +411,10 @@ fn main() {
             let v6_only = EnabledChecks {
                 v1: false, v2: false, v3: false, v4: false, v5: false, v6: true,
                 v7: false, v8: false, v9: false, v10: false, v11: false, v12: false,
-                v13: false, v14: false, v15: false,
+                v13: false, v14: false, v15: false, v16: false, v17: false, v18: false,
+                v19: false, v20: false,
             };
-            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v6_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false));
+            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v6_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false), &config.wildcard_exceptions);
             violations.iter().filter(|v| v.rule_id == "V6").count()
         };
 
@@ -566,6 +571,7 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
     l1_allowed: &L1AllowedExternalSet,
     strict_dirs: &[String],
     check_test_imports: bool,
+    wildcard_exceptions: &HashMap<String, String>,
 ) -> (Vec<Violation<'a>>, Vec<ParsedFile<'a>>, ProjectIndex<'a>) {
     // Fase Map ─────────────────────────────────────────────────────────────────
 
@@ -576,13 +582,13 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
             (vec![source_error_to_violation(err)], None, LocalIndex::from_source_error())
         });
 
-    // V1–V10, V12 per file
+    // V1–V20 per file
     let file_map = source_files
         .par_iter()
         .map(|source_file| -> (Vec<Violation<'a>>, Option<ParsedFile<'a>>, LocalIndex<'a>) {
             match parser.parse(source_file) {
                 Ok(parsed) => {
-                    let violations = run_checks(&parsed, enabled, l1_ports, wiring_config, l1_allowed, strict_dirs, check_test_imports);
+                    let violations = run_checks(&parsed, enabled, l1_ports, wiring_config, l1_allowed, strict_dirs, check_test_imports, wildcard_exceptions);
                     let local = LocalIndex::from_parsed(&parsed);
                     (violations, Some(parsed), local)
                 }
@@ -639,6 +645,7 @@ fn run_checks<'a>(
     l1_allowed: &L1AllowedExternalSet,
     strict_dirs: &[String],
     check_test_imports: bool,
+    wildcard_exceptions: &HashMap<String, String>,
 ) -> Vec<Violation<'a>> {
     let mut violations = Vec::new();
     let l1_allowed_lang = l1_allowed.for_language(&file.language);
@@ -654,6 +661,11 @@ fn run_checks<'a>(
     if enabled.v13 { violations.extend(mutable_state_core::check(file)); }
     if enabled.v14 { violations.extend(external_type_in_contract::check(file, l1_allowed_lang, check_test_imports)); }
     if enabled.v15 { violations.extend(multi_prompt_header::check(file)); }
+    if enabled.v16 { violations.extend(wildcard_saturation::check(file, wildcard_exceptions)); }
+    if enabled.v17 { violations.extend(compound_guard::check(file)); }
+    if enabled.v18 { violations.extend(range_pattern::check(file)); }
+    if enabled.v19 { violations.extend(or_pattern_alternatives::check(file)); }
+    if enabled.v20 { violations.extend(deep_pattern_nesting::check(file)); }
     violations
 }
 

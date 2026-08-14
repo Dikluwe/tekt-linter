@@ -180,6 +180,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for TsParser<R, S>
             declarations,
             static_declarations: vec![],
             module_decls: vec![],
+            decision_exprs: vec![],
         })
     }
 }

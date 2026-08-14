@@ -65,6 +65,11 @@ crystalline-lint --update-snapshot --dry-run .
 | V13 | `MutableStateInCore` | **error** | Estado global mutável (`static mut`, `Mutex`, `Atomic*`, etc.) declarado em L1 |
 | V14 | `ExternalTypeInContract` | **error** | Dependência externa não autorizada em L1 (fora de `[l1_allowed_external]`) |
 | V15 | `MultiPromptHeader` | **error** | Arquivo com 2+ linhas `@prompt` no doc-header. A regra de linhagem é um ficheiro, um prompt — com multi-`@prompt` o `--fix-hashes` é indefinido, por isso o lint bloqueia em vez de corrigir ambiguamente |
+| V16 | `WildcardSaturation` | **warning** | Braço catch-all descarta informação de enum fechado de domínio sem erro de compilação. Saturação arbitrária (DENY-class) ou default neutro (WARN-class) |
+| V17 | `CompoundGuard` | **warning** | Guard de braço de decisão com operadores booleanos compostos (`&&`, `||`) |
+| V18 | `RangePatternInMatch` | **warning** | Padrão de range numérico em match de domínio fora de módulo de lexing/numeração |
+| V19 | `OrPatternAlternatives` | **info** | Braço de decisão condensa múltiplas alternativas or-pattern (métrica: informa subdimensionamento de cobertura de braços) |
+| V20 | `DeepPatternNesting` | **info** | Aninhamento de padrão > 2 fora de contexto de tabela de tuplas regulares (métrica de complexidade) |
 
 **Sobre níveis Fatal (V0, V8, V10):** a ausência de violações garante
 que todos os arquivos foram lidos e analisados com sucesso. Fatal
@@ -93,7 +98,7 @@ ARGS:
 OPTIONS:
   --format <fmt>         sarif | text                   [padrão: text]
   --fail-on <level>      error | warning                [padrão: error]
-  --checks <list>        v0,v1,...,v12                  [padrão: all]
+  --checks <list>        v0,v1,...,v20                  [padrão: all]
   --no-drift             desabilita V5
   --no-stale             desabilita V6
   --machine-readable     alias para --format sarif
@@ -197,6 +202,15 @@ V12 = { level = "warning" }
 V13 = { level = "error" }
 V14 = { level = "error" }
 V15 = { level = "error" }
+V16 = { level = "warning", languages = ["rust"] }
+V17 = { level = "warning", languages = ["rust"] }
+V18 = { level = "warning", languages = ["rust"] }
+V19 = { level = "info", languages = ["rust"] }
+V20 = { level = "info", languages = ["rust"] }
+
+# Exceções declaradas para V16 — hubs intencionais com razão técnica documentada
+[wildcard_exceptions]
+# "01_core/src/entities/gradient.rs:221" = "hub intencional: fallback lossy documentado no ADR-0109" 
 ```
 
 ---
@@ -368,20 +382,29 @@ crystalline-lint/
 │   │   │   ├── wiring-logic-leak.md  (V12)
 │   │   │   ├── mutable-state-core.md (V13)
 │   │   │   ├── external-type-in-contract.md (V14)
-│   │   │   └── multi-prompt-header.md (V15)
+│   │   │   ├── multi-prompt-header.md (V15)
+│   │   │   └── wildcard-saturation.md (V16–V20)
 │   │   ├── file-walker.md
 │   │   ├── prompt-walker.md
 │   │   ├── sarif-formatter.md
 │   │   └── fix-hashes.md
 │   └── adr/
 │       ├── 0001-tree-sitter-intermediate-repr.md
-│       ├── 0002-code-to-prompt-feedback-direction.md
-│       ├── 0004-motor-reformulation.md
-│       ├── 0005-location-owned-paths-cargo-nucleation.md
-│       ├── 0006-topological-closure.md
-│       ├── 0007-fechamento-comportamental.md
+│       ├── 0002-typed-extensions-for-parsed-file.md
+│       ├── 0003-code-to-prompt-feedback-direction.md
+│       ├── 0004-reformulação-do-motor-de-análise.md
+│       ├── 0005-location-owned-paths-e-cargo.toml-como-artefato-gerido.md
+│       ├── 0006-fechamento-topológico-e-proteção-de-encapsulamento.md
+│       ├── 0007-fechamento-comportamental-lab-contratos-fiacao.md
 │       ├── 0008-estrategia-de-distribuicao.md
-│       └── 0009-suporte-typescript-python.md
+│       ├── 0009-isolamento-de-parsers-por-linguagem.md
+│       ├── 0010-exclusao-ficheiros-individuais.md
+│       ├── 0011-mutable-state-in-core.md
+│       ├── 0012-external-type-in-contract.md
+│       ├── 0013-import-vs-module-decl.md
+│       ├── 0014-v11-configurable-level.md
+│       ├── 0015-detecção-de-blanket-impls-para-V11.md
+│       └── 0016-regras-decisao-mecanica.md
 │
 ├── 01_core/                          # Lógica pura — zero I/O
 │   ├── entities/
@@ -397,7 +420,7 @@ crystalline-lint/
 │   │   ├── prompt_reader.rs
 │   │   ├── prompt_snapshot_reader.rs
 │   │   └── prompt_provider.rs
-│   └── rules/                        # V1–V12
+│   └── rules/                        # V1–V20
 │       ├── prompt_header.rs          (V1)
 │       ├── test_file.rs              (V2)
 │       ├── forbidden_import.rs       (V3)
@@ -409,7 +432,15 @@ crystalline-lint/
 │       ├── pub_leak.rs               (V9)
 │       ├── quarantine_leak.rs        (V10)
 │       ├── dangling_contract.rs      (V11)
-│       └── wiring_logic_leak.rs      (V12)
+│       ├── wiring_logic_leak.rs      (V12)
+│       ├── mutable_state_core.rs     (V13)
+│       ├── external_type_in_contract.rs (V14)
+│       ├── multi_prompt_header.rs    (V15)
+│       ├── wildcard_saturation.rs    (V16)
+│       ├── compound_guard.rs         (V17)
+│       ├── range_pattern.rs          (V18)
+│       ├── or_pattern_alternatives.rs (V19)
+│       └── deep_pattern_nesting.rs   (V20)
 │
 ├── 02_shell/                         # CLI e formatadores
 │   ├── cli.rs

@@ -19,6 +19,7 @@ use crate::entities::parsed_file::{
     Declaration, DeclarationKind, FunctionSignature, Import, ImportKind, ModuleDecl, ParsedFile,
     PromptHeader, PublicInterface, StaticDeclaration, Token, TokenKind, TypeKind, TypeSignature,
 };
+use crate::entities::rule_traits::{BodyForm, DecisionArm, DecisionExpr, ScrutineeForm};
 use crate::infra::config::CrystallineConfig;
 use crate::infra::crate_registry::{CrateRegistry, MemberCrate};
 
@@ -153,6 +154,9 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
         // ── Module declarations (ADR-0013) ─────────────────────────────────
         let module_decls = extract_module_decls(root, source, &file.layer);
 
+        // ── Decision expressions (V16–V20 — ADR-0016) ───────────────────────
+        let decision_exprs = extract_decision_exprs(root, source);
+
         Ok(ParsedFile {
             path: file.path.as_path(),
             layer: file.layer.clone(),
@@ -171,6 +175,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
             declarations,
             static_declarations,
             module_decls,
+            decision_exprs,
         })
     }
 }
@@ -1136,6 +1141,500 @@ fn find_first_error_pos(node: Node) -> (usize, usize) {
         }
     }
     (1, 0) // linha 1 como fallback mínimo — nunca reportar linha 0
+}
+
+
+// ── Decision Expressions Extraction (ADR-0016) ────────────────────────────────
+
+fn extract_decision_exprs<'a>(root: Node, source: &'a [u8]) -> Vec<DecisionExpr<'a>> {
+    let mut exprs = Vec::new();
+    find_match_expressions(root, source, &mut exprs);
+    exprs
+}
+
+fn find_match_expressions<'a>(node: Node, source: &'a [u8], acc: &mut Vec<DecisionExpr<'a>>) {
+    if node.kind() == "match_expression" {
+        if let Some(expr) = parse_match_expression(node, source) {
+            acc.push(expr);
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        find_match_expressions(child, source, acc);
+    }
+}
+
+fn parse_match_expression<'a>(node: Node, source: &'a [u8]) -> Option<DecisionExpr<'a>> {
+    // Find scrutinee and match_block
+    let mut scrutinee_node = None;
+    let mut block_node = None;
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "match_block" {
+            block_node = Some(child);
+        } else if child.kind() != "match" && child.is_named() && scrutinee_node.is_none() && block_node.is_none() {
+            scrutinee_node = Some(child);
+        }
+    }
+
+    let scrutinee = scrutinee_node?;
+    let block = block_node?;
+
+    let snippet_scrutinee = std::str::from_utf8(&source[scrutinee.start_byte()..scrutinee.end_byte()]).ok()?.trim();
+    let scrutinee_form = classify_scrutinee(scrutinee, source);
+    let span_pos = node.start_position();
+
+    let mut arms = Vec::new();
+    let mut block_cursor = block.walk();
+    for child in block.children(&mut block_cursor) {
+        if child.kind() == "match_arm" {
+            if let Some(arm) = parse_match_arm(child, source) {
+                arms.push(arm);
+            }
+        }
+    }
+
+    Some(DecisionExpr {
+        snippet_scrutinee,
+        scrutinee_form,
+        arms,
+        line: span_pos.row + 1,
+        column: span_pos.column,
+    })
+}
+
+fn classify_scrutinee(node: Node, _source: &[u8]) -> ScrutineeForm {
+    match node.kind() {
+        "call_expression" => {
+            // Check if it is a method call like foo.bar() or self.kind()
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.kind() == "field_expression" {
+                    return ScrutineeForm::MethodCall;
+                }
+            }
+            ScrutineeForm::MethodCall
+        }
+        "field_expression" => ScrutineeForm::FieldAccess,
+        "index_expression" => ScrutineeForm::Index,
+        "tuple_expression" => ScrutineeForm::Tuple,
+        "identifier" | "scoped_identifier" => ScrutineeForm::Path,
+        "integer_literal" | "float_literal" | "string_literal" | "char_literal" | "boolean_literal" => {
+            ScrutineeForm::Literal
+        }
+        _ => ScrutineeForm::Other,
+    }
+}
+
+fn parse_match_arm<'a>(node: Node, source: &'a [u8]) -> Option<DecisionArm<'a>> {
+    let mut pattern_node = None;
+    let mut body_node = None;
+    let mut passed_arrow = false;
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "=>" {
+            passed_arrow = true;
+        } else if !passed_arrow && child.kind() == "match_pattern" {
+            pattern_node = Some(child);
+        } else if passed_arrow && child.is_named() && child.kind() != "," && body_node.is_none() {
+            body_node = Some(child);
+        }
+    }
+
+    let match_pattern = pattern_node?;
+    let body = body_node?;
+
+    // Inside match_pattern: pattern nodes before optional `if` node
+    let mut pattern_end_byte = match_pattern.end_byte();
+    let mut guard_node = None;
+    let mut has_if = false;
+
+    let mut pat_cursor = match_pattern.walk();
+    for child in match_pattern.children(&mut pat_cursor) {
+        if child.kind() == "if" {
+            has_if = true;
+            pattern_end_byte = child.start_byte();
+        } else if has_if && guard_node.is_none() && child.is_named() {
+            guard_node = Some(child);
+        }
+    }
+
+    let pattern_bytes = &source[match_pattern.start_byte()..pattern_end_byte];
+    let pattern_snippet = std::str::from_utf8(pattern_bytes).ok()?.trim();
+
+    let is_catchall = check_is_catchall(match_pattern, pattern_end_byte, source);
+    let bound_ident = get_catchall_ident(match_pattern, pattern_end_byte, source);
+
+    let bound_ident_used_in_body = if let Some(ident) = bound_ident {
+        if ident != "_" {
+            has_ident_in_node(body, ident, source)
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    let mut qualified_prefixes = Vec::new();
+    extract_prefixes_from_pattern(match_pattern, pattern_end_byte, source, &mut qualified_prefixes);
+
+    let has_guard = has_if;
+    let guard_is_compound = if let Some(g) = guard_node {
+        check_compound_guard(g, source)
+    } else {
+        false
+    };
+
+    let pattern_is_range = check_pattern_is_range(match_pattern, pattern_end_byte, source);
+    let pattern_depth = measure_pattern_depth(match_pattern, pattern_end_byte);
+    let or_alternatives = count_or_alternatives(match_pattern, pattern_end_byte);
+
+    let body_form = classify_body(body, source);
+
+    let body_raw = std::str::from_utf8(&source[body.start_byte()..body.end_byte()]).unwrap_or("");
+    let body_snippet = truncate_str_safe(body_raw.trim(), 80);
+
+    let span_pos = node.start_position();
+
+    Some(DecisionArm {
+        pattern_snippet,
+        is_catchall,
+        bound_ident_used_in_body,
+        qualified_prefixes,
+        has_guard,
+        guard_is_compound,
+        pattern_is_range,
+        pattern_depth,
+        or_alternatives,
+        body_form,
+        body_snippet,
+        line: span_pos.row + 1,
+        column: span_pos.column,
+    })
+}
+
+fn check_is_catchall(match_pattern: Node, limit_byte: usize, source: &[u8]) -> bool {
+    let mut cursor = match_pattern.walk();
+    for child in match_pattern.children(&mut cursor) {
+        if child.end_byte() > limit_byte {
+            continue;
+        }
+        match child.kind() {
+            "_" => return true,
+            "identifier" => {
+                let name = std::str::from_utf8(&source[child.start_byte()..child.end_byte()]).unwrap_or("");
+                // In Rust, uppercase identifiers are likely unit struct patterns; lowercase/single ident are catchalls
+                if !name.is_empty() {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+fn get_catchall_ident<'a>(match_pattern: Node, limit_byte: usize, source: &'a [u8]) -> Option<&'a str> {
+    let mut cursor = match_pattern.walk();
+    for child in match_pattern.children(&mut cursor) {
+        if child.end_byte() > limit_byte {
+            continue;
+        }
+        if child.kind() == "_" {
+            return Some("_");
+        }
+        if child.kind() == "identifier" {
+            let name = std::str::from_utf8(&source[child.start_byte()..child.end_byte()]).ok()?;
+            return Some(name);
+        }
+    }
+    None
+}
+
+fn has_ident_in_node(node: Node, ident: &str, source: &[u8]) -> bool {
+    if node.kind() == "identifier" {
+        let name = std::str::from_utf8(&source[node.start_byte()..node.end_byte()]).unwrap_or("");
+        if name == ident {
+            return true;
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if has_ident_in_node(child, ident, source) {
+            return true;
+        }
+    }
+    false
+}
+
+fn extract_prefixes_from_pattern<'a>(node: Node, limit_byte: usize, source: &'a [u8], prefixes: &mut Vec<&'a str>) {
+    if node.start_byte() >= limit_byte {
+        return;
+    }
+    if node.kind() == "scoped_identifier" || node.kind() == "scoped_type_identifier" {
+        // e.g. Unit::Pt -> prefix is "Unit"
+        let full = std::str::from_utf8(&source[node.start_byte()..node.end_byte()]).unwrap_or("");
+        if let Some(idx) = full.rfind("::") {
+            let prefix = full[..idx].trim();
+            // If prefix has multiple segments like a::b::Unit, take last segment or whole
+            let base_prefix = if let Some(last_col) = prefix.rfind("::") {
+                &prefix[last_col + 2..]
+            } else {
+                prefix
+            };
+            if !base_prefix.is_empty() && !prefixes.contains(&base_prefix) {
+                prefixes.push(base_prefix);
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        extract_prefixes_from_pattern(child, limit_byte, source, prefixes);
+    }
+}
+
+fn check_compound_guard(node: Node, source: &[u8]) -> bool {
+    if node.kind() == "binary_expression" {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "&&" || child.kind() == "||" {
+                return true;
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if check_compound_guard(child, source) {
+            return true;
+        }
+    }
+    false
+}
+
+fn check_pattern_is_range(node: Node, limit_byte: usize, source: &[u8]) -> bool {
+    if node.start_byte() >= limit_byte {
+        return false;
+    }
+    if node.kind() == "range_pattern" || node.kind() == "range_inclusive_pattern" {
+        return true;
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if check_pattern_is_range(child, limit_byte, source) {
+            return true;
+        }
+    }
+    false
+}
+
+fn measure_pattern_depth(node: Node, limit_byte: usize) -> u8 {
+    if node.start_byte() >= limit_byte {
+        return 0;
+    }
+    match node.kind() {
+        "tuple_struct_pattern" | "struct_pattern" | "tuple_pattern" | "slice_pattern" | "reference_pattern" => {
+            let mut max_child_depth = 0;
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.is_named() && child.kind() != "type_identifier" && child.kind() != "identifier" && child.kind() != "scoped_identifier" {
+                    let d = measure_pattern_depth(child, limit_byte);
+                    if d > max_child_depth {
+                        max_child_depth = d;
+                    }
+                }
+            }
+            1 + max_child_depth.max(1)
+        }
+        _ => {
+            let mut max_child = 0;
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.is_named() {
+                    let d = measure_pattern_depth(child, limit_byte);
+                    if d > max_child {
+                        max_child = d;
+                    }
+                }
+            }
+            if max_child > 0 {
+                max_child
+            } else {
+                1
+            }
+        }
+    }
+}
+
+fn count_or_alternatives(node: Node, limit_byte: usize) -> u16 {
+    if node.start_byte() >= limit_byte {
+        return 0;
+    }
+    if node.kind() == "or_pattern" {
+        let mut count = 0;
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.is_named() {
+                if child.kind() == "or_pattern" {
+                    count += count_or_alternatives(child, limit_byte);
+                } else {
+                    count += 1;
+                }
+            }
+        }
+        return count.max(2);
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        let c = count_or_alternatives(child, limit_byte);
+        if c > 1 {
+            return c;
+        }
+    }
+    1
+}
+
+fn classify_body(node: Node, source: &[u8]) -> BodyForm {
+    let text = std::str::from_utf8(&source[node.start_byte()..node.end_byte()]).unwrap_or("").trim();
+
+    // Check for error barriers across expressions
+    if text.starts_with("return Err")
+        || text.starts_with("Err(")
+        || text.starts_with("Err (")
+        || text.contains("SourceDiagnostic::error")
+        || text.contains("bail!(")
+        || text.contains("panic!(")
+        || text.contains("unreachable!(")
+        || text.contains("todo!(")
+        || text.contains("unimplemented!(")
+        || text.contains("compile_error!(")
+    {
+        return BodyForm::ErrorBarrier;
+    }
+
+    match node.kind() {
+        "macro_invocation" => {
+            let macro_name = get_macro_name(node, source);
+            match macro_name.as_str() {
+                "panic" | "unreachable" | "bail" | "todo" | "unimplemented" | "compile_error" => {
+                    BodyForm::ErrorBarrier
+                }
+                "vec" | "hash_map" | "hash_set" | "vec_deque" | "btree_map" | "btree_set" => {
+                    BodyForm::LiteralOther
+                }
+                _ => BodyForm::LiteralOther,
+            }
+        }
+        "call_expression" => {
+            if text == "Default::default()" || text == "Default::default ()" {
+                BodyForm::LiteralNeutral
+            } else {
+                BodyForm::Call
+            }
+        }
+        "scoped_identifier" => {
+            if text.ends_with("::None") || text == "None" {
+                BodyForm::LiteralNeutral
+            } else {
+                BodyForm::EnumPath
+            }
+        }
+        "identifier" => {
+            if text == "None" {
+                BodyForm::LiteralNeutral
+            } else if text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                BodyForm::EnumPath
+            } else {
+                BodyForm::Other
+            }
+        }
+        "boolean_literal" => BodyForm::LiteralNeutral,
+        "integer_literal" => {
+            if text == "0" {
+                BodyForm::LiteralNeutral
+            } else {
+                BodyForm::LiteralOther
+            }
+        }
+        "float_literal" => {
+            if text == "0.0" || text == "0." {
+                BodyForm::LiteralNeutral
+            } else {
+                BodyForm::LiteralOther
+            }
+        }
+        "string_literal" => {
+            if text == "\"\"" {
+                BodyForm::LiteralNeutral
+            } else {
+                BodyForm::LiteralOther
+            }
+        }
+        "unit_expression" => BodyForm::LiteralNeutral,
+        "tuple_expression" => {
+            let clean = text.replace(' ', "");
+            if clean == "(0,0)" || clean == "(0,0,0)" || clean == "(0.0,0.0)" || clean == "()" {
+                BodyForm::LiteralNeutral
+            } else {
+                BodyForm::LiteralOther
+            }
+        }
+        "return_expression" => {
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.is_named() {
+                    return classify_body(child, source);
+                }
+            }
+            BodyForm::LiteralNeutral
+        }
+        "block" => {
+            let mut named_children = Vec::new();
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.is_named() {
+                    named_children.push(child);
+                }
+            }
+            if named_children.is_empty() {
+                BodyForm::EmptyBlock
+            } else if named_children.len() == 1 {
+                classify_body(named_children[0], source)
+            } else {
+                let last = named_children.last().unwrap();
+                let last_form = classify_body(*last, source);
+                if last_form == BodyForm::ErrorBarrier {
+                    BodyForm::ErrorBarrier
+                } else {
+                    BodyForm::Other
+                }
+            }
+        }
+        "continue_expression" | "break_expression" => BodyForm::Continue,
+        _ => BodyForm::Other,
+    }
+}
+
+fn truncate_str_safe(s: &str, max_chars: usize) -> &str {
+    match s.char_indices().nth(max_chars) {
+        Some((idx, _)) => &s[..idx],
+        None => s,
+    }
+}
+
+fn get_macro_name(node: Node, source: &[u8]) -> String {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "identifier" || child.kind() == "scoped_identifier" {
+            let raw = std::str::from_utf8(&source[child.start_byte()..child.end_byte()]).unwrap_or("");
+            if let Some(idx) = raw.rfind("::") {
+                return raw[idx + 2..].to_string();
+            }
+            return raw.to_string();
+        }
+    }
+    String::new()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -2126,4 +2625,72 @@ fn main() {}
         assert!(parsed.implemented_traits.contains(&"FileProvider"));
         assert!(!parsed.blanket_impl_traits.contains(&"FileProvider"));
     }
+
+    
+    
+    // ── V16–V20 Decision Expressions Unit Tests (Phase B) ──────────────────
+
+    #[test]
+    fn extract_decision_exprs_classifies_all_forms() {
+        let code = r#"
+        fn test_match(x: Option<Unit>, n: u32) {
+            match x {
+                Some(Unit::Pt) => Unit::Percent,
+                Some(Unit::Percent) if n > 0 && n < 10 => panic!("fail"),
+                0..=9 => false,
+                A | B | C => 1.0,
+                Some(Color::Rgb(r, g, b)) => f(r),
+                other => f(other),
+                _ => vec![],
+                _ => {},
+                _ => continue,
+            }
+        }
+        "#;
+        let parser = make_parser();
+        let file = source_file(code);
+        let parsed = parser.parse(&file).unwrap();
+        assert_eq!(parsed.decision_exprs.len(), 1);
+        let expr = &parsed.decision_exprs[0];
+        assert_eq!(expr.snippet_scrutinee, "x");
+        assert_eq!(expr.scrutinee_form, ScrutineeForm::Path);
+        assert_eq!(expr.arms.len(), 9);
+
+        // 1. EnumPath
+        assert_eq!(expr.arms[0].body_form, BodyForm::EnumPath);
+        assert_eq!(expr.arms[0].qualified_prefixes, vec!["Unit"]);
+
+        // 2. ErrorBarrier + Compound Guard
+        assert_eq!(expr.arms[1].body_form, BodyForm::ErrorBarrier);
+        assert!(expr.arms[1].has_guard);
+        assert!(expr.arms[1].guard_is_compound);
+
+        // 3. LiteralNeutral + Range Pattern
+        assert_eq!(expr.arms[2].body_form, BodyForm::LiteralNeutral);
+        assert!(expr.arms[2].pattern_is_range);
+
+        // 4. LiteralOther + Or Alternatives
+        assert_eq!(expr.arms[3].body_form, BodyForm::LiteralOther);
+        assert_eq!(expr.arms[3].or_alternatives, 3);
+
+        // 5. Call + Deep Pattern Nesting (depth > 2)
+        assert_eq!(expr.arms[4].body_form, BodyForm::Call);
+        assert!(expr.arms[4].pattern_depth >= 2);
+
+        // 6. Catchall bound ident used in body
+        assert!(expr.arms[5].is_catchall);
+        assert!(expr.arms[5].bound_ident_used_in_body);
+
+        // 7. vec![] constructor classified as LiteralOther (NOT ErrorBarrier / Other)
+        assert!(expr.arms[6].is_catchall);
+        assert!(!expr.arms[6].bound_ident_used_in_body);
+        assert_eq!(expr.arms[6].body_form, BodyForm::LiteralOther);
+
+        // 8. EmptyBlock
+        assert_eq!(expr.arms[7].body_form, BodyForm::EmptyBlock);
+
+        // 9. Continue
+        assert_eq!(expr.arms[8].body_form, BodyForm::Continue);
+    }
+
 }

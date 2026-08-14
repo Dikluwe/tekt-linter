@@ -26,7 +26,7 @@ entender a estrutura do próprio projeto.
 1. **O que é** — problema que resolve em 2-3 linhas
 2. **Instalação** — `cargo install` e download de binário para CI
 3. **Uso rápido** — exemplo mínimo funcional
-4. **Verificações** — tabela V0–V12 com descrição e severidade
+4. **Verificações** — tabela V0–V20 com descrição e severidade, incluindo nível info
 5. **Flags CLI** — tabela completa incluindo `--checks v0,...,v12`
 6. **crystalline.toml** — exemplo comentado com todas as secções:
    `[layers]`, `[excluded]`, `[module_layers]`, `[l1_ports]`,
@@ -62,3 +62,4 @@ entender a estrutura do próprio projeto.
 |------|--------|-------------------|
 | 2025-03-13 | Criação inicial | README.md |
 | 2026-03-16 | ADR-0006 e ADR-0007: V7–V12, crystalline.toml completo, estrutura actualizada | README.md |
+| 2026-08-14 | ADR-0016: V16–V20 (decisões mecânicas), nível info, [wildcard_exceptions] | README.md |

@@ -19,4 +19,8 @@ pub mod pub_leak;
 pub mod quarantine_leak;
 pub mod test_file;
 pub mod wiring_logic_leak;
-
+pub mod wildcard_saturation;
+pub mod compound_guard;
+pub mod range_pattern;
+pub mod or_pattern_alternatives;
+pub mod deep_pattern_nesting;
