@@ -334,6 +334,9 @@ fn vtest_prod_fail() { assert_verdict("vtest_prod_fail", &["V3"]); }
 #[path = "fixtures/ghost_variant.rs"]
 mod ghost_variant;
 
+#[path = "fixtures/error_message_arm.rs"]
+mod error_message_arm;
+
 // ── Não-regressão V16–V20 em TypeScript e Python (ADR-0016) ───────────────────
 
 #[test]

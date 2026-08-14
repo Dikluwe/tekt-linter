@@ -1520,15 +1520,34 @@ fn classify_body(node: Node, source: &[u8]) -> BodyForm {
                 "panic" | "unreachable" | "bail" | "todo" | "unimplemented" | "compile_error" => {
                     BodyForm::ErrorBarrier
                 }
-                "vec" | "hash_map" | "hash_set" | "vec_deque" | "btree_map" | "btree_set" => {
+                "format" | "format_args" | "write" | "writeln" => {
+                    BodyForm::MessageProducer
+                }
+                "vec" => {
+                    let clean = text.replace(' ', "");
+                    if clean == "vec![]" || clean == "vec!()" {
+                        BodyForm::LiteralNeutral
+                    } else {
+                        BodyForm::LiteralOther
+                    }
+                }
+                "hash_map" | "hash_set" | "vec_deque" | "btree_map" | "btree_set" => {
                     BodyForm::LiteralOther
                 }
                 _ => BodyForm::LiteralOther,
             }
         }
         "call_expression" => {
-            if text == "Default::default()" || text == "Default::default ()" {
+            if text == "Default::default()"
+                || text == "Default::default ()"
+                || text == "String::new()"
+                || text == "String::new ()"
+                || text == "Vec::new()"
+                || text == "Vec::new ()"
+            {
                 BodyForm::LiteralNeutral
+            } else if is_error_message_fn_call(text) {
+                BodyForm::MessageProducer
             } else {
                 BodyForm::Call
             }
@@ -1574,7 +1593,14 @@ fn classify_body(node: Node, source: &[u8]) -> BodyForm {
         "unit_expression" => BodyForm::LiteralNeutral,
         "tuple_expression" => {
             let clean = text.replace(' ', "");
-            if clean == "(0,0)" || clean == "(0,0,0)" || clean == "(0.0,0.0)" || clean == "()" {
+            if clean == "(0,0)"
+                || clean == "(0,0,0)"
+                || clean == "(0.0,0.0)"
+                || clean == "()"
+                || clean == "(None,None)"
+                || clean == "(None,None,None)"
+                || clean == "(None,None,None,None,None)"
+            {
                 BodyForm::LiteralNeutral
             } else {
                 BodyForm::LiteralOther
@@ -1604,8 +1630,8 @@ fn classify_body(node: Node, source: &[u8]) -> BodyForm {
             } else {
                 let last = named_children.last().unwrap();
                 let last_form = classify_body(*last, source);
-                if last_form == BodyForm::ErrorBarrier {
-                    BodyForm::ErrorBarrier
+                if matches!(last_form, BodyForm::ErrorBarrier | BodyForm::MessageProducer) {
+                    last_form
                 } else {
                     BodyForm::Other
                 }
@@ -1614,6 +1640,18 @@ fn classify_body(node: Node, source: &[u8]) -> BodyForm {
         "continue_expression" | "break_expression" => BodyForm::Continue,
         _ => BodyForm::Other,
     }
+}
+
+fn is_error_message_fn_call(text: &str) -> bool {
+    let t = text.to_lowercase();
+    t.starts_with("error")
+        || t.starts_with("err_")
+        || t.starts_with("cannot_")
+        || t.starts_with("expected_")
+        || t.contains("::error(")
+        || t.contains("::err_")
+        || t.contains("::cannot_")
+        || t.contains("::expected_")
 }
 
 fn truncate_str_safe(s: &str, max_chars: usize) -> &str {
@@ -2681,10 +2719,10 @@ fn main() {}
         assert!(expr.arms[5].is_catchall);
         assert!(expr.arms[5].bound_ident_used_in_body);
 
-        // 7. vec![] constructor classified as LiteralOther (NOT ErrorBarrier / Other)
+        // 7. vec![] empty constructor classified as LiteralNeutral (default neutro)
         assert!(expr.arms[6].is_catchall);
         assert!(!expr.arms[6].bound_ident_used_in_body);
-        assert_eq!(expr.arms[6].body_form, BodyForm::LiteralOther);
+        assert_eq!(expr.arms[6].body_form, BodyForm::LiteralNeutral);
 
         // 8. EmptyBlock
         assert_eq!(expr.arms[7].body_form, BodyForm::EmptyBlock);

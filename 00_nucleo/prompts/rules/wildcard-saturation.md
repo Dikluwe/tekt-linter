@@ -1,5 +1,5 @@
 # Prompt L0 — Regra V16 `WildcardSaturation` (e família V17–V20: decisões mecânicas)
-Hash do Código: f2a4c208
+Hash do Código: cdc0e043
 
 > Causalidade: este prompt é a origem de `01_core/rules/wildcard_saturation.rs`,
 > do trait `HasDecisionArms` em `01_core/entities/rule_traits.rs` e da extracção
@@ -45,8 +45,8 @@ DecisionArm {
     pattern_is_range: bool,         // 0..=9, 'a'..='z'
     pattern_depth: u8,              // níveis de destruturação
     or_alternatives: u16,           // nº de alternativas em or-pattern (1 = não-or)
-    body_form: ErrorBarrier | EnumPath | LiteralNeutral | LiteralOther
-             | Call | EmptyBlock | Continue | Other,
+    body_form: ErrorBarrier | MessageProducer | EnumPath | LiteralNeutral
+             | LiteralOther | Call | EmptyBlock | Continue | Other,
     body_snippet: String,           // verbatim, truncado a 80 cols p/ mensagem
     span: Span,
 }
@@ -62,12 +62,18 @@ código real, nunca síntese abstracta.
 catchall detectado (is_catchall)
  ├─ bound_ident_used_in_body ............ ISENTO (reincorporação: `other => f(other)`)
  ├─ scrutinee_form ∈ {MethodCall, Index, Literal} . ISENTO (scrutinee aberto)
- ├─ body_form = ErrorBarrier ............ ISENTO (barreira de erro é a convenção sã)
+ ├─ body_form = ErrorBarrier ............ ISENTO (barreira de erro em compile/runtime)
+ ├─ body_form = MessageProducer ......... ISENTO (falha ruidosa: format!, write!, error/cannot/expected)
  └─ enum candidato (≥2 braços partilham qualified_prefixes no mesmo match)
      ├─ body_form = EnumPath | LiteralOther ... VIOLAÇÃO DENY-class (saturação arbitrária)
      ├─ body_form = LiteralNeutral ............ VIOLAÇÃO WARN-class (default neutro)
      ├─ body_form = Call ...................... INFO (delegação a outro despachante)
      └─ body_form = EmptyBlock | Continue ..... WARN-class walker parcial
+
+Tabela de neutros (forma final calibrada):
+`false`, `true`, `0`, `0.0`, `""`, `()`, tuplas de neutros `(0, 0)`, `(None, None)`,
+`Default::default()`, `None`, `Option::None`, `Value::None`, `String::new()`, `Vec::new()`,
+`vec![]` (macro construtora vazia).
 ```
 
 Regras irmãs sobre o mesmo IR (uma só passagem):

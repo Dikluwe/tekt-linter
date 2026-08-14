@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/wildcard-saturation.md
-//! @prompt-hash f9af51c3
+//! @prompt-hash d67549d6
 //! @layer L1
 //! @updated 2026-08-14
 
@@ -63,8 +63,9 @@ pub fn check<'a, T: HasDecisionArms<'a>>(
                 continue;
             }
 
-            // Filtro de barreira de erro: panic!, unreachable!, bail!, Err(...), etc.
-            if arm.body_form == BodyForm::ErrorBarrier {
+            // Filtros de barreira ruidosa (ErrorBarrier / MessageProducer):
+            // panic!, unreachable!, bail!, Err(...), format!("cannot..."), etc.
+            if matches!(arm.body_form, BodyForm::ErrorBarrier | BodyForm::MessageProducer) {
                 continue;
             }
 
@@ -106,7 +107,7 @@ pub fn check<'a, T: HasDecisionArms<'a>>(
                         term, arm.body_snippet
                     ),
                 ),
-                BodyForm::ErrorBarrier => continue,
+                BodyForm::ErrorBarrier | BodyForm::MessageProducer => continue,
             };
 
             // Verificar exceções declaradas em [wildcard_exceptions]

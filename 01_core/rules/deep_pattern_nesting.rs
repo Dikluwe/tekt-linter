@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/wildcard-saturation.md
-//! @prompt-hash f9af51c3
+//! @prompt-hash d67549d6
 //! @layer L1
 //! @updated 2026-08-14
 
@@ -22,8 +22,8 @@ pub fn check<'a, T: HasDecisionArms<'a>>(file: &T) -> Vec<Violation<'a>> {
     let mut violations = Vec::new();
 
     for expr in file.decision_exprs() {
-        // Tabela regular de tuplas é isenta de aninhamento
-        if expr.scrutinee_form == ScrutineeForm::Tuple {
+        // Tabela regular (tuplas ou braços homogéneos) é isenta de aninhamento
+        if expr.scrutinee_form == ScrutineeForm::Tuple || is_regular_table_context(expr) {
             continue;
         }
 
@@ -47,6 +47,22 @@ pub fn check<'a, T: HasDecisionArms<'a>>(file: &T) -> Vec<Violation<'a>> {
     }
 
     violations
+}
+
+
+fn is_regular_table_context(expr: &crate::entities::rule_traits::DecisionExpr) -> bool {
+    if expr.arms.len() < 3 {
+        return false;
+    }
+    let tuple_pattern_count = expr
+        .arms
+        .iter()
+        .filter(|a| a.pattern_snippet.starts_with('(') || a.is_catchall)
+        .count();
+    if tuple_pattern_count * 10 >= expr.arms.len() * 8 {
+        return true;
+    }
+    false
 }
 
 #[cfg(test)]
