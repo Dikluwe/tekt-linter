@@ -238,6 +238,9 @@ fn main() {
     if enabled.v11 {
         all_violations.extend(dangling_contract::check_dangling_contracts(&project_index, v11_level));
     }
+    if enabled.v22 {
+        all_violations.extend(provenance_inventory::check_inventory(&all_parsed, &v21_config));
+    }
 
     // ── Ordenação determinística ───────────────────────────────────────────────
     // Rayon não garante ordem — Fatal → Error → Warning, depois path, depois linha.
@@ -675,7 +678,6 @@ fn run_checks<'a>(
     if enabled.v19 { violations.extend(or_pattern_alternatives::check(file)); }
     if enabled.v20 { violations.extend(deep_pattern_nesting::check(file)); }
     if enabled.v21 { violations.extend(unsourced_constant::check(file, v21_config, project_root)); }
-    if enabled.v22 { violations.extend(provenance_inventory::check(file, v21_config)); }
     violations
 }
 
