@@ -764,3 +764,79 @@ fn non_regression_v21_and_v22_on_python() {
     let viols22 = provenance_inventory::check_inventory(&[file], &V21RuleConfig::default());
     assert!(viols22.is_empty(), "Python file must produce zero V22 violations");
 }
+
+#[test]
+fn v22_recognizes_real_world_citations_in_inventory() {
+    use crystalline_lint::entities::layer::{Language, Layer};
+    use crystalline_lint::entities::rule_traits::{Citation, CitationKind, ConstantKind, HasConstants, SourceConstant};
+    use crystalline_lint::rules::provenance_inventory;
+    use crystalline_lint::rules::unsourced_constant::V21RuleConfig;
+    use std::path::Path;
+
+    struct MockFile {
+        path: &'static Path,
+        constants: Vec<SourceConstant<'static>>,
+    }
+    impl HasConstants<'static> for MockFile {
+        fn layer(&self) -> &Layer { &Layer::L1 }
+        fn constants(&self) -> &[SourceConstant<'static>] { &self.constants }
+        fn path(&self) -> &'static Path { self.path }
+        fn language(&self) -> &Language { &Language::Rust }
+    }
+
+    let files = vec![
+        MockFile {
+            path: Path::new("layout/src/equation.rs"),
+            constants: vec![
+                // P813 — container.rs:342
+                SourceConstant {
+                    kind: ConstantKind::FunctionNumberLiteral,
+                    snippet: "0.9",
+                    line: 119,
+                    column: 8,
+                    citation: Some(Citation {
+                        kind: CitationKind::Ref {
+                            path: "lab/typst-original/src/layout/container.rs",
+                            line: 342,
+                        },
+                        raw: "// P813 — layout — lab/typst-original/src/layout/container.rs:342",
+                        line: 117,
+                    }),
+                    is_test_origin: false,
+                    function_return_type: None,
+                    is_in_binary_scaling: true,
+                    context_var: Some("size".to_string()),
+                    geometric_sink: Some("gap".to_string()),
+                    is_in_data_table: false,
+                },
+                // vanilla resolve.rs:1173
+                SourceConstant {
+                    kind: ConstantKind::FunctionNumberLiteral,
+                    snippet: "0.85",
+                    line: 125,
+                    column: 8,
+                    citation: Some(Citation {
+                        kind: CitationKind::Ref {
+                            path: "resolve.rs",
+                            line: 1173,
+                        },
+                        raw: "// vanilla resolve.rs:1173",
+                        line: 124,
+                    }),
+                    is_test_origin: false,
+                    function_return_type: None,
+                    is_in_binary_scaling: false,
+                    context_var: None,
+                    geometric_sink: None,
+                    is_in_data_table: false,
+                },
+            ],
+        }
+    ];
+
+    let viols = provenance_inventory::check_inventory(&files, &V21RuleConfig::default());
+    assert_eq!(viols.len(), 1);
+    assert_eq!(viols[0].rule_id, "V22");
+    assert!(viols[0].message.contains("2/2"));
+    assert!(viols[0].message.contains("100.0%"));
+}

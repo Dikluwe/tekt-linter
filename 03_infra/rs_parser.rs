@@ -1700,26 +1700,79 @@ fn extract_citations<'a>(source: &'a [u8]) -> std::collections::HashMap<usize, C
         let trimmed = line.trim();
         if let Some(comment_content) = trimmed.strip_prefix("//") {
             let c_trimmed = comment_content.trim_start_matches('/').trim();
-            if let Some(rest) = c_trimmed.strip_prefix("ref:") {
-                let rest = rest.trim();
-                if let Some((path, line_str)) = rest.split_once(':') {
-                    if let Ok(l) = line_str.trim().parse::<usize>() {
+
+            // 1. Prefixos explícitos
+            if let Some(idx_ref) = c_trimmed.find("ref:") {
+                let rest = c_trimmed[idx_ref + 4..].trim();
+                if let Some((path, line_part)) = rest.split_once(':') {
+                    let line_digits: String = line_part.chars().take_while(|c| c.is_ascii_digit()).collect();
+                    if let Ok(l) = line_digits.parse::<usize>() {
                         citations.insert(line_num, Citation {
                             kind: CitationKind::Ref { path: path.trim(), line: l },
                             raw: trimmed,
                             line: line_num,
                         });
+                        continue;
                     }
                 }
-            } else if let Some(rest) = c_trimmed.strip_prefix("spec:") {
+            }
+            if let Some(idx_spec) = c_trimmed.find("spec:") {
+                let rest = c_trimmed[idx_spec + 5..].trim();
                 citations.insert(line_num, Citation {
-                    kind: CitationKind::Spec(rest.trim()),
+                    kind: CitationKind::Spec(rest),
                     raw: trimmed,
                     line: line_num,
                 });
-            } else if let Some(rest) = c_trimmed.strip_prefix("rationale:") {
+                continue;
+            }
+            if let Some(idx_rat) = c_trimmed.find("rationale:") {
+                let rest = c_trimmed[idx_rat + 10..].trim();
                 citations.insert(line_num, Citation {
-                    kind: CitationKind::Rationale(rest.trim()),
+                    kind: CitationKind::Rationale(rest),
+                    raw: trimmed,
+                    line: line_num,
+                });
+                continue;
+            }
+
+            // 2. Detecção de file:line em qualquer ponto do comentário
+            // Tokens separados por espaços, parênteses, colchetes, vírgulas, travessão
+            let mut found_ref = false;
+            for token in c_trimmed.split(|c: char| c.is_whitespace() || c == '(' || c == ')' || c == '[' || c == ']' || c == '—' || c == ',' || c == '|' || c == ';') {
+                if token.is_empty() {
+                    continue;
+                }
+                if let Some((path, line_part)) = token.split_once(':') {
+                    let line_digits: String = line_part.chars().take_while(|c| c.is_ascii_digit()).collect();
+                    if let Ok(l) = line_digits.parse::<usize>() {
+                        let exts = [".rs", ".md", ".typ", ".toml", ".c", ".h", ".cpp", ".py", ".ts", ".txt", ".js"];
+                        let has_ext = exts.iter().any(|ext| path.ends_with(ext));
+                        let has_slash = path.contains('/');
+                        let is_known_stem = path.contains("resolve") || path.contains("container") || path.contains("layout") || path.contains("math");
+                        if has_ext || has_slash || is_known_stem {
+                            citations.insert(line_num, Citation {
+                                kind: CitationKind::Ref { path: path.trim(), line: l },
+                                raw: trimmed,
+                                line: line_num,
+                            });
+                            found_ref = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if found_ref {
+                continue;
+            }
+
+            // 3. Menção a passo (ex: P813, P1042) ou especificação
+            let contains_step = c_trimmed.split_whitespace().any(|word| {
+                let w = word.trim_matches(|c: char| !c.is_alphanumeric());
+                w.starts_with('P') && w.len() >= 2 && w[1..].chars().all(|c| c.is_ascii_digit())
+            });
+            if contains_step {
+                citations.insert(line_num, Citation {
+                    kind: CitationKind::Spec(c_trimmed),
                     raw: trimmed,
                     line: line_num,
                 });
@@ -1818,13 +1871,14 @@ fn collect_constants<'a>(
     let col = pos.column;
 
     let get_citation = || -> Option<Citation<'a>> {
-        citations.get(&line_num).cloned().or_else(|| {
-            if line_num > 1 {
-                citations.get(&(line_num - 1)).cloned()
-            } else {
-                None
+        for offset in 0..=3 {
+            if line_num >= offset + 1 {
+                if let Some(c) = citations.get(&(line_num - offset)) {
+                    return Some(c.clone());
+                }
             }
-        })
+        }
+        None
     };
 
     // Atualiza o sink ativo se o nó corrente for uma declaração/atribuição/chamada
@@ -3177,5 +3231,49 @@ fn main() {}
         assert_eq!(neg_item.snippet, "-0.5");
         let fmt_item = parsed.constants.iter().find(|c| c.kind == ConstantKind::FormatString).unwrap();
         assert_eq!(fmt_item.snippet, "\"{:.3}\"");
+    }
+
+    #[test]
+    fn extract_citations_recognizes_real_world_conventions() {
+        let code = r#"
+        // P813 — layout — lab/typst-original/src/layout/container.rs:342
+        fn calculate_gap() -> f64 {
+            let gap = 0.9 * 10.0;
+            gap
+        }
+
+        // vanilla resolve.rs:1173
+        fn calculate_stem() -> f64 {
+            0.85 * 12.0
+        }
+        "#;
+        let parser = make_parser();
+        let file = source_file(code);
+        let parsed = parser.parse(&file).unwrap();
+        assert!(parsed.constants.len() >= 4);
+
+        // Literal 0.9 (linha 5) associado ao comentário da linha 3 (2 linhas acima)
+        let lit_09 = parsed.constants.iter().find(|c| c.snippet == "0.9").unwrap();
+        assert!(lit_09.citation.is_some(), "P813 container.rs:342 deve ser reconhecido como citação");
+        if let Some(ref c) = lit_09.citation {
+            if let CitationKind::Ref { path, line } = c.kind {
+                assert_eq!(path, "lab/typst-original/src/layout/container.rs");
+                assert_eq!(line, 342);
+            } else {
+                panic!("esperado CitationKind::Ref, obteve {:?}", c.kind);
+            }
+        }
+
+        // Literal 0.85 associado ao comentário vanilla resolve.rs:1173
+        let lit_085 = parsed.constants.iter().find(|c| c.snippet == "0.85").unwrap();
+        assert!(lit_085.citation.is_some(), "vanilla resolve.rs:1173 deve ser reconhecido como citação");
+        if let Some(ref c) = lit_085.citation {
+            if let CitationKind::Ref { path, line } = c.kind {
+                assert_eq!(path, "resolve.rs");
+                assert_eq!(line, 1173);
+            } else {
+                panic!("esperado CitationKind::Ref, obteve {:?}", c.kind);
+            }
+        }
     }
 }
