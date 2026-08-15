@@ -669,43 +669,45 @@ fn v22_provenance_inventory_aggregates_module_ratio() {
         fn language(&self) -> &Language { &Language::Rust }
     }
 
-    let file = MockFile {
-        path: Path::new("layout/src/flow.rs"),
-        constants: vec![
-            SourceConstant {
-                kind: ConstantKind::FunctionNumberLiteral,
-                snippet: "10.5",
-                line: 10,
-                column: 0,
-                citation: Some(Citation {
-                    kind: CitationKind::Rationale("teste"),
-                    raw: "// rationale: teste",
-                    line: 9,
-                }),
-                is_test_origin: false,
-                function_return_type: None,
-                is_in_binary_scaling: false,
-                context_var: None,
-                geometric_sink: None,
-                is_in_data_table: false,
-            },
-            SourceConstant {
-                kind: ConstantKind::FunctionNumberLiteral,
-                snippet: "20.5",
-                line: 12,
-                column: 0,
-                citation: None,
-                is_test_origin: false,
-                function_return_type: None,
-                is_in_binary_scaling: false,
-                context_var: None,
-                geometric_sink: None,
-                is_in_data_table: false,
-            },
-        ],
-    };
+    let files = vec![
+        MockFile {
+            path: Path::new("layout/src/flow.rs"),
+            constants: vec![
+                SourceConstant {
+                    kind: ConstantKind::FunctionNumberLiteral,
+                    snippet: "10.5",
+                    line: 10,
+                    column: 0,
+                    citation: Some(Citation {
+                        kind: CitationKind::Rationale("teste"),
+                        raw: "// rationale: teste",
+                        line: 9,
+                    }),
+                    is_test_origin: false,
+                    function_return_type: None,
+                    is_in_binary_scaling: false,
+                    context_var: None,
+                    geometric_sink: None,
+                    is_in_data_table: false,
+                },
+                SourceConstant {
+                    kind: ConstantKind::FunctionNumberLiteral,
+                    snippet: "20.5",
+                    line: 12,
+                    column: 0,
+                    citation: None,
+                    is_test_origin: false,
+                    function_return_type: None,
+                    is_in_binary_scaling: false,
+                    context_var: None,
+                    geometric_sink: None,
+                    is_in_data_table: false,
+                },
+            ],
+        }
+    ];
 
-    let viols = provenance_inventory::check(&file, &V21RuleConfig::default());
+    let viols = provenance_inventory::check_inventory(&files, &V21RuleConfig::default());
     assert_eq!(viols.len(), 1, "V22 emite exatamente 1 linha agregada por módulo");
     assert_eq!(viols[0].rule_id, "V22");
     assert_eq!(viols[0].level, crystalline_lint::entities::violation::ViolationLevel::Info);
@@ -734,7 +736,7 @@ fn non_regression_v21_and_v22_on_typescript() {
     let file = MockTsFile { path: Path::new("01_core/index.ts") };
     let viols21 = check(&file, &V21RuleConfig::default(), None);
     assert!(viols21.is_empty(), "TypeScript file must produce zero V21 violations");
-    let viols22 = provenance_inventory::check(&file, &V21RuleConfig::default());
+    let viols22 = provenance_inventory::check_inventory(&[file], &V21RuleConfig::default());
     assert!(viols22.is_empty(), "TypeScript file must produce zero V22 violations");
 }
 
@@ -759,6 +761,6 @@ fn non_regression_v21_and_v22_on_python() {
     let file = MockPyFile { path: Path::new("01_core/main.py") };
     let viols21 = check(&file, &V21RuleConfig::default(), None);
     assert!(viols21.is_empty(), "Python file must produce zero V21 violations");
-    let viols22 = provenance_inventory::check(&file, &V21RuleConfig::default());
+    let viols22 = provenance_inventory::check_inventory(&[file], &V21RuleConfig::default());
     assert!(viols22.is_empty(), "Python file must produce zero V22 violations");
 }
