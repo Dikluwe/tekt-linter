@@ -116,6 +116,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for ElixirParser<R
             imports,
             module_decls: vec![],
             decision_exprs: vec![],
+            constants: vec![],
             declared_traits: vec![],
             implemented_traits: vec![],
             blanket_impl_traits: vec![],

@@ -34,7 +34,7 @@ pub struct Cli {
     /// Comma-separated list of checks to run (e.g. v1,v2,...,v12)
     /// V11 (dangling-contract) is opt-in — not included in the default because
     /// rule_traits in L1/contracts/ are implemented by ParsedFile (L1), not L2/L3.
-    #[arg(long, default_value = "v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15,v16,v17,v18,v19,v20")]
+    #[arg(long, default_value = "v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15,v16,v17,v18,v19,v20,v21")]
     pub checks: String,
 
     /// Disable V5 drift detection
@@ -120,6 +120,7 @@ pub struct EnabledChecks {
     pub v18: bool,
     pub v19: bool,
     pub v20: bool,
+    pub v21: bool,
 }
 
 impl EnabledChecks {
@@ -155,6 +156,7 @@ impl EnabledChecks {
             v18: has("v18"),
             v19: has("v19"),
             v20: has("v20"),
+            v21: has("v21"),
         }
     }
 }
@@ -339,6 +341,7 @@ fn sarif_rules() -> Vec<serde_json::Value> {
         sarif_rule("V18", "RangePatternInMatch",    "Range pattern in domain match expression", "warning"),
         sarif_rule("V19", "OrPatternAlternatives",  "Decision arm condenses multiple or-pattern alternatives", "note"),
         sarif_rule("V20", "DeepPatternNesting",     "Pattern nesting depth exceeds threshold", "note"),
+        sarif_rule("V21", "UnsourcedConstant",      "Geometry or export constant lacks cited provenance", "note"),
     ]
 }
 
@@ -629,6 +632,7 @@ mod tests {
         assert!(checks.v18);
         assert!(checks.v19);
         assert!(checks.v20);
+        assert!(checks.v21);
     }
 
     #[test]
@@ -700,12 +704,19 @@ mod tests {
     }
 
     #[test]
-    fn sarif_driver_rules_has_21_entries() {
-        // SARIF driver.rules deve conter exatamente 21 entradas (V0 a V20)
+    fn sarif_driver_rules_has_22_entries() {
+        // SARIF driver.rules deve conter exatamente 22 entradas (V0 a V21)
         let out = format_sarif(&[]);
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
         let rules = parsed["runs"][0]["tool"]["driver"]["rules"].as_array().unwrap();
-        assert_eq!(rules.len(), 21, "expected 21 rules (V0 to V20), got {}", rules.len());
+        assert_eq!(rules.len(), 22, "expected 22 rules (V0 to V21), got {}", rules.len());
+    }
+
+    #[test]
+    fn checks_v21_activates_v21() {
+        let checks = EnabledChecks::from_cli("v21", false, false);
+        assert!(checks.v21);
+        assert!(!checks.v1);
     }
     #[test]
     fn sarif_info_mapped_to_note() {

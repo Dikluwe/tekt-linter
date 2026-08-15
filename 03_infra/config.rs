@@ -47,6 +47,41 @@ pub struct WiringExceptionsConfig {
     pub allow_adapter_structs: Option<bool>,
 }
 
+/// Configuração de escopo para V21 — lida de `[v21_scope]`.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct V21ScopeConfig {
+    #[serde(default)]
+    pub modules: Option<Vec<String>>,
+    #[serde(default)]
+    pub types: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct V21TrivialConfig {
+    #[serde(default)]
+    pub literals: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum V21TrivialEntry {
+    List(Vec<String>),
+    Table(V21TrivialConfig),
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct V21StrictConfig {
+    #[serde(default)]
+    pub modules: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum V21StrictEntry {
+    List(Vec<String>),
+    Table(V21StrictConfig),
+}
+
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct LineageConfig {
     #[serde(default)]
@@ -82,6 +117,15 @@ pub struct CrystallineConfig {
     /// Exemplo: { "01_core/src/entities/gradient.rs:221" = "hub intencional" }
     #[serde(default)]
     pub wildcard_exceptions: HashMap<String, String>,
+    /// Configuração de escopo para V21 — lida de `[v21_scope]`.
+    #[serde(default)]
+    pub v21_scope: Option<V21ScopeConfig>,
+    /// Allowlist de literais triviais para V21 — lida de `[v21_trivial]`.
+    #[serde(default)]
+    pub v21_trivial: Option<V21TrivialEntry>,
+    /// Módulos com ratchet strict para V21 — lida de `[v21_strict]`.
+    #[serde(default)]
+    pub v21_strict: Option<V21StrictEntry>,
     /// Configuração de exceções V12 — lida de `[wiring_exceptions]`.
     #[serde(default)]
     pub wiring_exceptions: WiringExceptionsConfig,
@@ -190,6 +234,48 @@ impl CrystallineConfig {
 
     /// Resolve a Rust module name (e.g. "entities") to a Layer.
     /// Used by LayerResolver in RustParser.
+    /// Converte a configuração de V21 para `V21RuleConfig` com os devidos defaults.
+    pub fn v21_rule_config(&self) -> crate::rules::unsourced_constant::V21RuleConfig {
+        let mut def = crate::rules::unsourced_constant::V21RuleConfig::default();
+        if let Some(scope) = &self.v21_scope {
+            if let Some(mods) = &scope.modules {
+                def.scope_modules = mods.clone();
+            }
+            if let Some(tys) = &scope.types {
+                def.scope_types = tys.clone();
+            }
+        }
+        if let Some(trivial_entry) = &self.v21_trivial {
+            match trivial_entry {
+                V21TrivialEntry::List(list) => {
+                    for t in list {
+                        def.trivial_literals.insert(t.clone());
+                    }
+                }
+                V21TrivialEntry::Table(table) => {
+                    if let Some(lits) = &table.literals {
+                        for t in lits {
+                            def.trivial_literals.insert(t.clone());
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(strict_entry) = &self.v21_strict {
+            match strict_entry {
+                V21StrictEntry::List(list) => {
+                    def.strict_modules = list.clone();
+                }
+                V21StrictEntry::Table(table) => {
+                    if let Some(mods) = &table.modules {
+                        def.strict_modules = mods.clone();
+                    }
+                }
+            }
+        }
+        def
+    }
+
     pub fn layer_for_module(&self, module_name: &str) -> Layer {
         match self.module_layers.get(module_name).map(String::as_str) {
             Some("L0") => Layer::L0,
@@ -251,6 +337,9 @@ impl Default for CrystallineConfig {
             l1_ports,
             orphan_exceptions: HashMap::new(),
             wildcard_exceptions: HashMap::new(),
+            v21_scope: None,
+            v21_trivial: None,
+            v21_strict: None,
             wiring_exceptions: WiringExceptionsConfig::default(),
             ts_aliases: HashMap::new(),
             py_aliases: HashMap::new(),
@@ -380,6 +469,27 @@ level = "warning"
         let config: CrystallineConfig = toml::from_str(toml).unwrap();
         assert_eq!(config.rules.get("V16").unwrap().languages.as_ref().unwrap(), &vec!["rust"]);
         assert_eq!(config.wildcard_exceptions.get("01_core/gradient.rs:221").unwrap(), "hub intencional");
+    }
+
+    #[test]
+    fn v21_config_parses_custom_scope_and_trivial() {
+        let toml = r#"
+[v21_scope]
+modules = ["geom/"]
+types = ["Point", "Length"]
+
+[v21_trivial]
+literals = ["0", "1", "42"]
+
+[v21_strict]
+modules = ["geom/strict"]
+"#;
+        let config: CrystallineConfig = toml::from_str(toml).unwrap();
+        let rule_cfg = config.v21_rule_config();
+        assert_eq!(rule_cfg.scope_modules, vec!["geom/"]);
+        assert_eq!(rule_cfg.scope_types, vec!["Point", "Length"]);
+        assert!(rule_cfg.trivial_literals.contains("42"));
+        assert_eq!(rule_cfg.strict_modules, vec!["geom/strict"]);
     }
 
 }

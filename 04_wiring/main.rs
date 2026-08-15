@@ -41,6 +41,7 @@ use crystalline_lint::infra::snapshot_writer;
 use crystalline_lint::infra::walker::FileWalker;
 use std::collections::HashMap;
 use crystalline_lint::rules::{
+    unsourced_constant,
     alien_file, compound_guard, dangling_contract, deep_pattern_nesting,
     external_type_in_contract, forbidden_import, impure_core, multi_prompt_header,
     mutable_state_core, or_pattern_alternatives, orphan_prompt, prompt_drift,
@@ -106,6 +107,8 @@ fn main() {
     let l1_ports = L1Ports::new(port_set);
 
     // ── WiringConfig for V12 ──────────────────────────────────────────────────
+    let v21_config = config.v21_rule_config();
+
     let wiring_config = WiringConfig {
         allow_adapter_structs: config.wiring_exceptions.allow_adapter_structs.unwrap_or(true),
     };
@@ -199,7 +202,7 @@ fn main() {
     let (source_files, source_errors) = collect_walker_results(walker.files());
 
     let (mut all_violations, all_parsed, project_index) =
-        run_pipeline(&source_files, &source_errors, &parser, &enabled, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false), &config.wildcard_exceptions);
+        run_pipeline(&source_files, &source_errors, &parser, &enabled, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false), &config.wildcard_exceptions, &v21_config, Some(&cli.path));
 
     // ── --emit-resolution (instrumentação 0058, fora do selo de veredito) ──────
     // Despeja a resolução de todo import (incl. Unknown) e sai — não roda regras.
@@ -318,9 +321,9 @@ fn main() {
                 v1: false, v2: false, v3: false, v4: false, v5: true, v6: false,
                 v7: false, v8: false, v9: false, v10: false, v11: false, v12: false,
                 v13: false, v14: false, v15: false, v16: false, v17: false, v18: false,
-                v19: false, v20: false,
+                v19: false, v20: false, v21: false,
             };
-            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v5_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false), &config.wildcard_exceptions);
+            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v5_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false), &config.wildcard_exceptions, &v21_config, Some(&cli.path));
             violations.iter().filter(|v| v.rule_id == "V5").count()
         };
 
@@ -412,9 +415,9 @@ fn main() {
                 v1: false, v2: false, v3: false, v4: false, v5: false, v6: true,
                 v7: false, v8: false, v9: false, v10: false, v11: false, v12: false,
                 v13: false, v14: false, v15: false, v16: false, v17: false, v18: false,
-                v19: false, v20: false,
+                v19: false, v20: false, v21: false,
             };
-            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v6_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false), &config.wildcard_exceptions);
+            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v6_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false), &config.wildcard_exceptions, &v21_config, Some(&cli.path));
             violations.iter().filter(|v| v.rule_id == "V6").count()
         };
 
@@ -572,6 +575,8 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
     strict_dirs: &[String],
     check_test_imports: bool,
     wildcard_exceptions: &HashMap<String, String>,
+    v21_config: &crystalline_lint::rules::unsourced_constant::V21RuleConfig,
+    project_root: Option<&Path>,
 ) -> (Vec<Violation<'a>>, Vec<ParsedFile<'a>>, ProjectIndex<'a>) {
     // Fase Map ─────────────────────────────────────────────────────────────────
 
@@ -588,7 +593,7 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
         .map(|source_file| -> (Vec<Violation<'a>>, Option<ParsedFile<'a>>, LocalIndex<'a>) {
             match parser.parse(source_file) {
                 Ok(parsed) => {
-                    let violations = run_checks(&parsed, enabled, l1_ports, wiring_config, l1_allowed, strict_dirs, check_test_imports, wildcard_exceptions);
+                    let violations = run_checks(&parsed, enabled, l1_ports, wiring_config, l1_allowed, strict_dirs, check_test_imports, wildcard_exceptions, v21_config, project_root);
                     let local = LocalIndex::from_parsed(&parsed);
                     (violations, Some(parsed), local)
                 }
@@ -646,6 +651,8 @@ fn run_checks<'a>(
     strict_dirs: &[String],
     check_test_imports: bool,
     wildcard_exceptions: &HashMap<String, String>,
+    v21_config: &crystalline_lint::rules::unsourced_constant::V21RuleConfig,
+    project_root: Option<&Path>,
 ) -> Vec<Violation<'a>> {
     let mut violations = Vec::new();
     let l1_allowed_lang = l1_allowed.for_language(&file.language);
@@ -666,6 +673,7 @@ fn run_checks<'a>(
     if enabled.v18 { violations.extend(range_pattern::check(file)); }
     if enabled.v19 { violations.extend(or_pattern_alternatives::check(file)); }
     if enabled.v20 { violations.extend(deep_pattern_nesting::check(file)); }
+    if enabled.v21 { violations.extend(unsourced_constant::check(file, v21_config, project_root)); }
     violations
 }
 

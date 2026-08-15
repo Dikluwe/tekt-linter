@@ -189,6 +189,78 @@ pub fn decision_arm_term_for(language: &Language) -> &'static str {
     }
 }
 
+// ── V21 Unsourced Constant types (00_nucleo/prompts/unsourced-constant.md) ─────
+
+/// Alvo de constante/literal sujeito a proveniência (T1–T6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConstantKind {
+    /// T1: Literais numéricos no corpo de funções
+    FunctionNumberLiteral,
+    /// T2: Literais de string no corpo de funções
+    FunctionStringLiteral,
+    /// T3: Definições const/static/assoc-const em módulos de escopo
+    ItemDefinition,
+    /// T4: Literais em padrões de match e guards
+    MatchPattern,
+    /// T5: Strings de formato com especificador numérico
+    FormatString,
+    /// T6: Literais negativos (unary_expression -)
+    NegativeLiteral,
+}
+
+/// Forma de citação declarada em comentário.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CitationKind<'a> {
+    /// // ref: <caminho>:<linha>
+    Ref { path: &'a str, line: usize },
+    /// // spec: <norma> §<secção>
+    Spec(&'a str),
+    /// // rationale: <frase>
+    Rationale(&'a str),
+}
+
+/// Citação associada a uma constante/literal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Citation<'a> {
+    pub kind: CitationKind<'a>,
+    pub raw: &'a str,
+    pub line: usize,
+}
+
+/// Representação de uma constante/literal extraída do código.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceConstant<'a> {
+    pub kind: ConstantKind,
+    pub snippet: &'a str,
+    pub line: usize,
+    pub column: usize,
+    pub citation: Option<Citation<'a>>,
+    pub is_test_origin: bool,
+    pub function_return_type: Option<&'a str>,
+}
+
+/// Para V21 — inspeciona proveniência de constantes em geometria/exportação.
+pub trait HasConstants<'a> {
+    fn layer(&self) -> &Layer;
+    fn constants(&self) -> &[SourceConstant<'a>];
+    fn path(&self) -> &'a Path;
+    fn language(&self) -> &Language;
+}
+
+/// Termo idiomático para o construto de constante na linguagem do arquivo.
+pub fn source_term_for(language: &Language, kind: &ConstantKind) -> &'static str {
+    match (language, kind) {
+        (Language::Rust, ConstantKind::ItemDefinition) => "definição de constante",
+        (Language::Rust, ConstantKind::FunctionNumberLiteral) => "literal numérico",
+        (Language::Rust, ConstantKind::FunctionStringLiteral) => "literal de string",
+        (Language::Rust, ConstantKind::MatchPattern) => "literal em padrão de match",
+        (Language::Rust, ConstantKind::FormatString) => "string de formato com precisão",
+        (Language::Rust, ConstantKind::NegativeLiteral) => "literal numérico negativo",
+        (_, ConstantKind::ItemDefinition) => "definição de constante",
+        (_, _) => "literal / constante",
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -428,6 +500,38 @@ mod tests {
         assert_eq!(decision_arm_term_for(&Language::TypeScript), "cláusula `default:`");
         assert_eq!(decision_arm_term_for(&Language::Go), "cláusula `default:`");
         assert_eq!(decision_arm_term_for(&Language::Zig), "—");
+    }
+
+    struct MockV21 {
+        layer: Layer,
+        language: Language,
+        constants: Vec<SourceConstant<'static>>,
+        path: &'static Path,
+    }
+    impl HasConstants<'static> for MockV21 {
+        fn layer(&self) -> &Layer { &self.layer }
+        fn constants(&self) -> &[SourceConstant<'static>] { &self.constants }
+        fn path(&self) -> &'static Path { self.path }
+        fn language(&self) -> &Language { &self.language }
+    }
+
+    #[test]
+    fn mock_v21_implements_has_constants() {
+        let m = MockV21 {
+            layer: Layer::L1,
+            language: Language::Rust,
+            constants: vec![],
+            path: Path::new("01_core/entities/layer.rs"),
+        };
+        assert_eq!(m.layer(), &Layer::L1);
+        assert_eq!(m.language(), &Language::Rust);
+        assert!(m.constants().is_empty());
+    }
+
+    #[test]
+    fn source_terms_are_idiomatic() {
+        assert_eq!(source_term_for(&Language::Rust, &ConstantKind::ItemDefinition), "definição de constante");
+        assert_eq!(source_term_for(&Language::Rust, &ConstantKind::FunctionNumberLiteral), "literal numérico");
     }
 
 }

@@ -180,6 +180,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for PyParser<R, S>
             static_declarations: vec![],
             module_decls: vec![],
             decision_exprs: vec![],
+            constants: vec![],
         })
     }
 }

@@ -135,6 +135,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for CppParser<R, S
             static_declarations,
             module_decls: vec![],
             decision_exprs: vec![],
+            constants: vec![],
         })
     }
 }

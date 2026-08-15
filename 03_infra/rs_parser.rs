@@ -19,7 +19,7 @@ use crate::entities::parsed_file::{
     Declaration, DeclarationKind, FunctionSignature, Import, ImportKind, ModuleDecl, ParsedFile,
     PromptHeader, PublicInterface, StaticDeclaration, Token, TokenKind, TypeKind, TypeSignature,
 };
-use crate::entities::rule_traits::{BodyForm, DecisionArm, DecisionExpr, ScrutineeForm};
+use crate::entities::rule_traits::{BodyForm, Citation, CitationKind, ConstantKind, DecisionArm, DecisionExpr, ScrutineeForm, SourceConstant};
 use crate::infra::config::CrystallineConfig;
 use crate::infra::crate_registry::{CrateRegistry, MemberCrate};
 
@@ -157,6 +157,9 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
         // ── Decision expressions (V16–V20 — ADR-0016) ───────────────────────
         let decision_exprs = extract_decision_exprs(root, source);
 
+        // ── Source constants (V21 — ADR-0016 / unsourced-constant.md) ────────
+        let constants = extract_constants(root, source);
+
         Ok(ParsedFile {
             path: file.path.as_path(),
             layer: file.layer.clone(),
@@ -176,6 +179,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
             static_declarations,
             module_decls,
             decision_exprs,
+            constants,
         })
     }
 }
@@ -1675,6 +1679,282 @@ fn get_macro_name(node: Node, source: &[u8]) -> String {
     String::new()
 }
 
+// ── Source Constants Extraction (V21 — ADR-0016 / unsourced-constant.md) ──────
+
+fn extract_constants<'a>(root: Node, source: &'a [u8]) -> Vec<SourceConstant<'a>> {
+    let citations = extract_citations(source);
+    let mut constants = Vec::new();
+    collect_constants(root, source, &citations, false, None, false, false, &mut constants);
+    constants
+}
+
+fn extract_citations<'a>(source: &'a [u8]) -> std::collections::HashMap<usize, Citation<'a>> {
+    let mut citations = std::collections::HashMap::new();
+    let text = match std::str::from_utf8(source) {
+        Ok(t) => t,
+        Err(_) => return citations,
+    };
+
+    for (idx, line) in text.lines().enumerate() {
+        let line_num = idx + 1;
+        let trimmed = line.trim();
+        if let Some(comment_content) = trimmed.strip_prefix("//") {
+            let c_trimmed = comment_content.trim_start_matches('/').trim();
+            if let Some(rest) = c_trimmed.strip_prefix("ref:") {
+                let rest = rest.trim();
+                if let Some((path, line_str)) = rest.split_once(':') {
+                    if let Ok(l) = line_str.trim().parse::<usize>() {
+                        citations.insert(line_num, Citation {
+                            kind: CitationKind::Ref { path: path.trim(), line: l },
+                            raw: trimmed,
+                            line: line_num,
+                        });
+                    }
+                }
+            } else if let Some(rest) = c_trimmed.strip_prefix("spec:") {
+                citations.insert(line_num, Citation {
+                    kind: CitationKind::Spec(rest.trim()),
+                    raw: trimmed,
+                    line: line_num,
+                });
+            } else if let Some(rest) = c_trimmed.strip_prefix("rationale:") {
+                citations.insert(line_num, Citation {
+                    kind: CitationKind::Rationale(rest.trim()),
+                    raw: trimmed,
+                    line: line_num,
+                });
+            }
+        }
+    }
+
+    citations
+}
+
+fn is_numeric_format_specifier(text: &str) -> bool {
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '{' {
+            let mut spec = String::new();
+            while let Some(&next) = chars.peek() {
+                chars.next();
+                if next == '}' {
+                    break;
+                }
+                spec.push(next);
+            }
+            if let Some((_, fmt)) = spec.split_once(':') {
+                if fmt.contains('.') || fmt.chars().any(|ch| ch.is_ascii_digit()) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn collect_constants<'a>(
+    node: Node,
+    source: &'a [u8],
+    citations: &std::collections::HashMap<usize, Citation<'a>>,
+    cfg_test: bool,
+    fn_return_type: Option<&'a str>,
+    in_fn_body: bool,
+    in_pattern: bool,
+    acc: &mut Vec<SourceConstant<'a>>,
+) {
+    let kind = node.kind();
+    let pos = node.start_position();
+    let line_num = pos.row + 1;
+    let col = pos.column;
+
+    let get_citation = || -> Option<Citation<'a>> {
+        citations.get(&line_num).cloned().or_else(|| {
+            if line_num > 1 {
+                citations.get(&(line_num - 1)).cloned()
+            } else {
+                None
+            }
+        })
+    };
+
+    match kind {
+        "const_item" | "static_item" => {
+            let snippet = node_text(node, source).trim();
+            acc.push(SourceConstant {
+                kind: ConstantKind::ItemDefinition,
+                snippet,
+                line: line_num,
+                column: col,
+                citation: get_citation(),
+                is_test_origin: cfg_test,
+                function_return_type: fn_return_type,
+            });
+            return;
+        }
+        "unary_expression" => {
+            let mut cursor = node.walk();
+            let mut has_minus = false;
+            let mut literal_child = None;
+            for child in node.children(&mut cursor) {
+                if child.kind() == "-" {
+                    has_minus = true;
+                } else if has_minus && (child.kind() == "integer_literal" || child.kind() == "float_literal") {
+                    literal_child = Some(child);
+                }
+            }
+            if let Some(_lit) = literal_child {
+                let snippet = node_text(node, source).trim();
+                acc.push(SourceConstant {
+                    kind: ConstantKind::NegativeLiteral,
+                    snippet,
+                    line: line_num,
+                    column: col,
+                    citation: get_citation(),
+                    is_test_origin: cfg_test,
+                    function_return_type: fn_return_type,
+                });
+                return;
+            }
+        }
+        "match_pattern" | "range_pattern" => {
+            if kind == "range_pattern" {
+                let snippet = node_text(node, source).trim();
+                acc.push(SourceConstant {
+                    kind: ConstantKind::MatchPattern,
+                    snippet,
+                    line: line_num,
+                    column: col,
+                    citation: get_citation(),
+                    is_test_origin: cfg_test,
+                    function_return_type: fn_return_type,
+                });
+                return;
+            }
+        }
+        "integer_literal" | "float_literal" => {
+            let snippet = node_text(node, source).trim();
+            let c_kind = if in_pattern {
+                ConstantKind::MatchPattern
+            } else {
+                ConstantKind::FunctionNumberLiteral
+            };
+            acc.push(SourceConstant {
+                kind: c_kind,
+                snippet,
+                line: line_num,
+                column: col,
+                citation: get_citation(),
+                is_test_origin: cfg_test,
+                function_return_type: fn_return_type,
+            });
+            return;
+        }
+        "string_literal" | "raw_string_literal" => {
+            let snippet = node_text(node, source).trim();
+            let is_fmt = is_numeric_format_specifier(snippet);
+            let c_kind = if is_fmt {
+                ConstantKind::FormatString
+            } else if in_pattern {
+                ConstantKind::MatchPattern
+            } else {
+                ConstantKind::FunctionStringLiteral
+            };
+            acc.push(SourceConstant {
+                kind: c_kind,
+                snippet,
+                line: line_num,
+                column: col,
+                citation: get_citation(),
+                is_test_origin: cfg_test,
+                function_return_type: fn_return_type,
+            });
+            return;
+        }
+        "function_item" => {
+            let mut ret_type = None;
+            if let Some(ret_node) = node.child_by_field_name("return_type") {
+                ret_type = Some(node_text(ret_node, source).trim());
+            }
+
+            for_each_child_in_test_scope(node, source, cfg_test, |child, child_cfg| {
+                let is_body = child.kind() == "block";
+                collect_constants(
+                    child,
+                    source,
+                    citations,
+                    child_cfg,
+                    ret_type,
+                    in_fn_body || is_body,
+                    in_pattern,
+                    acc,
+                );
+            });
+            return;
+        }
+        "closure_expression" => {
+            for_each_child_in_test_scope(node, source, cfg_test, |child, child_cfg| {
+                collect_constants(
+                    child,
+                    source,
+                    citations,
+                    child_cfg,
+                    fn_return_type,
+                    true,
+                    in_pattern,
+                    acc,
+                );
+            });
+            return;
+        }
+        "match_arm" => {
+            let mut cursor = node.walk();
+            let mut seen_arrow = false;
+            for child in node.children(&mut cursor) {
+                if child.kind() == "=>" {
+                    seen_arrow = true;
+                } else if !seen_arrow && child.kind() != "match" && child.kind() != "if" {
+                    collect_constants(
+                        child,
+                        source,
+                        citations,
+                        cfg_test,
+                        fn_return_type,
+                        in_fn_body,
+                        true,
+                        acc,
+                    );
+                } else if seen_arrow {
+                    collect_constants(
+                        child,
+                        source,
+                        citations,
+                        cfg_test,
+                        fn_return_type,
+                        true,
+                        false,
+                        acc,
+                    );
+                }
+            }
+            return;
+        }
+        _ => {}
+    }
+
+    for_each_child_in_test_scope(node, source, cfg_test, |child, child_cfg| {
+        collect_constants(
+            child,
+            source,
+            citations,
+            child_cfg,
+            fn_return_type,
+            in_fn_body,
+            in_pattern,
+            acc,
+        );
+    });
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -2731,4 +3011,31 @@ fn main() {}
         assert_eq!(expr.arms[8].body_form, BodyForm::Continue);
     }
 
+    #[test]
+    fn extract_constants_identifies_all_targets_and_citations() {
+        let code = r#"
+        // ref: spec/pdf.md:42
+        const MIN_LEADING: f64 = 12.5;
+
+        // rationale: margem padrão
+        fn layout_frame() -> Frame {
+            let x = -0.5;
+            let fmt = format!("{:.3}", x);
+            match x {
+                1..=5 => 10,
+                _ => 0,
+            }
+        }
+        "#;
+        let parser = make_parser();
+        let file = source_file(code);
+        let parsed = parser.parse(&file).unwrap();
+        assert!(parsed.constants.len() >= 5);
+        let const_item = parsed.constants.iter().find(|c| c.kind == ConstantKind::ItemDefinition).unwrap();
+        assert!(const_item.citation.is_some());
+        let neg_item = parsed.constants.iter().find(|c| c.kind == ConstantKind::NegativeLiteral).unwrap();
+        assert_eq!(neg_item.snippet, "-0.5");
+        let fmt_item = parsed.constants.iter().find(|c| c.kind == ConstantKind::FormatString).unwrap();
+        assert_eq!(fmt_item.snippet, "\"{:.3}\"");
+    }
 }
