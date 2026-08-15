@@ -288,9 +288,9 @@ pub struct PromptHeader<'a> {
 // Direção correta: entities → contracts (nunca entities → rules)
 
 use crate::entities::rule_traits::{
-    DecisionExpr, HasCoverage, HasDecisionArms, HasHashes, HasImports,
+    DecisionExpr, HasConstants, HasCoverage, HasDecisionArms, HasHashes, HasImports,
     HasModuleDecls, HasPromptFilesystem, HasPromptRefs, HasPublicInterface, HasPubLeak,
-    HasStaticDeclarations, HasTokens, HasWiringPurity,
+    HasStaticDeclarations, HasTokens, HasWiringPurity, SourceConstant,
 };
 
 impl<'a> HasPromptFilesystem<'a> for ParsedFile<'a> {
@@ -433,6 +433,21 @@ impl<'a> HasDecisionArms<'a> for ParsedFile<'a> {
     }
 }
 
+impl<'a> HasConstants<'a> for ParsedFile<'a> {
+    fn layer(&self) -> &Layer {
+        &self.layer
+    }
+    fn constants(&self) -> &[SourceConstant<'a>] {
+        &self.constants
+    }
+    fn path(&self) -> &'a Path {
+        self.path
+    }
+    fn language(&self) -> &Language {
+        &self.language
+    }
+}
+
 // ── ParsedFile ────────────────────────────────────────────────────────────────
 
 /// Intermediate representation consumed by all V1–V6 rules.
@@ -501,6 +516,10 @@ pub struct ParsedFile<'a> {
     /// For V16–V20: decision expressions (match / switch / case arms).
     /// Populated only by RustParser in this phase; other parsers produce `vec![]`.
     pub decision_exprs: Vec<DecisionExpr<'a>>,
+
+    /// For V21: source constants / literals subject to provenance (T1–T6).
+    /// Populated only by RustParser in this phase; other parsers produce `vec![]`.
+    pub constants: Vec<SourceConstant<'a>>,
 }
 
 #[cfg(test)]
@@ -529,6 +548,7 @@ mod tests {
             static_declarations: vec![],
             module_decls: vec![],
             decision_exprs: vec![],
+            constants: vec![],
         }
     }
 

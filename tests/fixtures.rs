@@ -386,3 +386,358 @@ fn non_regression_v16_to_v20_on_python() {
     let viols = wildcard_saturation::check(&file, &exceptions);
     assert!(viols.is_empty(), "Python file must produce zero V16 violations");
 }
+
+// ── V21 Fixtures & Critérios de Aceitação (unsourced-constant.md §8) ──────────
+
+#[test]
+fn v21_const_without_comment_triggers() {
+    use crystalline_lint::entities::layer::{Language, Layer};
+    use crystalline_lint::entities::rule_traits::{ConstantKind, HasConstants, SourceConstant};
+    use crystalline_lint::rules::unsourced_constant::{check, V21RuleConfig};
+    use std::path::Path;
+
+    struct MockFile {
+        path: &'static Path,
+        constants: Vec<SourceConstant<'static>>,
+    }
+    impl HasConstants<'static> for MockFile {
+        fn layer(&self) -> &Layer { &Layer::L1 }
+        fn constants(&self) -> &[SourceConstant<'static>] { &self.constants }
+        fn path(&self) -> &'static Path { self.path }
+        fn language(&self) -> &Language { &Language::Rust }
+    }
+
+    let file = MockFile {
+        path: Path::new("layout/src/frame.rs"),
+        constants: vec![SourceConstant {
+            kind: ConstantKind::ItemDefinition,
+            snippet: "const MIN_LEADING: Length = 12.5",
+            line: 10,
+            column: 0,
+            citation: None,
+            is_test_origin: false,
+            function_return_type: None,
+        }],
+    };
+
+    let viols = check(&file, &V21RuleConfig::default(), None);
+    assert_eq!(viols.len(), 1, "const sem comentário dispara V21");
+    assert_eq!(viols[0].rule_id, "V21");
+    assert_eq!(viols[0].level, crystalline_lint::entities::violation::ViolationLevel::Info);
+}
+
+#[test]
+fn v21_valid_ref_suppresses() {
+    use crystalline_lint::entities::layer::{Language, Layer};
+    use crystalline_lint::entities::rule_traits::{Citation, CitationKind, ConstantKind, HasConstants, SourceConstant};
+    use crystalline_lint::rules::unsourced_constant::{check, V21RuleConfig};
+    use std::io::Write;
+    use std::path::Path;
+    use tempfile::NamedTempFile;
+
+    let mut temp = NamedTempFile::new().unwrap();
+    writeln!(temp, "// spec line 1").unwrap();
+    let temp_path = temp.path().to_str().unwrap().to_string();
+
+    struct MockFile {
+        path: &'static Path,
+        constants: Vec<SourceConstant<'static>>,
+    }
+    impl HasConstants<'static> for MockFile {
+        fn layer(&self) -> &Layer { &Layer::L1 }
+        fn constants(&self) -> &[SourceConstant<'static>] { &self.constants }
+        fn path(&self) -> &'static Path { self.path }
+        fn language(&self) -> &Language { &Language::Rust }
+    }
+
+    let file = MockFile {
+        path: Path::new("export/src/pdf.rs"),
+        constants: vec![SourceConstant {
+            kind: ConstantKind::ItemDefinition,
+            snippet: "const DPI: f64 = 72.0",
+            line: 10,
+            column: 0,
+            citation: Some(Citation {
+                kind: CitationKind::Ref {
+                    path: Box::leak(temp_path.into_boxed_str()),
+                    line: 1,
+                },
+                raw: "// ref: ...",
+                line: 9,
+            }),
+            is_test_origin: false,
+            function_return_type: None,
+        }],
+    };
+
+    let viols = check(&file, &V21RuleConfig::default(), None);
+    assert!(viols.is_empty(), "// ref: válido apaga o aviso");
+}
+
+#[test]
+fn v21_stale_ref_triggers_stale_citation_warning() {
+    use crystalline_lint::entities::layer::{Language, Layer};
+    use crystalline_lint::entities::rule_traits::{Citation, CitationKind, ConstantKind, HasConstants, SourceConstant};
+    use crystalline_lint::rules::unsourced_constant::{check, V21RuleConfig};
+    use std::path::Path;
+
+    struct MockFile {
+        path: &'static Path,
+        constants: Vec<SourceConstant<'static>>,
+    }
+    impl HasConstants<'static> for MockFile {
+        fn layer(&self) -> &Layer { &Layer::L1 }
+        fn constants(&self) -> &[SourceConstant<'static>] { &self.constants }
+        fn path(&self) -> &'static Path { self.path }
+        fn language(&self) -> &Language { &Language::Rust }
+    }
+
+    let file = MockFile {
+        path: Path::new("math/src/geom.rs"),
+        constants: vec![SourceConstant {
+            kind: ConstantKind::FunctionNumberLiteral,
+            snippet: "42.5",
+            line: 25,
+            column: 4,
+            citation: Some(Citation {
+                kind: CitationKind::Ref {
+                    path: "non_existent_file.md",
+                    line: 10,
+                },
+                raw: "// ref: non_existent_file.md:10",
+                line: 24,
+            }),
+            is_test_origin: false,
+            function_return_type: None,
+        }],
+    };
+
+    let viols = check(&file, &V21RuleConfig::default(), None);
+    assert_eq!(viols.len(), 1, "ref: obsoleto dispara StaleCitation");
+    assert_eq!(viols[0].level, crystalline_lint::entities::violation::ViolationLevel::Warning);
+    assert!(viols[0].message.contains("Citação obsoleta"));
+}
+
+#[test]
+fn v21_negative_literal_detected() {
+    use crystalline_lint::entities::layer::{Language, Layer};
+    use crystalline_lint::entities::rule_traits::{ConstantKind, HasConstants, SourceConstant};
+    use crystalline_lint::rules::unsourced_constant::{check, V21RuleConfig};
+    use std::path::Path;
+
+    struct MockFile {
+        path: &'static Path,
+        constants: Vec<SourceConstant<'static>>,
+    }
+    impl HasConstants<'static> for MockFile {
+        fn layer(&self) -> &Layer { &Layer::L1 }
+        fn constants(&self) -> &[SourceConstant<'static>] { &self.constants }
+        fn path(&self) -> &'static Path { self.path }
+        fn language(&self) -> &Language { &Language::Rust }
+    }
+
+    let file = MockFile {
+        path: Path::new("shaper/src/font.rs"),
+        constants: vec![SourceConstant {
+            kind: ConstantKind::NegativeLiteral,
+            snippet: "-0.5",
+            line: 40,
+            column: 12,
+            citation: None,
+            is_test_origin: false,
+            function_return_type: None,
+        }],
+    };
+
+    let viols = check(&file, &V21RuleConfig::default(), None);
+    assert_eq!(viols.len(), 1, "-0.5 (T6) é detectado");
+    assert_eq!(viols[0].rule_id, "V21");
+}
+
+#[test]
+fn v21_format_string_precision_detected() {
+    use crystalline_lint::entities::layer::{Language, Layer};
+    use crystalline_lint::entities::rule_traits::{ConstantKind, HasConstants, SourceConstant};
+    use crystalline_lint::rules::unsourced_constant::{check, V21RuleConfig};
+    use std::path::Path;
+
+    struct MockFile {
+        path: &'static Path,
+        constants: Vec<SourceConstant<'static>>,
+    }
+    impl HasConstants<'static> for MockFile {
+        fn layer(&self) -> &Layer { &Layer::L1 }
+        fn constants(&self) -> &[SourceConstant<'static>] { &self.constants }
+        fn path(&self) -> &'static Path { self.path }
+        fn language(&self) -> &Language { &Language::Rust }
+    }
+
+    let file = MockFile {
+        path: Path::new("export/src/svg.rs"),
+        constants: vec![SourceConstant {
+            kind: ConstantKind::FormatString,
+            snippet: "\"{:.3}\"",
+            line: 55,
+            column: 16,
+            citation: None,
+            is_test_origin: false,
+            function_return_type: None,
+        }],
+    };
+
+    let viols = check(&file, &V21RuleConfig::default(), None);
+    assert_eq!(viols.len(), 1, "format!(\"{{:.3}}\") (T5) é detectado");
+    assert_eq!(viols[0].rule_id, "V21");
+}
+
+#[test]
+fn v21_trivial_allowlist_never_triggers() {
+    use crystalline_lint::entities::layer::{Language, Layer};
+    use crystalline_lint::entities::rule_traits::{ConstantKind, HasConstants, SourceConstant};
+    use crystalline_lint::rules::unsourced_constant::{check, V21RuleConfig};
+    use std::path::Path;
+
+    struct MockFile {
+        path: &'static Path,
+        constants: Vec<SourceConstant<'static>>,
+    }
+    impl HasConstants<'static> for MockFile {
+        fn layer(&self) -> &Layer { &Layer::L1 }
+        fn constants(&self) -> &[SourceConstant<'static>] { &self.constants }
+        fn path(&self) -> &'static Path { self.path }
+        fn language(&self) -> &Language { &Language::Rust }
+    }
+
+    let file = MockFile {
+        path: Path::new("geom/src/path.rs"),
+        constants: vec![
+            SourceConstant {
+                kind: ConstantKind::FunctionNumberLiteral,
+                snippet: "0",
+                line: 1,
+                column: 0,
+                citation: None,
+                is_test_origin: false,
+                function_return_type: None,
+            },
+            SourceConstant {
+                kind: ConstantKind::FunctionNumberLiteral,
+                snippet: "1.0",
+                line: 2,
+                column: 0,
+                citation: None,
+                is_test_origin: false,
+                function_return_type: None,
+            },
+            SourceConstant {
+                kind: ConstantKind::FunctionNumberLiteral,
+                snippet: "-1",
+                line: 3,
+                column: 0,
+                citation: None,
+                is_test_origin: false,
+                function_return_type: None,
+            },
+            SourceConstant {
+                kind: ConstantKind::FunctionStringLiteral,
+                snippet: "\"\"",
+                line: 4,
+                column: 0,
+                citation: None,
+                is_test_origin: false,
+                function_return_type: None,
+            },
+            SourceConstant {
+                kind: ConstantKind::FunctionStringLiteral,
+                snippet: "\",\"",
+                line: 5,
+                column: 0,
+                citation: None,
+                is_test_origin: false,
+                function_return_type: None,
+            },
+        ],
+    };
+
+    let viols = check(&file, &V21RuleConfig::default(), None);
+    assert!(viols.is_empty(), "triviais da allowlist nunca disparam");
+}
+
+#[test]
+fn v21_test_function_is_exempt() {
+    use crystalline_lint::entities::layer::{Language, Layer};
+    use crystalline_lint::entities::rule_traits::{ConstantKind, HasConstants, SourceConstant};
+    use crystalline_lint::rules::unsourced_constant::{check, V21RuleConfig};
+    use std::path::Path;
+
+    struct MockFile {
+        path: &'static Path,
+        constants: Vec<SourceConstant<'static>>,
+    }
+    impl HasConstants<'static> for MockFile {
+        fn layer(&self) -> &Layer { &Layer::L1 }
+        fn constants(&self) -> &[SourceConstant<'static>] { &self.constants }
+        fn path(&self) -> &'static Path { self.path }
+        fn language(&self) -> &Language { &Language::Rust }
+    }
+
+    let file = MockFile {
+        path: Path::new("layout/src/flow.rs"),
+        constants: vec![SourceConstant {
+            kind: ConstantKind::FunctionNumberLiteral,
+            snippet: "999.99",
+            line: 100,
+            column: 8,
+            citation: None,
+            is_test_origin: true,
+            function_return_type: None,
+        }],
+    };
+
+    let viols = check(&file, &V21RuleConfig::default(), None);
+    assert!(viols.is_empty(), "função de teste nunca dispara");
+}
+
+#[test]
+fn non_regression_v21_on_typescript() {
+    use crystalline_lint::entities::layer::{Language, Layer};
+    use crystalline_lint::entities::rule_traits::HasConstants;
+    use crystalline_lint::rules::unsourced_constant::{check, V21RuleConfig};
+    use std::path::Path;
+
+    struct MockTsFile {
+        path: &'static Path,
+    }
+    impl HasConstants<'static> for MockTsFile {
+        fn layer(&self) -> &Layer { &Layer::L1 }
+        fn constants(&self) -> &[crystalline_lint::entities::rule_traits::SourceConstant<'static>] { &[] }
+        fn path(&self) -> &'static Path { self.path }
+        fn language(&self) -> &Language { &Language::TypeScript }
+    }
+
+    let file = MockTsFile { path: Path::new("01_core/index.ts") };
+    let viols = check(&file, &V21RuleConfig::default(), None);
+    assert!(viols.is_empty(), "TypeScript file must produce zero V21 violations");
+}
+
+#[test]
+fn non_regression_v21_on_python() {
+    use crystalline_lint::entities::layer::{Language, Layer};
+    use crystalline_lint::entities::rule_traits::HasConstants;
+    use crystalline_lint::rules::unsourced_constant::{check, V21RuleConfig};
+    use std::path::Path;
+
+    struct MockPyFile {
+        path: &'static Path,
+    }
+    impl HasConstants<'static> for MockPyFile {
+        fn layer(&self) -> &Layer { &Layer::L1 }
+        fn constants(&self) -> &[crystalline_lint::entities::rule_traits::SourceConstant<'static>] { &[] }
+        fn path(&self) -> &'static Path { self.path }
+        fn language(&self) -> &Language { &Language::Python }
+    }
+
+    let file = MockPyFile { path: Path::new("01_core/main.py") };
+    let viols = check(&file, &V21RuleConfig::default(), None);
+    assert!(viols.is_empty(), "Python file must produce zero V21 violations");
+}
