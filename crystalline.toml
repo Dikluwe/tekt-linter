@@ -112,7 +112,8 @@ V17 = { level = "warning", languages = ["rust"] }
 V18 = { level = "warning", languages = ["rust"] }
 V19 = { level = "info", languages = ["rust"] }
 V20 = { level = "info", languages = ["rust"] }
-V21 = { level = "info", languages = ["rust"] }
+V21 = { level = "warning", languages = ["rust"] }
+V22 = { level = "info", languages = ["rust"] }
 
 [wildcard_exceptions]
 

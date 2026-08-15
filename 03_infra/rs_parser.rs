@@ -1679,12 +1679,12 @@ fn get_macro_name(node: Node, source: &[u8]) -> String {
     String::new()
 }
 
-// ── Source Constants Extraction (V21 — ADR-0016 / unsourced-constant.md) ──────
+// ── Source Constants Extraction (V21/V22 — Passo 0066) ─────────────────────────
 
 fn extract_constants<'a>(root: Node, source: &'a [u8]) -> Vec<SourceConstant<'a>> {
     let citations = extract_citations(source);
     let mut constants = Vec::new();
-    collect_constants(root, source, &citations, false, None, false, false, &mut constants);
+    collect_constants(root, source, &citations, false, None, false, false, false, None, None, &mut constants);
     constants
 }
 
@@ -1752,6 +1752,53 @@ fn is_numeric_format_specifier(text: &str) -> bool {
     false
 }
 
+/// Detecta se um match é uma tabela de dados (>= 5 braços com corpo literal).
+fn is_data_table_match(node: Node, _source: &[u8]) -> bool {
+    let mut arm_count = 0;
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "match_block" {
+            let mut block_cursor = child.walk();
+            for arm in child.children(&mut block_cursor) {
+                if arm.kind() == "match_arm" {
+                    arm_count += 1;
+                }
+            }
+        }
+    }
+    arm_count >= 5
+}
+
+fn extract_sink_from_node(node: Node, source: &[u8]) -> Option<String> {
+    match node.kind() {
+        "let_declaration" => {
+            if let Some(pat) = node.child_by_field_name("pattern") {
+                return Some(node_text(pat, source).trim().to_string());
+            }
+        }
+        "assignment_expression" => {
+            if let Some(left) = node.child_by_field_name("left") {
+                return Some(node_text(left, source).trim().to_string());
+            }
+        }
+        "field_initializer" => {
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.kind() == "field_identifier" {
+                    return Some(node_text(child, source).trim().to_string());
+                }
+            }
+        }
+        "call_expression" => {
+            if let Some(function) = node.child_by_field_name("function") {
+                return Some(node_text(function, source).trim().to_string());
+            }
+        }
+        _ => {}
+    }
+    None
+}
+
 fn collect_constants<'a>(
     node: Node,
     source: &'a [u8],
@@ -1760,6 +1807,9 @@ fn collect_constants<'a>(
     fn_return_type: Option<&'a str>,
     in_fn_body: bool,
     in_pattern: bool,
+    in_data_table: bool,
+    active_sink: Option<String>,
+    scaling_context_var: Option<String>,
     acc: &mut Vec<SourceConstant<'a>>,
 ) {
     let kind = node.kind();
@@ -1777,6 +1827,9 @@ fn collect_constants<'a>(
         })
     };
 
+    // Atualiza o sink ativo se o nó corrente for uma declaração/atribuição/chamada
+    let current_sink = extract_sink_from_node(node, source).or(active_sink.clone());
+
     match kind {
         "const_item" | "static_item" => {
             let snippet = node_text(node, source).trim();
@@ -1788,8 +1841,45 @@ fn collect_constants<'a>(
                 citation: get_citation(),
                 is_test_origin: cfg_test,
                 function_return_type: fn_return_type,
+                is_in_binary_scaling: false,
+                context_var: None,
+                geometric_sink: current_sink.clone(),
+                is_in_data_table: in_data_table,
             });
             return;
+        }
+        "binary_expression" => {
+            let mut op = None;
+            let mut left = None;
+            let mut right = None;
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.kind() == "*" || child.kind() == "/" {
+                    op = Some(child.kind());
+                } else if left.is_none() {
+                    left = Some(child);
+                } else if right.is_none() && op.is_some() {
+                    right = Some(child);
+                }
+            }
+
+            if let (Some(_operator), Some(l_node), Some(r_node)) = (op, left, right) {
+                // Checa se um dos lados é literal numérico e o outro é identificador/campo
+                let l_is_lit = l_node.kind() == "integer_literal" || l_node.kind() == "float_literal";
+                let r_is_lit = r_node.kind() == "integer_literal" || r_node.kind() == "float_literal";
+
+                if l_is_lit && !r_is_lit {
+                    let var_name = node_text(r_node, source).trim().to_string();
+                    collect_constants(l_node, source, citations, cfg_test, fn_return_type, in_fn_body, in_pattern, in_data_table, current_sink.clone(), Some(var_name), acc);
+                    collect_constants(r_node, source, citations, cfg_test, fn_return_type, in_fn_body, in_pattern, in_data_table, current_sink.clone(), None, acc);
+                    return;
+                } else if r_is_lit && !l_is_lit {
+                    let var_name = node_text(l_node, source).trim().to_string();
+                    collect_constants(l_node, source, citations, cfg_test, fn_return_type, in_fn_body, in_pattern, in_data_table, current_sink.clone(), None, acc);
+                    collect_constants(r_node, source, citations, cfg_test, fn_return_type, in_fn_body, in_pattern, in_data_table, current_sink.clone(), Some(var_name), acc);
+                    return;
+                }
+            }
         }
         "unary_expression" => {
             let mut cursor = node.walk();
@@ -1812,6 +1902,10 @@ fn collect_constants<'a>(
                     citation: get_citation(),
                     is_test_origin: cfg_test,
                     function_return_type: fn_return_type,
+                    is_in_binary_scaling: scaling_context_var.is_some(),
+                    context_var: scaling_context_var.clone(),
+                    geometric_sink: current_sink.clone(),
+                    is_in_data_table: in_data_table,
                 });
                 return;
             }
@@ -1827,6 +1921,10 @@ fn collect_constants<'a>(
                     citation: get_citation(),
                     is_test_origin: cfg_test,
                     function_return_type: fn_return_type,
+                    is_in_binary_scaling: false,
+                    context_var: None,
+                    geometric_sink: current_sink.clone(),
+                    is_in_data_table: in_data_table,
                 });
                 return;
             }
@@ -1846,6 +1944,10 @@ fn collect_constants<'a>(
                 citation: get_citation(),
                 is_test_origin: cfg_test,
                 function_return_type: fn_return_type,
+                is_in_binary_scaling: scaling_context_var.is_some(),
+                context_var: scaling_context_var.clone(),
+                geometric_sink: current_sink.clone(),
+                is_in_data_table: in_data_table,
             });
             return;
         }
@@ -1867,6 +1969,29 @@ fn collect_constants<'a>(
                 citation: get_citation(),
                 is_test_origin: cfg_test,
                 function_return_type: fn_return_type,
+                is_in_binary_scaling: false,
+                context_var: None,
+                geometric_sink: current_sink.clone(),
+                is_in_data_table: in_data_table,
+            });
+            return;
+        }
+        "match_expression" => {
+            let is_table = is_data_table_match(node, source);
+            for_each_child_in_test_scope(node, source, cfg_test, |child, child_cfg| {
+                collect_constants(
+                    child,
+                    source,
+                    citations,
+                    child_cfg,
+                    fn_return_type,
+                    in_fn_body,
+                    in_pattern,
+                    in_data_table || is_table,
+                    current_sink.clone(),
+                    scaling_context_var.clone(),
+                    acc,
+                );
             });
             return;
         }
@@ -1886,6 +2011,9 @@ fn collect_constants<'a>(
                     ret_type,
                     in_fn_body || is_body,
                     in_pattern,
+                    in_data_table,
+                    current_sink.clone(),
+                    scaling_context_var.clone(),
                     acc,
                 );
             });
@@ -1901,6 +2029,9 @@ fn collect_constants<'a>(
                     fn_return_type,
                     true,
                     in_pattern,
+                    in_data_table,
+                    current_sink.clone(),
+                    scaling_context_var.clone(),
                     acc,
                 );
             });
@@ -1921,6 +2052,9 @@ fn collect_constants<'a>(
                         fn_return_type,
                         in_fn_body,
                         true,
+                        in_data_table,
+                        current_sink.clone(),
+                        scaling_context_var.clone(),
                         acc,
                     );
                 } else if seen_arrow {
@@ -1932,6 +2066,9 @@ fn collect_constants<'a>(
                         fn_return_type,
                         true,
                         false,
+                        in_data_table,
+                        current_sink.clone(),
+                        scaling_context_var.clone(),
                         acc,
                     );
                 }
@@ -1950,6 +2087,9 @@ fn collect_constants<'a>(
             fn_return_type,
             in_fn_body,
             in_pattern,
+            in_data_table,
+            current_sink.clone(),
+            scaling_context_var.clone(),
             acc,
         );
     });

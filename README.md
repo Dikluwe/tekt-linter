@@ -70,6 +70,8 @@ crystalline-lint --update-snapshot --dry-run .
 | V18 | `RangePatternInMatch` | **warning** | Padrão de range numérico em match de domínio fora de módulo de lexing/numeração |
 | V19 | `OrPatternAlternatives` | **info** | Braço de decisão condensa múltiplas alternativas or-pattern (métrica: informa subdimensionamento de cobertura de braços) |
 | V20 | `DeepPatternNesting` | **info** | Aninhamento de padrão > 2 fora de contexto de tabela de tuplas regulares (métrica de complexidade) |
+| V21 | `HardcodedContextualValue` | **warning** | Literal numérico escala variável de fonte contextual e alimenta sumidouro geométrico sem proveniência declarada |
+| V22 | `ProvenanceInventory` | **info** | Métrica agregada por módulo: rácio `(literais citados) / (total de literais)` para vigilância de tendência (opt-in) |
 
 **Sobre níveis Fatal (V0, V8, V10):** a ausência de violações garante
 que todos os arquivos foram lidos e analisados com sucesso. Fatal
@@ -207,11 +209,27 @@ V17 = { level = "warning", languages = ["rust"] }
 V18 = { level = "warning", languages = ["rust"] }
 V19 = { level = "info", languages = ["rust"] }
 V20 = { level = "info", languages = ["rust"] }
+V21 = { level = "warning", languages = ["rust"] }
+V22 = { level = "info", languages = ["rust"] }
+
+# Configuração de contexto e sumidouros para V21
+[v21]
+# context_vars = ["size", "style", "em", "font", "weight", "ascent", "descent", "width", "height", "frame", "margin"]
+# geometric_sinks = ["gap", "inset", "offset", "pos", "x", "y", "width", "height", "length", "pt", "em"]
+# format_syntax_modules = ["export/pdf", "export/svg"]
 
 # Exceções declaradas para V16 — hubs intencionais com razão técnica documentada
 [wildcard_exceptions]
 # "01_core/src/entities/gradient.rs:221" = "hub intencional: fallback lossy documentado no ADR-0109" 
 ```
+
+---
+
+## Mecanismo de crescimento do predicado V21 (Memória Institucional)
+
+A garantia que a regra V21 oferece não é de ausência arbitrária de números, mas de **impedir o reingresso de classes já nomeadas de valores contextuais fixados sem rastreabilidade**.
+
+> **Regra de Processo:** Quando um placeholder ou escalar fixo de "fechar buraco" for encontrado e a V21 **não** o tiver detectado (falso negativo confirmado), o passo de correção do bug **deve** obrigatoriamente incluir a extensão do predicado da V21 (nova entrada em `context_vars`, `geometric_sinks` ou nova heurística). Corrigir o bug sem estender a regra é dívida técnica aberta.
 
 ---
 
@@ -383,7 +401,8 @@ crystalline-lint/
 │   │   │   ├── mutable-state-core.md (V13)
 │   │   │   ├── external-type-in-contract.md (V14)
 │   │   │   ├── multi-prompt-header.md (V15)
-│   │   │   └── wildcard-saturation.md (V16–V20)
+│   │   │   ├── wildcard-saturation.md (V16–V20)
+│   │   │   └── unsourced-constant.md (V21–V22)
 │   │   ├── file-walker.md
 │   │   ├── prompt-walker.md
 │   │   ├── sarif-formatter.md
@@ -440,7 +459,9 @@ crystalline-lint/
 │       ├── compound_guard.rs         (V17)
 │       ├── range_pattern.rs          (V18)
 │       ├── or_pattern_alternatives.rs (V19)
-│       └── deep_pattern_nesting.rs   (V20)
+│       ├── deep_pattern_nesting.rs   (V20)
+│       ├── unsourced_constant.rs     (V21)
+│       └── provenance_inventory.rs   (V22)
 │
 ├── 02_shell/                         # CLI e formatadores
 │   ├── cli.rs
