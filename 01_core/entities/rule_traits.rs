@@ -237,6 +237,14 @@ pub struct SourceConstant<'a> {
     pub citation: Option<Citation<'a>>,
     pub is_test_origin: bool,
     pub function_return_type: Option<&'a str>,
+    /// V21: se é operando de multiplicação (*) ou divisão (/)
+    pub is_in_binary_scaling: bool,
+    /// V21: nome da variável/campo contextual parceiro na operação
+    pub context_var: Option<String>,
+    /// V21: nome do sumidouro geométrico (let, campo ou construtor de medida)
+    pub geometric_sink: Option<String>,
+    /// V21/V22: se está dentro de uma tabela de tradução (match com >= 5 braços literais)
+    pub is_in_data_table: bool,
 }
 
 /// Para V21 — inspeciona proveniência de constantes em geometria/exportação.

@@ -121,6 +121,7 @@ pub struct EnabledChecks {
     pub v19: bool,
     pub v20: bool,
     pub v21: bool,
+    pub v22: bool,
 }
 
 impl EnabledChecks {
@@ -157,6 +158,7 @@ impl EnabledChecks {
             v19: has("v19"),
             v20: has("v20"),
             v21: has("v21"),
+            v22: has("v22"),
         }
     }
 }
@@ -340,8 +342,9 @@ fn sarif_rules() -> Vec<serde_json::Value> {
         sarif_rule("V17", "CompoundGuard",          "Compound boolean logic in pattern guard", "warning"),
         sarif_rule("V18", "RangePatternInMatch",    "Range pattern in domain match expression", "warning"),
         sarif_rule("V19", "OrPatternAlternatives",  "Decision arm condenses multiple or-pattern alternatives", "note"),
-        sarif_rule("V20", "DeepPatternNesting",     "Pattern nesting depth exceeds threshold", "note"),
-        sarif_rule("V21", "UnsourcedConstant",      "Geometry or export constant lacks cited provenance", "note"),
+        sarif_rule("V20", "DeepPatternNesting",         "Pattern nesting depth exceeds threshold", "note"),
+        sarif_rule("V21", "HardcodedContextualValue",   "Hardcoded contextual scalar feeds geometric sink", "warning"),
+        sarif_rule("V22", "ProvenanceInventory",        "Module-level aggregate provenance ratio metric", "note"),
     ]
 }
 
@@ -633,6 +636,7 @@ mod tests {
         assert!(checks.v19);
         assert!(checks.v20);
         assert!(checks.v21);
+        assert!(checks.v22);
     }
 
     #[test]
@@ -704,12 +708,19 @@ mod tests {
     }
 
     #[test]
-    fn sarif_driver_rules_has_22_entries() {
-        // SARIF driver.rules deve conter exatamente 22 entradas (V0 a V21)
+    fn sarif_driver_rules_has_23_entries() {
+        // SARIF driver.rules deve conter exatamente 23 entradas (V0 a V22)
         let out = format_sarif(&[]);
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
         let rules = parsed["runs"][0]["tool"]["driver"]["rules"].as_array().unwrap();
-        assert_eq!(rules.len(), 22, "expected 22 rules (V0 to V21), got {}", rules.len());
+        assert_eq!(rules.len(), 23, "expected 23 rules (V0 to V22), got {}", rules.len());
+    }
+
+    #[test]
+    fn checks_v22_activates_v22() {
+        let checks = EnabledChecks::from_cli("v22", false, false);
+        assert!(checks.v22);
+        assert!(!checks.v1);
     }
 
     #[test]

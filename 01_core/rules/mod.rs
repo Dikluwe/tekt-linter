@@ -25,3 +25,4 @@ pub mod range_pattern;
 pub mod or_pattern_alternatives;
 pub mod deep_pattern_nesting;
 pub mod unsourced_constant;
+pub mod provenance_inventory;

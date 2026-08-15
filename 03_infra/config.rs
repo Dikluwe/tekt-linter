@@ -47,13 +47,29 @@ pub struct WiringExceptionsConfig {
     pub allow_adapter_structs: Option<bool>,
 }
 
-/// Configuração de escopo para V21 — lida de `[v21_scope]`.
+/// Configuração para V21 — lida de `[v21]`, `[v21.context_vars]`, etc.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct V21ScopeConfig {
     #[serde(default)]
     pub modules: Option<Vec<String>>,
     #[serde(default)]
     pub types: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct V21TableConfig {
+    #[serde(default)]
+    pub context_vars: Option<Vec<String>>,
+    #[serde(default)]
+    pub geometric_sinks: Option<Vec<String>>,
+    #[serde(default)]
+    pub format_syntax_modules: Option<Vec<String>>,
+    #[serde(default)]
+    pub scope_modules: Option<Vec<String>>,
+    #[serde(default)]
+    pub scope_types: Option<Vec<String>>,
+    #[serde(default)]
+    pub strict_modules: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -117,6 +133,9 @@ pub struct CrystallineConfig {
     /// Exemplo: { "01_core/src/entities/gradient.rs:221" = "hub intencional" }
     #[serde(default)]
     pub wildcard_exceptions: HashMap<String, String>,
+    /// Configuração completa V21 — lida de `[v21]`.
+    #[serde(default)]
+    pub v21: Option<V21TableConfig>,
     /// Configuração de escopo para V21 — lida de `[v21_scope]`.
     #[serde(default)]
     pub v21_scope: Option<V21ScopeConfig>,
@@ -237,6 +256,26 @@ impl CrystallineConfig {
     /// Converte a configuração de V21 para `V21RuleConfig` com os devidos defaults.
     pub fn v21_rule_config(&self) -> crate::rules::unsourced_constant::V21RuleConfig {
         let mut def = crate::rules::unsourced_constant::V21RuleConfig::default();
+        if let Some(v21_table) = &self.v21 {
+            if let Some(cvars) = &v21_table.context_vars {
+                def.context_vars = cvars.clone();
+            }
+            if let Some(sinks) = &v21_table.geometric_sinks {
+                def.geometric_sinks = sinks.clone();
+            }
+            if let Some(fmods) = &v21_table.format_syntax_modules {
+                def.format_syntax_modules = fmods.clone();
+            }
+            if let Some(smods) = &v21_table.scope_modules {
+                def.scope_modules = smods.clone();
+            }
+            if let Some(stys) = &v21_table.scope_types {
+                def.scope_types = stys.clone();
+            }
+            if let Some(strict) = &v21_table.strict_modules {
+                def.strict_modules = strict.clone();
+            }
+        }
         if let Some(scope) = &self.v21_scope {
             if let Some(mods) = &scope.modules {
                 def.scope_modules = mods.clone();
@@ -337,6 +376,7 @@ impl Default for CrystallineConfig {
             l1_ports,
             orphan_exceptions: HashMap::new(),
             wildcard_exceptions: HashMap::new(),
+            v21: None,
             v21_scope: None,
             v21_trivial: None,
             v21_strict: None,
