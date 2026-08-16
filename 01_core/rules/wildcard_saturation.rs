@@ -13,7 +13,9 @@ use crate::entities::rule_traits::{
 };
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 
-/// V16 — WildcardSaturation (ADR-0016).
+/// V16 — WildcardSaturation (ADR-0016 / ADR-0017 em `00_nucleo/adr/0017-v16-v21-diferenca-categorica.md`).
+///
+/// V16 nunca silencia por citação — um wildcard vigia todas as variantes futuras de um enum, não um valor fixo. Ver ADR para a distinção com V21.
 ///
 /// Detecta braços catch-all que descartam informação de enums fechados de domínio,
 /// permitindo que variantes futuras sejam adoptadas silenciosamente sem erro de compilação.
@@ -129,7 +131,48 @@ pub fn check<'a, T: HasDecisionArms<'a>>(
                         },
                     });
                 }
-                // Exceção declarada suprime a violação de saturação
+
+                // Validação de formato da taxonomia N16[α/β/γ] quando a tag estiver presente
+                if trimmed.contains("N16[") {
+                    let has_valid_tag = trimmed.contains("N16[α]")
+                        || trimmed.contains("N16[β]")
+                        || trimmed.contains("N16[γ]")
+                        || trimmed.contains("N16[A]")
+                        || trimmed.contains("N16[B]")
+                        || trimmed.contains("N16[C]")
+                        || trimmed.contains("N16[a]")
+                        || trimmed.contains("N16[b]")
+                        || trimmed.contains("N16[c]");
+                    if !has_valid_tag {
+                        violations.push(Violation {
+                            rule_id: "V16".to_string(),
+                            level: ViolationLevel::Warning,
+                            message: format!(
+                                "Tag N16 malformada em '{}': esperado N16[α], N16[β] ou N16[γ] (ou A/B/C), recebido '{}'",
+                                loc_key, trimmed
+                            ),
+                            location: Location {
+                                path: Cow::Borrowed(file.path()),
+                                line: arm.line,
+                                column: arm.column,
+                            },
+                        });
+                        // Tag malformada: não silencia a violação base de V16
+                        violations.push(Violation {
+                            rule_id: "V16".to_string(),
+                            level,
+                            message: msg,
+                            location: Location {
+                                path: Cow::Borrowed(file.path()),
+                                line: arm.line,
+                                column: arm.column,
+                            },
+                        });
+                        continue;
+                    }
+                }
+
+                // Exceção declarada com justificativa válida suprime a violação de saturação
                 continue;
             }
 
@@ -397,6 +440,138 @@ mod tests {
         exceptions.insert("01_core/unit.rs:12".to_string(), "hub intencional: fallback documentado".to_string());
         let viols = check(&file, &exceptions);
         assert!(viols.is_empty());
+    }
+
+    #[test]
+    fn v16_valid_n16_tag_suppresses_violation() {
+        let arm1 = DecisionArm {
+            pattern_snippet: "Unit::Pt",
+            is_catchall: false,
+            bound_ident_used_in_body: false,
+            qualified_prefixes: vec!["Unit"],
+            has_guard: false,
+            guard_is_compound: false,
+            pattern_is_range: false,
+            pattern_depth: 1,
+            or_alternatives: 1,
+            body_form: BodyForm::LiteralNeutral,
+            body_snippet: "0",
+            line: 10,
+            column: 12,
+        };
+        let arm2 = DecisionArm {
+            pattern_snippet: "Unit::Mm",
+            is_catchall: false,
+            bound_ident_used_in_body: false,
+            qualified_prefixes: vec!["Unit"],
+            has_guard: false,
+            guard_is_compound: false,
+            pattern_is_range: false,
+            pattern_depth: 1,
+            or_alternatives: 1,
+            body_form: BodyForm::LiteralNeutral,
+            body_snippet: "0",
+            line: 11,
+            column: 12,
+        };
+        let arm3 = DecisionArm {
+            pattern_snippet: "_",
+            is_catchall: true,
+            bound_ident_used_in_body: false,
+            qualified_prefixes: vec![],
+            has_guard: false,
+            guard_is_compound: false,
+            pattern_is_range: false,
+            pattern_depth: 1,
+            or_alternatives: 1,
+            body_form: BodyForm::EnumPath,
+            body_snippet: "Unit::Percent",
+            line: 12,
+            column: 12,
+        };
+        let expr = DecisionExpr {
+            snippet_scrutinee: "unit",
+            scrutinee_form: ScrutineeForm::Path,
+            arms: vec![arm1, arm2, arm3],
+            line: 9,
+            column: 8,
+        };
+        let file = MockFile {
+            path: Path::new("01_core/unit.rs"),
+            language: Language::Rust,
+            exprs: vec![expr],
+        };
+        let mut exceptions = HashMap::new();
+        exceptions.insert("01_core/unit.rs:12".to_string(), "N16[α]: impossibilidade estrutural".to_string());
+        let viols = check(&file, &exceptions);
+        assert!(viols.is_empty());
+    }
+
+    #[test]
+    fn v16_malformed_n16_tag_emits_warning_and_does_not_silence() {
+        let arm1 = DecisionArm {
+            pattern_snippet: "Unit::Pt",
+            is_catchall: false,
+            bound_ident_used_in_body: false,
+            qualified_prefixes: vec!["Unit"],
+            has_guard: false,
+            guard_is_compound: false,
+            pattern_is_range: false,
+            pattern_depth: 1,
+            or_alternatives: 1,
+            body_form: BodyForm::LiteralNeutral,
+            body_snippet: "0",
+            line: 10,
+            column: 12,
+        };
+        let arm2 = DecisionArm {
+            pattern_snippet: "Unit::Mm",
+            is_catchall: false,
+            bound_ident_used_in_body: false,
+            qualified_prefixes: vec!["Unit"],
+            has_guard: false,
+            guard_is_compound: false,
+            pattern_is_range: false,
+            pattern_depth: 1,
+            or_alternatives: 1,
+            body_form: BodyForm::LiteralNeutral,
+            body_snippet: "0",
+            line: 11,
+            column: 12,
+        };
+        let arm3 = DecisionArm {
+            pattern_snippet: "_",
+            is_catchall: true,
+            bound_ident_used_in_body: false,
+            qualified_prefixes: vec![],
+            has_guard: false,
+            guard_is_compound: false,
+            pattern_is_range: false,
+            pattern_depth: 1,
+            or_alternatives: 1,
+            body_form: BodyForm::EnumPath,
+            body_snippet: "Unit::Percent",
+            line: 12,
+            column: 12,
+        };
+        let expr = DecisionExpr {
+            snippet_scrutinee: "unit",
+            scrutinee_form: ScrutineeForm::Path,
+            arms: vec![arm1, arm2, arm3],
+            line: 9,
+            column: 8,
+        };
+        let file = MockFile {
+            path: Path::new("01_core/unit.rs"),
+            language: Language::Rust,
+            exprs: vec![expr],
+        };
+        let mut exceptions = HashMap::new();
+        exceptions.insert("01_core/unit.rs:12".to_string(), "N16[INVALID]: tag incorreta".to_string());
+        let viols = check(&file, &exceptions);
+        assert_eq!(viols.len(), 2);
+        assert!(viols[0].message.contains("Tag N16 malformada"));
+        assert!(viols[1].message.contains("wildcard `_ =>` satura"));
     }
 
     #[test]

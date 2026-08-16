@@ -1829,7 +1829,7 @@ fn extract_sink_from_node(node: Node, source: &[u8]) -> Option<String> {
                 return Some(node_text(pat, source).trim().to_string());
             }
         }
-        "assignment_expression" => {
+        "assignment_expression" | "compound_assignment_expr" => {
             if let Some(left) = node.child_by_field_name("left") {
                 return Some(node_text(left, source).trim().to_string());
             }
