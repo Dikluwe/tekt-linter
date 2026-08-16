@@ -46,6 +46,9 @@ impl Default for V21RuleConfig {
             "container".to_string(),
         ];
         let geometric_sinks = vec![
+            "cursor_y".to_string(),
+            "cursor_x".to_string(),
+            "cursor".to_string(),
             "gap".to_string(),
             "inset".to_string(),
             "offset".to_string(),
@@ -277,6 +280,33 @@ mod tests {
         fn constants(&self) -> &[SourceConstant<'static>] { &self.constants }
         fn path(&self) -> &'static Path { self.path }
         fn language(&self) -> &Language { &Language::Rust }
+    }
+
+    #[test]
+    fn compound_assignment_deep_field_triggers_v21() {
+        let file = MockFile {
+            path: Path::new("layout/src/divider.rs"),
+            constants: vec![SourceConstant {
+                kind: ConstantKind::FunctionNumberLiteral,
+                snippet: "0.6",
+                line: 42,
+                column: 12,
+                citation: None,
+                is_test_origin: false,
+                function_return_type: None,
+                is_in_binary_scaling: true,
+                context_var: Some("layouter.style.size".to_string()),
+                geometric_sink: Some("layouter.regions.current.cursor_y".to_string()),
+                is_in_data_table: false,
+            }],
+        };
+
+        let viols = check(&file, &V21RuleConfig::default(), None);
+        assert_eq!(viols.len(), 1);
+        assert_eq!(viols[0].rule_id, "V21");
+        assert!(viols[0].message.contains("0.6"));
+        assert!(viols[0].message.contains("layouter.style.size"));
+        assert!(viols[0].message.contains("layouter.regions.current.cursor_y"));
     }
 
     #[test]
