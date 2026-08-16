@@ -112,7 +112,7 @@ pub fn check<'a, T: HasDecisionArms<'a>>(
                 BodyForm::ErrorBarrier | BodyForm::MessageProducer => continue,
             };
 
-            // Verificar exceções declaradas em [wildcard_exceptions]
+            // Verificar exceções / anotações de taxonomia declaradas em [wildcard_exceptions]
             let loc_key = format!("{}:{}", path_str, arm.line);
             if let Some(justification) = exceptions.get(&loc_key) {
                 let trimmed = justification.trim();
@@ -157,24 +157,11 @@ pub fn check<'a, T: HasDecisionArms<'a>>(
                                 column: arm.column,
                             },
                         });
-                        // Tag malformada: não silencia a violação base de V16
-                        violations.push(Violation {
-                            rule_id: "V16".to_string(),
-                            level,
-                            message: msg,
-                            location: Location {
-                                path: Cow::Borrowed(file.path()),
-                                line: arm.line,
-                                column: arm.column,
-                            },
-                        });
-                        continue;
                     }
                 }
-
-                // Exceção declarada com justificativa válida suprime a violação de saturação
-                continue;
             }
+
+            // V16 nunca silencia por citação/anotação (ADR-0017): o sinal mantém-se sempre visível.
 
             violations.push(Violation {
                 rule_id: "V16".to_string(),
@@ -378,72 +365,7 @@ mod tests {
     }
 
     #[test]
-    fn v16_exception_suppresses_violation() {
-        let arm1 = DecisionArm {
-            pattern_snippet: "Unit::Pt",
-            is_catchall: false,
-            bound_ident_used_in_body: false,
-            qualified_prefixes: vec!["Unit"],
-            has_guard: false,
-            guard_is_compound: false,
-            pattern_is_range: false,
-            pattern_depth: 1,
-            or_alternatives: 1,
-            body_form: BodyForm::LiteralNeutral,
-            body_snippet: "0",
-            line: 10,
-            column: 12,
-        };
-        let arm2 = DecisionArm {
-            pattern_snippet: "Unit::Mm",
-            is_catchall: false,
-            bound_ident_used_in_body: false,
-            qualified_prefixes: vec!["Unit"],
-            has_guard: false,
-            guard_is_compound: false,
-            pattern_is_range: false,
-            pattern_depth: 1,
-            or_alternatives: 1,
-            body_form: BodyForm::LiteralNeutral,
-            body_snippet: "0",
-            line: 11,
-            column: 12,
-        };
-        let arm3 = DecisionArm {
-            pattern_snippet: "_",
-            is_catchall: true,
-            bound_ident_used_in_body: false,
-            qualified_prefixes: vec![],
-            has_guard: false,
-            guard_is_compound: false,
-            pattern_is_range: false,
-            pattern_depth: 1,
-            or_alternatives: 1,
-            body_form: BodyForm::EnumPath,
-            body_snippet: "Unit::Percent",
-            line: 12,
-            column: 12,
-        };
-        let expr = DecisionExpr {
-            snippet_scrutinee: "unit",
-            scrutinee_form: ScrutineeForm::Path,
-            arms: vec![arm1, arm2, arm3],
-            line: 9,
-            column: 8,
-        };
-        let file = MockFile {
-            path: Path::new("01_core/unit.rs"),
-            language: Language::Rust,
-            exprs: vec![expr],
-        };
-        let mut exceptions = HashMap::new();
-        exceptions.insert("01_core/unit.rs:12".to_string(), "hub intencional: fallback documentado".to_string());
-        let viols = check(&file, &exceptions);
-        assert!(viols.is_empty());
-    }
-
-    #[test]
-    fn v16_valid_n16_tag_suppresses_violation() {
+    fn v16_valid_n16_tag_does_not_silence_violation() {
         let arm1 = DecisionArm {
             pattern_snippet: "Unit::Pt",
             is_catchall: false,
@@ -504,7 +426,10 @@ mod tests {
         let mut exceptions = HashMap::new();
         exceptions.insert("01_core/unit.rs:12".to_string(), "N16[α]: impossibilidade estrutural".to_string());
         let viols = check(&file, &exceptions);
-        assert!(viols.is_empty());
+        // ADR-0017: V16 nunca silencia por citação/anotação — o aviso mantém-se visível, sem erro extra de formato
+        assert_eq!(viols.len(), 1);
+        assert_eq!(viols[0].rule_id, "V16");
+        assert!(viols[0].message.contains("wildcard `_ =>` satura"));
     }
 
     #[test]
