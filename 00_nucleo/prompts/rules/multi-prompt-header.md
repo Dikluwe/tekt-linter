@@ -183,6 +183,15 @@ Então o veredito é [] — só o bloco de doc-header conta
 
 ---
 
+## Fundamentação Teórica
+
+1. **Unicidade de Linhagem Causal em Grafos de Proveniência:**
+   * **Buneman et al. (2001)** (*Why and Where: A Characterization of Data Provenance*): A rastreabilidade determinística de um artefato derivado exige que sua relação de derivação de origem (`prov:wasDerivedFrom`) seja unívoca no nível de granularidade do arquivo. A existência de múltiplas anotações `@prompt` não impede o cálculo — ela o torna silenciosamente incorreto, pois o mecanismo de extração retém apenas o último valor, e ferramentas de correção automática como `--fix-hashes` podem escrever o hash certo associado à referência errada, sem sinalizar erro.
+2. **Consistência de Rastreabilidade e Decomposição Modular:**
+   * **Erata et al. (2017, 2024)** (*A Tool for Automated Reasoning about Traces Based on Configurable Formal Semantics*): A verificação formal de conformidade pressupõe correspondência semântica clara entre contratos de especificação e unidades de código. A regra V15 impõe o princípio de "um arquivo, um prompt", impedindo que um módulo físico acumule múltiplas especificações concorrentes e forçando a decomposição modular do código.
+
+---
+
 ## Histórico de Revisões
 
 | Data | Motivo | Arquivos afetados |
