@@ -264,6 +264,17 @@ permitindo detecção de contradição inter-agente
 
 ---
 
+## Fundamentação Teórica
+
+1. **Prevenção de Desalinhamento por Evolução do Código:**
+   * **Rahimi & Cleland-Huang (2015)** (*Patterns of Co-evolution between Requirements and Source Code*): Formalizam o padrão empírico em que o código de implementação sofre refatorações ou expansões sem que os artefatos de especificação sejam atualizados no mesmo ciclo, degradando a integridade arquitetural. V6 fecha essa assimetria estrutural, emitindo `Warning` até que uma decisão explícita de sincronização seja registrada no prompt.
+2. **Detecção de Defasagem de Co-Evolução (motivação teórica):**
+   * **Fluri et al. (2009)** (*Analyzing the Co-Evolution of Comments and Source Code*): Comprovam que alterações em assinaturas e estruturas de código raramente desencadeiam atualizações espontâneas na documentação correspondente. A regra V6 fornece a salvaguarda mecânica para essa defasagem ($\text{Código} \to \text{Prompt}$), comparando a interface pública extraída da AST contra o snapshot registrado no prompt.
+3. **Integridade de Contratos de Interface (Design by Contract):**
+   * **Leavens et al. (2001, 2006)** (*Design by Contract with JML*): A interface de um módulo é determinada pela composição exata de nomes, parâmetros e tipos de retorno. Isso justifica a implementação de `compute_delta` baseada no `PartialEq` integral da assinatura estrutural, garantindo que alterações em tipos de parâmetros ou retornos sejam tratadas como quebras reais de contrato, e não apenas comparações cosméticas de identificadores.
+
+---
+
 ## Histórico de Revisões
 
 | Data | Motivo | Arquivos afetados |
