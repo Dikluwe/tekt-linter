@@ -168,3 +168,9 @@ crystalline-lint --checks v16,v17,v18,v19,v20 /caminho/typst-crystalline
    * **Fowler (1999)** (*Refactoring: Improving the Design of Existing Code*): Classifica o uso de intervalos numéricos/escalares para representar regras de negócio como o antipattern *Primitive Obsession*, recomendando a refatoração de faixas numéricas ad-hoc para tipos enumerados ou objetos de valor (*Replace Type Code with Enum*).
 3. **Assinaturas Infinitas em Tipos Escalares:**
    * **Maranget (2007)** (*Warnings for Pattern Matching*): Formaliza que tipos escalares (inteiros/strings) possuem assinaturas de tamanho infinito ($2^{31}$ ou aberto), impedindo que o compilador realize a verificação de exaustividade nominal fechada sem depender de cláusulas genéricas de fallback.
+
+### Fundamentação Teórica de V19 (OrPatternAlternatives)
+1. **Expansão de Linhas na Matriz de Padrões (Or-Pattern Desugaring):**
+   * **Maranget (2007)** (*Warnings for Pattern Matching*): Na semântica formal de compilação de pattern matching, um *or-pattern* $(p_1 \mid p_2 \dots \mid p_n)$ é desdobrado em $n$ linhas independentes dentro da matriz de decisão $P$. A condensação em um único braço sintático é apenas uma conveniência de representação superficial; na matriz algébrica de construtores, cada alternativa concorre separadamente para a exaustividade e utilidade.
+2. **Métricas de Complexidade de Ramo e Cobertura de Testes:**
+   * **McCabe (1976)** (*A Complexity Measure*): Condições disjuntivas introduzem pontos de ramificação independentes no grafo de fluxo. A regra V19 emite severidade `Info` como uma métrica de observabilidade para registrar que um braço sintaticamente único condensa $n$ caminhos disjuntos, evidenciando que métricas simples de cobertura por linha/braço subestimam a complexidade real de testes na proporção do número de alternativas agrupadas.
