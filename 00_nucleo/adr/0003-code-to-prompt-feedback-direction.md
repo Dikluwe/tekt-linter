@@ -129,6 +129,17 @@ Novo prompt a criar:
 
 ---
 
+## Fundamentação Teórica (Bidirecionalidade e Co-Evolução)
+
+1. **O Desafio da Rastreabilidade Bidirecional:**
+   * **Oliveto et al. (2007)** (*Software Artefact Traceability: The Never-Ending Challenge*) e **Kannenberg (2001)** (*Why Software Requirements Traceability Remains a Challenge*): Sistemas que verificam apenas a direção *especificação $\to$ código* sofrem de assimetria de proteção. O código é alterado na manutenção e a especificação fica desfasada. O par V1 (código $\to$ prompt) e V6 (prompt $\leftarrow$ código) fecha o ciclo de rastreabilidade bidirecional.
+
+2. **Padrões de Co-Evolução e Divergência Temporal:**
+   * **Rahimi & Cleland-Huang (2015)** (*Patterns of Co-evolution between Requirements and Source Code*): Demonstram empiricamente os padrões de quebra de sincronia entre requisitos e código ao longo da evolução de um projeto, justificando a necessidade de mecanismos automáticos que sinalizem quando o código avança sem o acompanhamento da especificação.
+   * **Fluri et al. (2009)** (*Analyzing the Co-Evolution of Comments and Source Code*): Comprovam que alterações estruturais no código raramente disparam atualizações espontâneas na documentação associada. A V6 implementa a detecção mecânica dessa defasagem (*lag*) via diff de AST (tree-sitter).
+
+---
+
 ## Referências
 
 - ADR-0001: tree-sitter intermediate representation (base para diff semântico)
