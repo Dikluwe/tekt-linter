@@ -145,3 +145,12 @@ cargo test -p crystalline-lint --lib
 crystalline-lint .                                   # auto-validação, 0 violações
 crystalline-lint --checks v16,v17,v18,v19,v20 /caminho/typst-crystalline
 ```
+
+---
+
+## 9. Fundamentação Teórica
+
+1. **Matrizes de Padrões e Mascaramento de Exaustividade (Pattern Matrices):**
+   * **Maranget (2007)** (*Warnings for Pattern Matching*): Formaliza a compilação de pattern matching através de matrizes de padrões $P$ e do predicado de utilidade $U(P, \vec{q})$. Demonstra que o uso de curingas (`_`) na linha de fallback da matriz default $D(P)$ absorve todo o espaço complementar de construtores ($\Sigma \setminus C$). Sob a evolução do tipo ($\Sigma' \supset \Sigma$), essa absorção cega desativa os avisos de não-exaustividade do compilador. A regra V16 detecta essa saturação estrutural em enums candidatos, exigindo exaustividade nominal explícita.
+2. **Princípio Fail-Fast e Preservação de Informação (Contratos de Despacho):**
+   * **Leavens et al. (2001, 2006)** (*Design by Contract with JML*): A integridade de despachantes baseados em casamento de casos exige que variantes não mapeadas nominalmente não sejam convertidas silenciosamente em valores válidos arbitrários (*silent lossy defaults*). Isso fundamenta os filtros de isenção de V16: se a cláusula genérica atuar como uma barreira de erro explícita (`body_form = ErrorBarrier` via `panic!` ou `unreachable!`), a quebra de invariante falha ruidosamente no ponto de ocorrência (*fail-fast*); se o identificador capturado for repassado (`bound_ident_used_in_body`), a informação original é preservada downstream.
