@@ -230,6 +230,15 @@ Então retorna duas violations — uma por static
 
 ---
 
+## Fundamentação Teórica
+
+1. **Semântica de Mutabilidade Interior (Interior Mutability):**
+   * **Jung et al. (2018)** (*RustBelt: Securing the Foundations of the Rust Programming Language*): Formalizam a semântica de tipos com mutabilidade interior baseados em `UnsafeCell` (como `RefCell`, `Mutex`, `RwLock` e primitivas atômicas), demonstrando como essas estruturas permitem a mutação de estado através de referências compartilhadas (`&T`). A regra V13 atua sobre essa taxonomia de tipos, banindo declarações `static` que introduzam canais ocultos de mutação de memória no núcleo $L_1$.
+2. **Preservação do Determinismo Funcional e Transparência Referencial (motivação teórica):**
+   * **Lucassen & Gifford (1988)** (*Polymorphic Effect Systems*): O determinismo matemático de uma função pura exige que seu resultado dependa exclusivamente dos argumentos passados por parâmetro. O acesso a variáveis estáticas mutáveis atua como um canal não-declarado de efeitos de memória, justificando o nível `Error` incondicional de V13 para assegurar que todo estado necessário em $L_1$ seja injetado explicitamente via parâmetros.
+
+---
+
 ## Histórico de Revisões
 
 | Data | Motivo | Arquivos afetados |
