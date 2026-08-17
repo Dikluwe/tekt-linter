@@ -121,3 +121,14 @@ Então retorna vec![] — trivial da allowlist
    * **Erata et al. (2017, 2024)** (*A Tool for Automated Reasoning about Traces Based on Configurable Formal Semantics*): Vínculos de rastreabilidade informais sofrem de degradação rápida (*trace decay*). Conforme fixado no ADR-0017, como V21 vigia um fato estático (escalar auditável), o silenciamento por citação inline `// ref:` é legítimo, mas acompanhado da verificação contínua de frescura que dispara `StaleCitation` se a âncora referenciada for alterada ou removida.
 3. **Prevenção de Fórmulas e Escalares Ocultos (Contextual Magic Numbers):**
    * **Fowler (1999)** (*Refactoring: Improving the Design of Existing Code*): Fatores escalares embutidos diretamente em operações de cálculo de layout sem documentação formal de derivação constituem números mágicos contextuais. V21 emite `Warning` para forçar a explicitação da origem do multiplicador ou sua extração para constantes com proveniência formal.
+
+---
+
+## 8. Fundamentação Teórica de V22 (ProvenanceInventory)
+
+1. **Proveniência como Propriedade Auditável (motivação teórica):**
+   * **Buneman et al. (2001)** (*Why and Where: A Characterization of Data Provenance*): O princípio fundamental de que artefatos e valores derivados devem carregar linhagem auditável (*where-provenance*) motiva a necessidade de acompanhar a rastreabilidade dos dados do sistema. A regra V22 opera com um instrumento pragmático de engenharia de software — uma razão percentual de literais anotados sobre o total por módulo —, sem pretender reconstruir a linhagem formal de cada valor individual.
+2. **Padrões de Co-Evolução e Desalinhamento (motivação teórica):**
+   * **Rahimi & Cleland-Huang (2015)** (*Patterns of Co-evolution between Requirements and Source Code*): O catálogo empírico de desvios entre especificações e código demonstra que a perda de rastreabilidade ocorre ao longo da manutenção contínua. A regra V22 aplica essa vigilância na forma de uma métrica de tendência agregada por módulo — uma queda no rácio sinaliza a necessidade de auditoria, mesmo que nenhuma linha isolada atinja o predicado estrito de V21.
+3. **Observabilidade Estrutural por Subsistema:**
+   * **Ducasse & Pollet (2009)** (*Software Architecture Reconstruction: A Process-Oriented Taxonomy*): A governança arquitetural se beneficia de métricas agregadas por subsistema que complementem regras locais de gate. V22 adapta esse princípio ao contexto de acompanhamento contínuo de código, oferecendo observabilidade macroscópica em formato condensado de linha única por módulo (nível `Info`, opt-in).
