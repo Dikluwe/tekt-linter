@@ -20,3 +20,11 @@ Toda lógica em um arquivo do Tekt/Crystalline arquitetura em camadas executáve
 
 ## Restrições (L1 Pura)
 A regra é uma função que recebe uma entidade (via trait `HasPromptFilesystem`) e inspeciona de forma puramente funcional se o `prompt_header` existe. Não abre o arquivo `00_nucleo/` em disco — essa validação é delegada na construção final via L3.
+
+## Fundamentação Teórica
+
+1. **Vínculo Formal de Rastreabilidade (Explicit Trace Link):**
+   * **Erata et al. (2017, 2024)** (*A Tool for Automated Reasoning about Traces Based on Configurable Formal Semantics*): A verificação estática de conformidade exige âncoras sintáticas explícitas conectando as unidades de código aos seus artefatos de especificação. Sem a declaração formal do `@prompt`, o grafo de derivação torna-se indecidível para ferramentas de análise estática.
+
+2. **Where-Provenance e Linhagem Causal:**
+   * **Buneman et al. (2001)** (*Why and Where: A Characterization of Data Provenance*): Todo artefato derivado em um sistema formal deve carregar a proveniência exata de sua fonte (`prov:wasDerivedFrom`). No Crystalline/Tekt, essa linhagem causal é materializada na anotação de cabeçalho `@prompt <caminho>`.
