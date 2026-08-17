@@ -258,6 +258,19 @@ Então retorna Violation — testável com mock puro
 
 ---
 
+## Fundamentação Teórica
+
+1. **Sistemas de Efeitos e Segregação de Computações Puras (motivação teórica):**
+   * **Lucassen & Gifford (1988)** (*Polymorphic Effect Systems*): Estabelecem a base teórica para separar formalmente computações puras de computações com efeitos colaterais observáveis. V4 aplica esse princípio de segregação por meio de um mecanismo mais simples e leve que um sistema de tipos de efeitos completo — uma lista restrita de símbolos proibidos por linguagem, comparada sintaticamente contra o FQN do token resolvido, sem exigir inferência ou propagação algébrica de efeitos na AST.
+
+2. **Confinamento de I/O e Não-Determinismo (motivação teórica):**
+   * **Wadler & Thiemann (1999)** (*The Marriage of Effects and Monads*): O princípio formal de que qualquer interação com o ambiente externo (I/O) ou fontes não-determinísticas deve ser rigorosamente confinada para não contaminar código puro motiva a composição das tabelas de símbolos proibidos de V4 (disco, rede, subprocessos, relógio do sistema e geradores de números aleatórios).
+
+3. **Invariante Comportamental de Pureza (@pure):**
+   * **Leavens et al. (2001, 2006)** (*Design by Contract with JML*): A validade de oráculos de teste determinísticos e o raciocínio formal sobre o núcleo pressupõem a ausência de efeitos colaterais. A classificação de violação de pureza em $L_1$ como `Error` bloqueante traduz a garantia categórica de que o núcleo não pode se acoplar a estados voláteis do ambiente externo.
+
+---
+
 ## Histórico de Revisões
 
 | Data | Motivo | Arquivos afetados |
