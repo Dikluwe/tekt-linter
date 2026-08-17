@@ -143,6 +143,15 @@ Então retorna vec![] — crate externa, target_subdir = None
 
 ---
 
+## Fundamentação Teórica
+
+1. **Assimetria entre Visibilidade Sintática e Encapsulamento Arquitetural:**
+   * **Abi-Antoun & Aldrich (2008)** (*Static Conformance Checking of Runtime Architectural Structure*): Demonstram que modificadores de visibilidade providos por linguagens de programação (`pub`, `public`) são insuficientes para impor limites arquiteturais, pois a necessidade de exportar símbolos para o mesmo pacote/crate frequentemente expõe detalhes internos para camadas consumidoras. A regra V9 materializa essa barreira adicional ao auditar a rota de importação, impedindo que $L_2$ ou $L_3$ se acoplem a submódulos auxiliares de $L_1$.
+2. **Restrição de Acesso por Portais e Fachadas (Can-Only-Access-Through):**
+   * **Passos et al. (2010)** (*Static Architecture-Conformance Checking: An Illustrative Overview*): No modelo de restrições de arquitetura estática, o isolamento de subsistemas requer que a interação ocorra exclusivamente através de interfaces designadas (*portais/fachadas*). A verificação de V9 implementa essa restrição de forma funcional pura, validando se o `target_subdir` do import pertence ao conjunto `[l1_ports]` formalmente autorizado.
+
+---
+
 ## Histórico de Revisões
 
 | Data | Motivo | Arquivos afetados |
