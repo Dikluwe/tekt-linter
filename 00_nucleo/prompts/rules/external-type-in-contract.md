@@ -230,6 +230,15 @@ Então retorna duas violations — uma por import
 
 ---
 
+## Fundamentação Teórica
+
+1. **Políticas de Dependência Fechada por Padrão (Deny-by-Default Whitelisting):**
+   * **Passos et al. (2010)** (*Static Architecture-Conformance Checking: An Illustrative Overview*): Em arquiteturas formais, a proteção contra a invasão descontrolada de bibliotecas externas (*dependency creep*) é inviável por listas de bloqueio, exigindo uma política estrita de negação por padrão (*only-can-depend rules*). A regra V14 materializa essa salvaguarda ao tratar qualquer dependência externa (`Layer::Unknown`) como violação `Error`, a menos que o pacote esteja explicitamente catalogado na whitelist `[l1_allowed_external]`.
+2. **Preservação de Integridade e Isolamento dos Contratos de Domínio:**
+   * **Abi-Antoun & Aldrich (2008)** (*Static Conformance Checking of Runtime Architectural Structure*): A estabilidade formal de um núcleo puro depende de seu isolamento contra tipos e estruturas de dados de terceiros. A importação desgovernada de crates/pacotes externos em $L_1$ acopla os contratos da aplicação a contratos de fornecedores, justificando o bloqueio rigoroso em tempo de linting para forçar que dependências externas sejam consumidas apenas via adaptadores em $L_3$.
+
+---
+
 ## Histórico de Revisões
 
 | Data | Motivo | Arquivos afetados |
