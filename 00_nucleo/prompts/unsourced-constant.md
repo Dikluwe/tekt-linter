@@ -128,3 +128,14 @@ crystalline-lint --checks v21 /caminho/typst-crystalline
   frescura, não que a fonte diz o que a constante afirma — isso é revisão).
 - Ratchet a `error`: V21 nunca sobe além de warning por módulo; proveniência
   ausente não é defeito de compilação.
+
+---
+
+## 11. Fundamentação Teórica de V21 (HardcodedContextualValue)
+
+1. **Where-Provenance de Fatores de Escala Contextual:**
+   * **Buneman et al. (2001)** (*Why and Where: A Characterization of Data Provenance*): A teoria de *Where-Provenance* estabelece que fatores de transformação aplicados a variáveis de contexto de entrada requerem autoridade de proveniência rastreável. A regra V21 vigia especificamente escalares que multiplicam variáveis de contexto (`em`, `font_size`, `frame`) para alimentar sumidouros geométricos (`Length`, `gap`, `offset`), exigindo citação formal de norma (`// spec:`), referência a oráculo (`// ref:`) ou decisão de design (`// rationale:`).
+2. **Verificação Mecânica de Frescura de Vínculos (Anti-Apodrecimento):**
+   * **Erata et al. (2017, 2024)** (*A Tool for Automated Reasoning about Traces Based on Configurable Formal Semantics*): Vínculos de rastreabilidade informais sofrem de degradação rápida (*trace decay*). Conforme fixado no ADR-0017, como V21 vigia um fato estático (escalar auditável), o silenciamento por citação inline `// ref:` é legítimo, mas acompanhado da verificação contínua de frescura que dispara `StaleCitation` se a âncora referenciada for alterada ou removida.
+3. **Prevenção de Fórmulas e Escalares Ocultos (Contextual Magic Numbers):**
+   * **Fowler (1999)** (*Refactoring: Improving the Design of Existing Code*): Fatores escalares embutidos diretamente em operações de cálculo de layout sem documentação formal de derivação constituem números mágicos contextuais. V21 emite `Warning` para forçar a explicitação da origem do multiplicador ou sua extração para constantes com proveniência formal.
