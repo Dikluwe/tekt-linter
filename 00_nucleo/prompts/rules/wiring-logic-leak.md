@@ -182,6 +182,17 @@ Então retorna vec![]
 
 ---
 
+## Fundamentação Teórica
+
+1. **Restrições de Declaração Estrutural por Camada (Must-Not-Declare Rules):**
+   * **Passos et al. (2010)** (*Static Architecture-Conformance Checking: An Illustrative Overview*): No modelo formal de restrições arquiteturais, a conformidade de um estrato inclui regras sobre quais tipos de construções sintáticas podem ser declaradas (*structural content constraints*). A regra V12 aplica esse princípio a $L_4$, garantindo que a camada de fiação atue como orquestradora pura sem criar tipos de domínio (`enum`) ou implementações de lógica livre (`impl Type`).
+2. **Segregação entre Conectores de Fiação e Lógica de Domínio:**
+   * **Abi-Antoun & Aldrich (2008)** (*Static Conformance Checking of Runtime Architectural Structure*): A preservação de modularidade exige que módulos de composição atuem estritamente como conectores entre portas e adaptadores. Isso justifica o critério diferencial de V12: blocos `impl Trait for Type` são permitidos por constituírem adaptadores legítimos de fiação, enquanto tipos intrínsecos de negócio disparam violação para forçar sua migração para $L_1$, $L_2$ ou $L_3$.
+3. **Prevenção de Acumulação Indevida no Ponto de Composição:**
+   * **Ducasse & Pollet (2009)** (*Software Architecture Reconstruction: A Process-Oriented Taxonomy*): O processo de reconstrução e manutenção arquitetural pressupõe que módulos de composição/inicialização sejam identificáveis como tal — sem lógica de domínio internalizada, cuja presença obscurece as fronteiras e dificulta a verificação automatizada da arquitetura pretendida. V12 previne essa degradação mantendo $L_4$ estruturalmente enxuto e dedicado exclusivamente à fiação.
+
+---
+
 ## Histórico de Revisões
 
 | Data | Motivo | Arquivos afetados |
