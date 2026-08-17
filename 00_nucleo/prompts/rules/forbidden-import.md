@@ -103,6 +103,17 @@ Então retorna vec![] — Lab não tem restrições de import
 
 ---
 
+## Fundamentação Teórica
+
+1. **Detecção de Divergências Arquiteturais (Reflexion Models & DCL):**
+   * **Passos et al. (2010)** (*Static Architecture-Conformance Checking: An Illustrative Overview*): No modelo formal de verificação arquitetural, dependências concretas no código que violam a hierarquia pretendida são classificadas como *Divergências* (*cannot-depend / only-can-depend rules*). A regra V3 materializa essa verificação mecânica comparando o grafo de dependências extraído com a matriz de permissões estritas entre estratos ($L_0 \to L_4$).
+2. **Garantia de Encapsulamento e Unidirecionalidade Causal:**
+   * **Abi-Antoun & Aldrich (2008)** (*Static Conformance Checking of Runtime Architectural Structure*): A preservação de propriedades de corretude e testabilidade do núcleo exige fluxo estritamente unidirecional. A inversão de dependência (um estrato inferior importar de um superior) destrói as garantias funcionais e o isolamento modular.
+3. **Prevenção Contínua contra Erosão Arquitetural:**
+   * **Ducasse & Pollet (2009)** (*Software Architecture Reconstruction: A Process-Oriented Taxonomy*): Demonstram empiricamente que sistemas em evolução sofrem de erosão arquitetural contínua (*architectural erosion/drift*) na ausência de barreiras mecânicas estáticas que bloqueiem imports em direções não autorizadas.
+
+---
+
 ## Histórico de Revisões
 
 | Data | Motivo | Arquivos afetados |
