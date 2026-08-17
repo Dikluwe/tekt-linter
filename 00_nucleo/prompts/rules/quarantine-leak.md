@@ -133,6 +133,15 @@ Então retorna vec![] — crate externa, não é lab
 
 ---
 
+## Fundamentação Teórica
+
+1. **Princípio da Não-Interferência e Assimetria de Quarentena:**
+   * **Williams et al. (2017)** (*Measuring Conformance and Non-Interference in TypeScript*): Estabelecem formalmente que a convivência entre código com garantias de conformidade e código exploratório/não-auditado exige *Não-Interferência*: o subsistema experimental pode depender livremente do subsistema verificado, mas o fluxo reverso é estritamente vedado. A regra V10 assegura essa barreira ao permitir que `lab/` importe de $L_1\dots L_4$, enquanto veta categoricamente qualquer importação de `lab/` pelo código de produção.
+2. **Segregação Estrita de Zonas de Exclusão (DCL / Reflexion Models):**
+   * **Passos et al. (2010)** (*Static Architecture-Conformance Checking: An Illustrative Overview*): No modelo de restrições de arquitetura estática, o diretório de quarentena é classificado como uma zona de divergência inaceitável para o grafo de compilação de produção. Isso fundamenta a severidade `Fatal` não-configurável: enquanto divergências hierárquicas normais entre camadas de produção (V3) representam desvios de design corrigíveis, o vazamento de código em quarentena para a produção contamina o artefato com código sem garantias formais.
+
+---
+
 ## Histórico de Revisões
 
 | Data | Motivo | Arquivos afetados |
