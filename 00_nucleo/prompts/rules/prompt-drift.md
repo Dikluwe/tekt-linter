@@ -21,3 +21,10 @@ O princípio causa-efeito cristalino presume que o código final seja manifesta�
 
 ## Restrições (L1 Pura)
 Assim como nas demais, V5 nunca checa bytes físicos de disco. Ela unicamente compara as `String` de hashes expostas pelos métodos da abstração (Traits), cujos dados foram populados previamente no ciclo infra da Fiação que os entrega à checagem do núcleo.
+
+## Fundamentação Teórica
+
+1. **Prevenção de Deriva por Evolução da Especificação (motivação teórica):**
+   * **Rahimi & Cleland-Huang (2015)** (*Patterns of Co-evolution between Requirements and Source Code*): Mapeiam empiricamente o padrão de degradação em que artefatos de especificação/requisitos são atualizados sem a revisão correspondente dos módulos de implementação downstream. A regra V5 implementa a vigilância mecânica dessa direção ($\text{Prompt} \to \text{Código}$), emitindo `Warning` sempre que o hash da especificação em $L_0$ avança sem que o código declare ter sido re-sincronizado.
+2. **Integridade de Linhagem por Testemunha Criptográfica (Digest-based Lineage):**
+   * **Buneman et al. (2001)** (*Why and Where: A Characterization of Data Provenance*): A rastreabilidade determinística de linhagem exige que o artefato derivado carregue uma testemunha verificável da versão exata de sua fonte geradora. A verificação de V5 baseia-se na comparação do digest SHA-256 do arquivo L0 contra o hash registrado no cabeçalho do código, detectando divergências de versão sem necessidade de inspeção semântica profunda.
