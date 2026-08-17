@@ -149,6 +149,17 @@ Então a trait não entra em declared_traits
 
 ---
 
+## Fundamentação Teórica
+
+1. **Completude de Ligação de Portas e Adaptadores (Port Binding):**
+   * **Abi-Antoun & Aldrich (2008)** (*Static Conformance Checking of Runtime Architectural Structure*): Em sistemas baseados em inversão de controle e portas abstratas, toda interface declarada pelo núcleo requer vinculação obrigatória a um adaptador concreto no grafo do sistema. A regra V11 verifica mecanicamente essa completude (Invariante de Circuito Fechado), impedindo que traits fiquem desanexadas sem implementações em $L_2$ ou $L_3$.
+2. **Ausências de Realização de Interface (Reflexion Models & DCL):**
+   * **Passos et al. (2010)** (*Static Architecture-Conformance Checking: An Illustrative Overview*): Interfaces declaradas na arquitetura pretendida que carecem de realização concreta no código implementado constituem *Ausências de Realização* (*must-implement constraints*). A operação agregada de V11 sobre o `ProjectIndex` formaliza a identificação dessas lacunas na fase Reduce.
+3. **Obrigações de Fechamento de Contrato (Design by Contract):**
+   * **Leavens et al. (2001, 2006)** (*Design by Contract with JML*): A especificação de contratos abstratos impõe a obrigação de implementação prévia para que a composição em $L_4$ seja viável. A classificação como `Error` traduz o princípio de que contratos sem realizador são estados transitórios de refatoração que não podem permanecer abertos no código consolidado.
+
+---
+
 ## Histórico de Revisões
 
 | Data | Motivo | Arquivos afetados |
