@@ -94,6 +94,15 @@ Então retorna vec![]
 
 ---
 
+## Fundamentação Teórica
+
+1. **Totalidade da Função de Mapeamento Arquitetural (Reflexion Models):**
+   * **Passos et al. (2010)** (*Static Architecture-Conformance Checking: An Illustrative Overview*): No formalismo de verificação de conformidade estática, a garantia de cobertura do modelo pressupõe uma função de mapeamento total ($\text{Map}: \text{Files} \setminus \text{Excluded} \to \text{Layers}$). Arquivos com mapeamento indefinido ($\bot$) criam zonas não-monitoradas que desarmam as regras de conformidade. A regra V8 impõe a totalidade dessa partição, convertendo o silêncio de arquivos não mapeados em violação `Fatal` imediata.
+2. **Completude de Fronteiras Modulares (Boundary Completeness):**
+   * **Ducasse & Pollet (2009)** (*Software Architecture Reconstruction: A Process-Oriented Taxonomy*): A reconstrução e a auditoria arquitetural exigem que todo artefato do repositório possua alocação explícita de domínio. Arquivos não atribuídos a nenhuma camada representam código fantasma fora da governança do projeto, justificando a obrigação de mapear o diretório ou registrar a exclusão formal no `crystalline.toml`.
+
+---
+
 ## Histórico de Revisões
 
 | Data | Motivo | Arquivos afetados |
