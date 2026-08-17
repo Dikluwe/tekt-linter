@@ -104,6 +104,15 @@ Então retorna vec![]
 
 ---
 
+## Fundamentação Teórica
+
+1. **Detecção de Ausências Arquiteturais (Reflexion Models):**
+   * **Passos et al. (2010)** (*Static Architecture-Conformance Checking: An Illustrative Overview*): No modelo de conformidade arquitetural estática, discrepâncias onde elementos definidos no modelo pretendido de alto nível não possuem correspondência no código implementado são classificadas como *Ausências* (*Absences*). A regra V7 materializa essa checagem agregada ao comparar o inventário de prompts em $L_0$ contra o conjunto de referências extraídas pelo `ProjectIndex`.
+2. **Completude de Grafo de Rastreabilidade (Trace Graph Completeness):**
+   * **Erata et al. (2017, 2024)** (*A Tool for Automated Reasoning about Traces Based on Configurable Formal Semantics*): A consistência formal de uma base de requisitos exige a inexistência de especificações desancoradas downstream. Prompts sem materialização em $L_1\dots L_4$ representam ou contratos esquecidos ou resíduos de código removido, justificando a emissão de `Warning` para forçar a materialização ou a remoção do artefato de especificação órfão.
+
+---
+
 ## Histórico de Revisões
 
 | Data | Motivo | Arquivos afetados |
