@@ -840,3 +840,62 @@ fn v22_recognizes_real_world_citations_in_inventory() {
     assert!(viols[0].message.contains("2/2"));
     assert!(viols[0].message.contains("100.0%"));
 }
+
+#[test]
+fn n16_summary_emits_small_sample_warning_for_synthetic_fixture() {
+    use crystalline_lint::contracts::file_provider::SourceFile;
+    use crystalline_lint::entities::layer::Language;
+    use crystalline_lint::shell::n16_summary::{collect_n16_stats, format_n16_summary};
+    use std::collections::HashMap;
+
+    let fixture_content = std::fs::read_to_string("tests/fixtures/n16_summary_small_sample.rs").unwrap();
+    let source_files = vec![
+        SourceFile {
+            path: PathBuf::from("01_core/src/compiler/synthetic/sample.rs"),
+            content: fixture_content,
+            language: Language::Rust,
+            layer: crystalline_lint::entities::layer::Layer::L1,
+            has_adjacent_test: true,
+        }
+    ];
+
+    let stats = collect_n16_stats(&source_files, &HashMap::new());
+    assert_eq!(stats.len(), 1);
+    let sample_stat = stats.get("synthetic/").expect("expected synthetic/ module");
+    assert_eq!(sample_stat.total(), 3);
+    assert_eq!(sample_stat.alpha, 1);
+    assert_eq!(sample_stat.beta, 1);
+    assert_eq!(sample_stat.gamma, 1);
+
+    let summary = format_n16_summary(&stats, 5);
+    assert!(summary.contains("| `synthetic/` | 3 | 1 | 1 | 1 | 33.3% |"));
+    assert!(summary.contains("⚠ amostra pequena em `synthetic/` (n=3) — percentual pouco confiável, 1 caso muda o resultado em ~33pp"));
+}
+
+#[test]
+fn n16_summary_custom_min_sample_size_threshold() {
+    use crystalline_lint::contracts::file_provider::SourceFile;
+    use crystalline_lint::entities::layer::Language;
+    use crystalline_lint::shell::n16_summary::{collect_n16_stats, format_n16_summary};
+    use std::collections::HashMap;
+
+    let fixture_content = std::fs::read_to_string("tests/fixtures/n16_summary_small_sample.rs").unwrap();
+    let source_files = vec![
+        SourceFile {
+            path: PathBuf::from("01_core/src/compiler/synthetic/sample.rs"),
+            content: fixture_content,
+            language: Language::Rust,
+            layer: crystalline_lint::entities::layer::Layer::L1,
+            has_adjacent_test: true,
+        }
+    ];
+
+    let stats = collect_n16_stats(&source_files, &HashMap::new());
+    // Com min_sample_size = 2, n=3 NÃO deve emitir aviso
+    let summary_low_threshold = format_n16_summary(&stats, 2);
+    assert!(!summary_low_threshold.contains("⚠ amostra pequena"));
+
+    // Com min_sample_size = 10, n=3 DEVE emitir aviso
+    let summary_high_threshold = format_n16_summary(&stats, 10);
+    assert!(summary_high_threshold.contains("⚠ amostra pequena em `synthetic/` (n=3)"));
+}

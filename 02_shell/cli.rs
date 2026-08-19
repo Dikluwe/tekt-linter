@@ -83,10 +83,12 @@ pub fn validate_args(cli: &Cli) -> Result<(), String> {
     Ok(())
 }
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, ValueEnum, PartialEq, Eq)]
 pub enum OutputFormat {
     Text,
     Sarif,
+    #[value(name = "n16-summary")]
+    N16Summary,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -721,6 +723,13 @@ mod tests {
         let checks = EnabledChecks::from_cli("v22", false, false);
         assert!(checks.v22);
         assert!(!checks.v1);
+    }
+
+    #[test]
+    fn cli_accepts_n16_summary_format() {
+        use clap::Parser;
+        let cli = Cli::try_parse_from(&["crystalline-lint", "--format", "n16-summary"]).unwrap();
+        assert_eq!(cli.format, OutputFormat::N16Summary);
     }
 
     #[test]

@@ -196,6 +196,16 @@ pub struct CrystallineConfig {
 
     #[serde(default)]
     pub analysis: AnalysisConfig,
+
+    /// Configuração do relatório N16 — lida de .
+    #[serde(default)]
+    pub n16_summary: Option<N16SummaryConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default, PartialEq, Eq)]
+pub struct N16SummaryConfig {
+    #[serde(default)]
+    pub min_sample_size: Option<usize>,
 }
 
 impl CrystallineConfig {
@@ -208,6 +218,13 @@ impl CrystallineConfig {
     /// Resolve o nível efectivo para uma regra.
     /// Se `[rules]` declara um nível para `rule_id`, esse nível é retornado.
     /// Caso contrário, retorna `default`.
+    pub fn n16_min_sample_size(&self) -> usize {
+        self.n16_summary
+            .as_ref()
+            .and_then(|s| s.min_sample_size)
+            .unwrap_or(5)
+    }
+
     pub fn level_for(&self, rule_id: &str, default: ViolationLevel) -> ViolationLevel {
         self.rules
             .get(rule_id)
@@ -388,6 +405,7 @@ impl Default for CrystallineConfig {
             rules: HashMap::new(),
             v11_blanket_exceptions: HashMap::new(),
             check_test_imports: None,
+            n16_summary: None,
             analysis: AnalysisConfig {
                 lineage: LineageConfig {
                     strict_directories,
@@ -509,6 +527,22 @@ level = "warning"
         let config: CrystallineConfig = toml::from_str(toml).unwrap();
         assert_eq!(config.rules.get("V16").unwrap().languages.as_ref().unwrap(), &vec!["rust"]);
         assert_eq!(config.wildcard_exceptions.get("01_core/gradient.rs:221").unwrap(), "hub intencional");
+    }
+
+    #[test]
+    fn n16_summary_config_parses_min_sample_size() {
+        let toml = r#"
+[n16_summary]
+min_sample_size = 10
+"#;
+        let config: CrystallineConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.n16_min_sample_size(), 10);
+    }
+
+    #[test]
+    fn n16_summary_config_default_is_5() {
+        let config = CrystallineConfig::default();
+        assert_eq!(config.n16_min_sample_size(), 5);
     }
 
     #[test]

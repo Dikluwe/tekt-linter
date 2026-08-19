@@ -98,7 +98,7 @@ ARGS:
   [PATH]    Raiz do projeto a analisar [padrão: .]
 
 OPTIONS:
-  --format <fmt>         sarif | text                   [padrão: text]
+  --format <fmt>         sarif | text | n16-summary     [padrão: text]
   --fail-on <level>      error | warning                [padrão: error]
   --checks <list>        v0,v1,...,v20                  [padrão: all]
   --no-drift             desabilita V5
@@ -220,8 +220,47 @@ V22 = { level = "info", languages = ["rust"] }
 
 # Exceções declaradas para V16 — hubs intencionais com razão técnica documentada
 [wildcard_exceptions]
-# "01_core/src/entities/gradient.rs:221" = "hub intencional: fallback lossy documentado no ADR-0109" 
+# "01_core/src/entities/gradient.rs:221" = "hub intencional: fallback lossy documentado no ADR-0109"
+
+# Configuração do relatório N16 (limiar de amostra pequena)
+[n16_summary]
+min_sample_size = 5
 ```
+
+---
+
+## Formato de Saída: Relatório de Taxonomia N16 (`--format n16-summary`)
+
+O formato `--format n16-summary` agrega as anotações de exceção de wildcard (`N16[α/β/γ]`) por módulo arquitetural, permitindo vigiar a concentração de fallbacks abertos (`γ`) de alto risco sem gerar ruído por ocorrência.
+
+### Exemplo de Uso:
+```bash
+crystalline-lint --checks v16 --format n16-summary .
+```
+
+### Exemplo de Saída:
+```markdown
+| Módulo | Total | α | β | γ | % γ |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `layout/` | 20 | 1 | 15 | 4 | 20.0% |
+| `introspect/` | 3 | 0 | 1 | 2 | 66.7% |
+| `math/layout/` | 2 | 0 | 1 | 1 | 50.0% |
+| `03_infra/` | 12 | 0 | 11 | 1 | 8.3% |
+| `entities/` | 28 | 0 | 28 | 0 | 0.0% |
+| `stdlib/` | 19 | 0 | 19 | 0 | 0.0% |
+| `eval/` | 6 | 0 | 6 | 0 | 0.0% |
+| `export/` | 1 | 1 | 0 | 0 | — |
+| `parse/` | 1 | 0 | 1 | 0 | 0.0% |
+| **Total** | **92** | **2** | **82** | **8** | **8.7%** |
+
+⚠ amostra pequena em `introspect/` (n=3) — percentual pouco confiável, 1 caso muda o resultado em ~33pp
+⚠ amostra pequena em `math/layout/` (n=2) — percentual pouco confiável, 1 caso muda o resultado em ~50pp
+```
+
+### Regras do Relatório:
+1. **Ordenação:** Ordenado por gravidade absoluta (`γ` decrescente).
+2. **Aviso de Amostra Pequena:** Módulos com `total < min_sample_size` e `γ > 0` exibem aviso indicando a sensibilidade percentual (`~pp`). O limiar padrão é 5, configurável via `[n16_summary] min_sample_size` no `crystalline.toml`.
+3. **Escopo e Nível:** Modo puramente informativo (nível `info`), não falha CI e não introduz novas regras bloqueantes.
 
 ---
 
