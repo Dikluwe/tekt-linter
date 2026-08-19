@@ -81,6 +81,24 @@ pub fn extract_n16_tag(text: &str) -> Option<N16Tag> {
     }
 }
 
+/// Normaliza o caminho do arquivo para uma chave canônica relativa à camada.
+pub fn normalize_loc_path(path: &Path) -> String {
+    let p_str = path.to_string_lossy().replace('\\', "/");
+    let all_comps: Vec<String> = p_str
+        .split('/')
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty() && s != "." && s != "..")
+        .collect();
+
+    if let Some(idx) = all_comps.iter().position(|c| {
+        c == "01_core" || c == "02_shell" || c == "03_infra" || c == "04_wiring" || c == "00_nucleo"
+    }) {
+        all_comps[idx..].join("/")
+    } else {
+        all_comps.join("/")
+    }
+}
+
 /// Extrai o nome canônico do módulo para fins de agrupamento N16.
 pub fn extract_n16_module_name(path: &Path) -> String {
     let p_str = path.to_string_lossy().replace('\\', "/");
@@ -157,7 +175,9 @@ pub fn extract_n16_module_name(path: &Path) -> String {
     format!("{root_mod}/")
 }
 
-/// Coleta e agrega todas as anotações N16 de fontes e de exceções declaradas.
+/// Coleta e agrega todas as anotações N16 de fontes e de exceções declaradas,
+/// garantindo deduplicação estrita quando a mesma localização (path:linha) possui
+/// anotação tanto no código-fonte quanto no `crystalline.toml`.
 pub fn collect_n16_stats(
     sources: &[SourceFile],
     exceptions: &HashMap<String, String>,
@@ -167,11 +187,11 @@ pub fn collect_n16_stats(
 
     // 1. Varrer linhas de código-fonte
     for sf in sources {
-        let path_str = sf.path.to_string_lossy().to_string();
+        let norm_path = normalize_loc_path(&sf.path);
         for (idx, line) in sf.content.lines().enumerate() {
             let line_num = idx + 1;
             if let Some(tag) = extract_n16_tag(line) {
-                seen_locs.insert((path_str.clone(), line_num));
+                seen_locs.insert((norm_path.clone(), line_num));
                 let module = extract_n16_module_name(&sf.path);
                 let entry = stats.entry(module).or_default();
                 match tag {
@@ -187,11 +207,13 @@ pub fn collect_n16_stats(
     for (loc_key, justification) in exceptions {
         if let Some(tag) = extract_n16_tag(justification) {
             let parts: Vec<&str> = loc_key.split(':').collect();
-            let path_str = parts[0].to_string();
+            let raw_path = parts[0];
+            let norm_path = normalize_loc_path(Path::new(raw_path));
             let line_num = parts.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
 
-            if seen_locs.insert((path_str.clone(), line_num)) {
-                let module = extract_n16_module_name(Path::new(&path_str));
+            // Deduplicação: se a localização já foi contabilizada via código-fonte, não conta 2x
+            if seen_locs.insert((norm_path, line_num)) {
+                let module = extract_n16_module_name(Path::new(raw_path));
                 let entry = stats.entry(module).or_default();
                 match tag {
                     N16Tag::Alpha => entry.alpha += 1,
@@ -282,6 +304,8 @@ pub fn format_n16_summary(stats: &N16Stats, min_sample_size: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+    use crate::entities::layer::{Language, Layer};
 
     #[test]
     fn extract_n16_tag_recognizes_greek_and_ascii_variants() {
@@ -311,6 +335,40 @@ mod tests {
         assert_eq!(extract_n16_module_name(Path::new("01_core/src/compiler/parse/math.rs")), "parse/");
         assert_eq!(extract_n16_module_name(Path::new("03_infra/src/export/stream.rs")), "export/");
         assert_eq!(extract_n16_module_name(Path::new("/abs/path/03_infra/src/font_metrics.rs")), "03_infra/");
+    }
+
+    #[test]
+    fn collect_n16_stats_deduplicates_overlapping_source_and_toml() {
+        // Cenário de sobreposição: mesmo arquivo e linha têm comentário no código E entrada no toml
+        let source_code = "fn foo() {\n    match x {\n        _ => None, // neutro: N16[β] — comentário inline\n    }\n}";
+        let sources = vec![
+            SourceFile {
+                path: PathBuf::from("/workspace/01_core/src/compiler/stdlib/calc.rs"),
+                content: source_code.to_string(),
+                language: Language::Rust,
+                layer: Layer::L1,
+                has_adjacent_test: true,
+            }
+        ];
+
+        let mut exceptions = HashMap::new();
+        // Entrada no TOML referenciando a mesma linha 3
+        exceptions.insert(
+            "01_core/src/compiler/stdlib/calc.rs:3".to_string(),
+            "N16[β]: entrada redundante no toml".to_string(),
+        );
+        // Entrada no TOML em linha diferente (linha 10)
+        exceptions.insert(
+            "01_core/src/compiler/stdlib/calc.rs:10".to_string(),
+            "N16[γ]: caso exclusivo do toml".to_string(),
+        );
+
+        let stats = collect_n16_stats(&sources, &exceptions);
+        let stdlib = stats.get("stdlib/").expect("expected stdlib/");
+        // Total deve ser 2 (1 da linha 3 deduplicada + 1 da linha 10), NÃO 3!
+        assert_eq!(stdlib.total(), 2, "Deduplicação deve contar linha 3 exatamente uma vez");
+        assert_eq!(stdlib.beta, 1);
+        assert_eq!(stdlib.gamma, 1);
     }
 
     #[test]
