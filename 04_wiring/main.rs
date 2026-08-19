@@ -440,6 +440,16 @@ fn main() {
         let output = match cli.format {
             OutputFormat::Text => crystalline_lint::shell::cli::format_text(&all_violations),
             OutputFormat::Sarif => crystalline_lint::shell::cli::format_sarif(&all_violations),
+            OutputFormat::N16Summary => {
+                let stats = crystalline_lint::shell::n16_summary::collect_n16_stats(
+                    &source_files,
+                    &config.wildcard_exceptions,
+                );
+                crystalline_lint::shell::n16_summary::format_n16_summary(
+                    &stats,
+                    config.n16_min_sample_size(),
+                )
+            }
         };
         print!("{output}");
     }
