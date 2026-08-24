@@ -78,12 +78,80 @@ Tabela de neutros (forma final calibrada):
 
 Regras irmãs sobre o mesmo IR (uma só passagem):
 - **V17**: `has_guard && guard_is_compound` → warning «guard composto».
-- **V18**: `pattern_is_range` fora de módulos allowlistados (`lexer`, `numbering`)
-  → warning.
+- **V18**: `pattern_is_range` fora de módulos allowlistados (`lexer`, `numbering`,
+  `syntax`) → warning. A identidade é case-sensitive e casa somente um componente de
+  diretório completo ou o stem completo do arquivo (`lexer.rs`, por exemplo). Substrings
+  como `alexer`, `lexer_tools` e `numbering2` não são isentas. Separadores `/` e `\`
+  têm semântica equivalente para esta classificação lexical de paths.
 - **V19** (info): `or_alternatives > 1` → reporta «este braço condensa N
   alternativas — cobertura de braços subestima N×».
-- **V20** (info): `pattern_depth > 2` e o match não é tabela regular (braços de
-  tupla sobre os mesmos tipos) → reporta profundidade.
+- **V20** (info): `pattern_depth > 2` e o match não é tabela sintática regular →
+  reporta profundidade. Uma expressão é tabela sintática regular quando
+  `scrutinee_form == Tuple`; ou quando contém pelo menos três braços, todo braço não
+  catch-all tem `pattern_snippet` iniciado por `(`, existe no máximo um catch-all e,
+  se existir, ele é o último braço. Guardas não alteram essa classificação. Este proxy
+  é deliberadamente sintático: o IR não transporta tipos e a regra não alega igualdade
+  semântica dos tipos internos das tuplas.
+
+Valores de IR fora das invariantes do parser são tratados de forma total: em V19,
+`or_alternatives = 0` equivale a não-or e não diagnostica; contadores máximos não podem
+causar overflow ou panic.
+
+### 3.1 API pública autorizada para gates black-box
+
+Um gate segregado pode importar:
+
+- `crystalline_lint::entities::layer::{Language, Layer}`;
+- `crystalline_lint::entities::rule_traits::{BodyForm, DecisionArm, DecisionExpr,
+  HasDecisionArms, ScrutineeForm}`;
+- `crystalline_lint::entities::violation::{Location, Violation, ViolationLevel}`;
+- `crystalline_lint::rules::{compound_guard, range_pattern,
+  or_pattern_alternatives, deep_pattern_nesting}`.
+
+`DecisionExpr` e `DecisionArm` são structs públicas com exatamente os campos e tipos
+abaixo; todos os campos são públicos:
+
+```rust
+pub struct DecisionExpr<'a> {
+    pub snippet_scrutinee: &'a str,
+    pub scrutinee_form: ScrutineeForm,
+    pub arms: Vec<DecisionArm<'a>>,
+    pub line: usize,
+    pub column: usize,
+}
+pub struct DecisionArm<'a> {
+    pub pattern_snippet: &'a str,
+    pub is_catchall: bool,
+    pub bound_ident_used_in_body: bool,
+    pub qualified_prefixes: Vec<&'a str>,
+    pub has_guard: bool,
+    pub guard_is_compound: bool,
+    pub pattern_is_range: bool,
+    pub pattern_depth: u8,
+    pub or_alternatives: u16,
+    pub body_form: BodyForm,
+    pub body_snippet: &'a str,
+    pub line: usize,
+    pub column: usize,
+}
+pub trait HasDecisionArms<'a> {
+    fn layer(&self) -> &Layer;
+    fn decision_exprs(&self) -> &[DecisionExpr<'a>];
+    fn path(&self) -> &'a std::path::Path;
+    fn language(&self) -> &Language;
+}
+```
+
+Cada módulo de regra expõe
+`pub fn check<'a, T: HasDecisionArms<'a>>(file: &T) -> Vec<Violation<'a>>`.
+`Violation` expõe publicamente `rule_id: String`, `level: ViolationLevel`,
+`message: String` e `location: Location`; `Location` expõe `path: Cow<Path>`,
+`line: usize` e `column: usize`. O gate pode construir um `MockFile` próprio que
+implemente o trait, sem importar parser ou produção concreta.
+
+As mensagens de V17–V20 não têm snapshot textual integral normativo. O contrato exige
+apenas `rule_id`, severidade, snippet verbatim, contagem em V19, profundidade em V20 e
+location integral do braço. Alterações de redação fora desses campos não são RED.
 
 ## 4. Severidades e promoção
 

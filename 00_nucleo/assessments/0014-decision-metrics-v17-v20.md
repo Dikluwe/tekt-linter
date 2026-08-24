@@ -6,7 +6,7 @@
 `deep_pattern_nesting`  
 **Baseline:** `cea1e7013b8c6e6f61dbcef69a4d52a392e628de`  
 **L0 autorizado:** `00_nucleo/prompts/rules/wildcard-saturation.md`  
-**SHA-256 L0:** `66c502de44ef21880a68fe798c74ef5f3a91b9fe7dd3e925c2722d99d25f6800`
+**SHA-256 L0:** `5941adf0c444a65e101224dacfdb1fea0cbafebf46a5a9ac6be5bed25063cc08`
 
 ## Natureza e limite
 
@@ -31,8 +31,8 @@ congelar o gate. Insumo ausente ou hash divergente bloqueia como `SPEC-GAP`.
 4. **V19:** em Rust, emite exatamente um `Info` quando e somente quando
    `or_alternatives > 1`; mensagem e evidência preservam contagem, snippet e location.
 5. **V20:** em Rust, emite exatamente um `Info` por braço com `pattern_depth > 2`, salvo
-   quando a expressão é uma tabela regular de tuplas sobre os mesmos tipos; profundidade,
-   snippet e location permanecem observáveis.
+   quando a expressão satisfaz o algoritmo de tabela sintática regular definido no L0;
+   profundidade, snippet e location permanecem observáveis.
 6. **Isolamento:** cada regra depende somente dos campos que seu contrato enumera;
    variar campos irrelevantes não altera cardinalidade, severidade, mensagem ou location.
 7. **Fronteiras:** limiares são exatos (`1/2` em V19 e `2/3` em V20), nenhum overflow,
@@ -49,6 +49,10 @@ O gate black-box deve cobrir todas as alegações e conter, no mínimo:
 - tabelas de V20 com tuplas homogêneas, heterogêneas, catch-all e quase-tabelas;
 - duas expressões e múltiplos braços para ordem/cardinalidade;
 - mutação sistemática de campos irrelevantes e preservação integral da evidência.
+
+O gate usa a API pública autorizada na seção 3.1 do L0. Para V18, case lookalike e
+substring são controles negativos; para V20, o oráculo é o algoritmo sintático exato,
+sem inferir igualdade de tipos não transportada pelo IR.
 
 O resultado de cada propriedade é `PASS`, `RED`, `SPEC-GAP` ou `GATE-DEFECT`. Qualquer
 RED/SPEC-GAP é registrado antes de correção. Um gate que derive expectativas da produção

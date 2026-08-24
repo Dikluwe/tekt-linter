@@ -29,7 +29,7 @@ Identidade nominal dos produtores registra segregação operacional, não prova 
 
 - `00_nucleo/assessments/0014-decision-metrics-v17-v20.md`;
 - `00_nucleo/prompts/rules/wildcard-saturation.md`, SHA-256
-  `66c502de44ef21880a68fe798c74ef5f3a91b9fe7dd3e925c2722d99d25f6800`.
+  `5941adf0c444a65e101224dacfdb1fea0cbafebf46a5a9ac6be5bed25063cc08`.
 
 Qualquer outro L0 necessário deve ser autorizado por adendo congelado antes do gate.
 
