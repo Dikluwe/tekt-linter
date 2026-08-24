@@ -1,0 +1,8 @@
+{
+  "format_version": 1,
+  "artifact_id": "before",
+  "extractor_version": "fixture-1",
+  "observables": {
+    "style.variations": { "state": "known", "value": "wght=650" }
+  }
+}

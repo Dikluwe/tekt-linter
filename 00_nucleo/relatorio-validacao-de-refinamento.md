@@ -2,7 +2,11 @@
 
 **Data:** 2026-08-23  
 **Resultado:** hipótese confirmada para comparação finita de fatos; produto não implementado  
-**Gate:** ADR-0019 e prompt `refinement-validator.md` aguardam aprovação humana
+**Gate:** aprovado em 2026-08-23 para a Etapa A em branch dedicado
+
+> **Atualização:** gate aprovado em 2026-08-23; Etapa A materializada no branch
+> `codex/refinement-validator`. Git, wrapper, SMT e análise interprocedural permanecem
+> fora de escopo.
 
 ## Trabalho executado
 
@@ -90,7 +94,8 @@ Após aprovação humana:
 4. materializar somente o comparador L1 e adapters de snapshot;
 5. adiar Git, wrapper e SMT.
 
-Nenhuma dessas ações está autorizada por este relatório.
+As ações 1–4 foram autorizadas e executadas na Etapa A. Git, wrapper e SMT continuam
+sem autorização.
 
 ## Estado do auto-lint no gate
 
@@ -99,3 +104,14 @@ referência do laboratório também basta para V7 não considerar o prompt órf�
 continue não existindo materialização L1–L4. O auto-lint final passou; o estado
 `PROPOSTO` do prompt e o gate deste relatório são, portanto, as travas que impedem sua
 promoção indevida.
+
+## Registro da materialização da Etapa A
+
+- L1: `ArtifactFacts`, relações, resultado ternário, testemunha e comparador puro;
+- L2: subcomando, texto/SARIF e política explícita de exit codes 0/1/2;
+- L3: leitura validada de snapshot JSON v1 e contrato TOML;
+- L4: composição antecipada do modo `refine`, sem entrar no pipeline de lint;
+- caixa-preta: preservado, violado, inconclusivo e SARIF.
+
+O código do laboratório não foi promovido; a implementação foi reescrita a partir do
+ADR e do prompt vigentes.

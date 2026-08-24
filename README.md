@@ -46,6 +46,9 @@ crystalline-lint --update-snapshot .
 # Preview de qualquer correção sem reescrever
 crystalline-lint --fix-hashes --dry-run .
 crystalline-lint --update-snapshot --dry-run .
+
+# Comparar dois snapshots semânticos sob um contrato direcional
+crystalline-lint refine --before before.json --after after.json --contract refinement.toml
 ```
 
 ---
@@ -80,6 +83,22 @@ crystalline-lint --update-snapshot --dry-run .
 | V23 | `ContextErasure` | **warning** | Contexto requerido é neutralizado ou projetado antes de sumidouro declarado |
 | V24 | `SemanticFieldLoss` | **warning** | Campo obrigatório de identidade/projeção é substituído por neutro |
 | V25 | `DecisionOwnership` | **warning** | Decisão é duplicada, recomposta por proxy ou recanonicalizada fora do owner |
+
+## Validação de refinamento
+
+`refine` compara fatos explícitos de um artefato fonte e alvo. O resultado é
+`PRESERVED` (exit 0), `VIOLATED` com testemunha (exit 1) ou `UNKNOWN` com razão
+acionável (exit 2). O modo não lê Git, não executa comandos e não usa SMT.
+
+```bash
+crystalline-lint refine \
+  --before before.refinement.json \
+  --after after.refinement.json \
+  --contract refinement.toml \
+  --format text # ou sarif
+```
+
+Consulte [USAGE.md](USAGE.md) para os formatos de snapshot e contrato.
 
 **Sobre níveis Fatal (V0, V8, V10):** a ausência de violações garante
 que todos os arquivos foram lidos e analisados com sucesso. Fatal

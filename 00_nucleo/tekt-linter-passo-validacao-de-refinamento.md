@@ -1,7 +1,7 @@
 # Passo operacional — validação de refinamento de contratos
 
 > **Natureza:** comando operacional temporário para o LLM; não é regra da arquitetura  
-> **Estado:** investigação concluída; materialização aguarda gate humano  
+> **Estado:** Etapa A materializada e validada em branch dedicado
 > **Identidade:** descritiva e não numerada; não cria uma nova sequência de passos  
 > **Destino:** absorver decisões em ADR/prompts e então arquivar ou eliminar  
 > **Índice:** [`00_nucleo/README.md`](README.md)
@@ -321,4 +321,5 @@ Foram propostos:
 - [`ADR-0019`](adr/0019-validacao-direcional-de-refinamento.md);
 - [`refinement-validator.md`](prompts/refinement-validator.md).
 
-**Gate ativo:** parar antes de qualquer mudança L1–L4 até aprovação humana explícita.
+**Gate aprovado:** o humano autorizou a Etapa A em branch dedicado em 2026-08-23.
+Continuam fora de escopo Git, wrapper, SMT e análise interprocedural.

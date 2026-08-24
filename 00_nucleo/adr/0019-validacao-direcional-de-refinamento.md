@@ -1,6 +1,6 @@
 # ADR-0019 — Validação direcional de refinamento sobre fatos observáveis
 
-**Status:** PROPOSTO — aguarda aprovação humana  
+**Status:** ACEITO — aprovado pelo humano em 2026-08-23
 **Data:** 2026-08-23  
 **Origem operacional:** `tekt-linter-passo-validacao-de-refinamento.md`  
 **Escopo desta revisão:** decisão arquitetural; não autoriza materialização L1–L4
@@ -149,14 +149,29 @@ versão do extrator na chave, normalizações enumeradas e fixtures diferenciais
 - Implementar wrapper na primeira entrega: amplia autoridade e efeitos antes de haver
   núcleo estável.
 
+## Interface aprovada para a Etapa A
+
+O recurso entra como subcomando, não como regra `V*`:
+
+```bash
+crystalline-lint refine \
+  --before before.refinement.json \
+  --after after.refinement.json \
+  --contract refinement.toml \
+  --format text
+```
+
+Exit codes: `0` para `Preserved`, `1` para qualquer `Violated`, `2` para `Unknown`
+sem violação e para erro de entrada/configuração. Formatos iniciais: `text` e `sarif`.
+
 ## Gate
 
-Este ADR e o prompt associado devem ser aprovados pelo humano. Até então:
+Gate aprovado pelo humano em 2026-08-23. A materialização fica limitada à Etapa A:
 
-- nenhuma entidade é criada em L1;
-- nenhuma CLI/configuração/SARIF é alterada;
-- nenhum código do laboratório é promovido;
-- nenhum número `V*` é reservado.
+- snapshots explícitos, sem leitura de Git ou execução de comandos;
+- nenhum código do laboratório é promovido: a solução é reescrita a partir do L0;
+- nenhum número `V*` é reservado;
+- wrapper, SMT e extração interprocedural continuam não autorizados.
 
 ## Referências
 

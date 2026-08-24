@@ -8,6 +8,6 @@ pub mod l1_allowed_external;
 pub mod layer;
 pub mod parsed_file;
 pub mod project_index;
+pub mod refinement;
 pub mod rule_traits;
 pub mod violation;
-

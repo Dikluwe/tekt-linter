@@ -8,6 +8,12 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 ### Added
 
+- **Subcomando `refine` (ADR-0019)** — comparação direcional de snapshots explícitos
+  por relações `preserve`, `may-normalize` e `must-not-invent`, com resultados
+  `Preserved`, `Violated(Witness)` e `Unknown(reason)`, saída texto/SARIF e exit codes
+  distintos. Primeira etapa sem Git, execução de comandos, SMT ou análise
+  interprocedural.
+
 - **V23 `ContextErasure`, V24 `SemanticFieldLoss` e V25 `DecisionOwnership`** —
   contratos declarativos de preservação semântica (ADR-0018), com fatos AST genéricos,
   seleção isolada, níveis configuráveis e catálogo SARIF. Sem contratos em

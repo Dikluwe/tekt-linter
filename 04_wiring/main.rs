@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash b640611e
+//! @prompt-hash c48e975e
 //! @layer L4
 //! @updated 2026-06-09
 
@@ -21,6 +21,7 @@ use crystalline_lint::entities::l1_allowed_external::{L1AllowedExternal, L1Allow
 use crystalline_lint::entities::layer::Language;
 use crystalline_lint::entities::parsed_file::{ParsedFile, PublicInterface, WiringConfig};
 use crystalline_lint::entities::project_index::{LocalIndex, ProjectIndex};
+use crystalline_lint::entities::refinement::compare_refinement;
 use crystalline_lint::entities::violation::{Location, Violation, ViolationLevel};
 use crystalline_lint::infra::c_parser::CParser;
 use crystalline_lint::infra::config::CrystallineConfig;
@@ -34,6 +35,7 @@ use crystalline_lint::infra::prompt_reader::FsPromptReader;
 use crystalline_lint::infra::prompt_snapshot_reader::FsPromptSnapshotReader;
 use crystalline_lint::infra::prompt_walker::FsPromptWalker;
 use crystalline_lint::infra::py_parser::PyParser;
+use crystalline_lint::infra::refinement_snapshot::{load_contract, load_snapshot};
 use crystalline_lint::infra::rs_parser::RustParser;
 use crystalline_lint::infra::snapshot_writer;
 use crystalline_lint::infra::ts_parser::TsParser;
@@ -49,11 +51,35 @@ use crystalline_lint::rules::{
 };
 use crystalline_lint::shell::cli::{validate_args, Cli, EnabledChecks, OutputFormat};
 use crystalline_lint::shell::fix_hashes::{self, HashRewriter};
+use crystalline_lint::shell::refinement::{
+    self, Command as RefinementCommand, RefinementOutputFormat,
+};
 use crystalline_lint::shell::update_snapshot::{self, SnapshotRewriter};
 use std::collections::HashMap;
 
 fn main() {
     let cli = Cli::parse();
+
+    if let Some(RefinementCommand::Refine(args)) = &cli.command {
+        let source = load_snapshot(&args.before).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: refinement input error: {error}");
+            process::exit(2);
+        });
+        let target = load_snapshot(&args.after).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: refinement input error: {error}");
+            process::exit(2);
+        });
+        let contract = load_contract(&args.contract).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: refinement contract error: {error}");
+            process::exit(2);
+        });
+        let verdict = compare_refinement(&contract, &source, &target);
+        match args.format {
+            RefinementOutputFormat::Text => print!("{}", refinement::format_text(&verdict)),
+            RefinementOutputFormat::Sarif => println!("{}", refinement::format_sarif(&verdict)),
+        }
+        process::exit(refinement::exit_code(&verdict));
+    }
 
     // ── Arg validation ────────────────────────────────────────────────────────
     if let Err(e) = validate_args(&cli) {

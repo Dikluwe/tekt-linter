@@ -1,6 +1,7 @@
 # Prompt: Validador direcional de refinamento
+Hash do Código: dc19bcf0
 
-> **Estado:** PROPOSTO — não vigente; aguarda aprovação do ADR-0019  
+> **Estado:** VIGENTE — ADR-0019 aprovado pelo humano em 2026-08-23
 > **Camadas futuras:** L1–L4  
 > **Materialização:** nenhuma; o experimento em `lab/` não conta como implementação
 
@@ -90,8 +91,9 @@ crystalline-lint refine \
   --contract refinement.toml
 ```
 
-A forma exata da CLI ainda depende de decisão de interface. Não implementar leitura de
-commits nem execução de comandos nessa entrega.
+Formato `text` é o padrão; `sarif` também é suportado. Exit codes: `0` para
+`Preserved`, `1` quando houver `Violated`, `2` para `Unknown` sem violação ou erro de
+entrada. Não implementar leitura de commits nem execução de comandos nessa entrega.
 
 ## Cenários RED
 
@@ -169,3 +171,4 @@ fonte única e a apresentação deve evitar duplicidade.
 | Data | Estado | Motivo |
 |---|---|---|
 | 2026-08-23 | Proposto | Hipótese confirmada pelo experimento descartável e ADR-0019 |
+| 2026-08-23 | Vigente | Humano aprovou materialização segura da Etapa A em branch dedicado |
