@@ -1,6 +1,6 @@
 # Assessment 0009 — classificadores de cabeçalho V1/V15
 
-**Estado:** RED CONGELADO — requer saneamento separado
+**Estado:** SANEADO PELO P0077 — gate 6/6
 **Data:** 2026-08-24
 **Alvos:** `prompt_header.rs`, `multi_prompt_header.rs`
 
@@ -57,3 +57,10 @@ Dois REDs convergiram com o adversário C:
 A limitação da trait é causa do primeiro RED, não `SPEC-GAP`: o escopo está decidido no
 prompt e neste assessment. A produção permaneceu intacta. O próximo saneamento deve
 expor a camada sem inferi-la do path e distinguir as duas causas na evidência.
+
+## Fechamento P0077
+
+`HasPromptFilesystem` passou a expor `layer()`. V1 retorna cedo para L0, Lab e Unknown
+e usa mensagens distintas para header ausente e prompt referenciado inexistente. O gate
+endurecido passou 6/6 e o adversário encerrou com **NÃO REABRIR**. Os REDs acima
+permanecem como evidência histórica.

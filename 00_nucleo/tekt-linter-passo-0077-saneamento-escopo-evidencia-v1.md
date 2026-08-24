@@ -1,7 +1,7 @@
 # Passo operacional 0077 — saneamento de escopo e evidência de V1
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** escrito, não executado
+> **Estado:** executado; gate local concluído
 > **Branch:** `codex/segregated-materialization`
 > **Base:** assessment 0009, commits `ce4a829` e `8e5b54a`
 

@@ -1,11 +1,12 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/prompt-header.md
-//! @prompt-hash f4eee60f
+//! @prompt-hash a94bb0e5
 //! @layer L1
 //! @updated 2026-03-14
 
 use std::borrow::Cow;
 
+use crate::entities::layer::Layer;
 use crate::entities::rule_traits::HasPromptFilesystem;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 
@@ -16,9 +17,7 @@ pub fn check<'a, T: HasPromptFilesystem<'a>>(
     file: &T,
     strict_dirs: &[String],
 ) -> Vec<Violation<'a>> {
-    let has_valid_header = file.prompt_header().is_some() && file.prompt_file_exists();
-
-    if has_valid_header {
+    if !matches!(file.layer(), Layer::L1 | Layer::L2 | Layer::L3 | Layer::L4) {
         return vec![];
     }
 
@@ -29,11 +28,24 @@ pub fn check<'a, T: HasPromptFilesystem<'a>>(
         ViolationLevel::Error
     };
 
+    let message = match file.prompt_header() {
+        None => "Arquivo Cristalino sem linhagem causal @prompt encontrada".to_string(),
+        Some(header) if !file.prompt_file_exists() => format!(
+            "Arquivo Cristalino referencia prompt inexistente: '{}'",
+            header.prompt_path
+        ),
+        Some(_) => return vec![],
+    };
+
     vec![Violation {
         rule_id: "V1".to_string(),
         level,
-        message: "Arquivo Cristalino sem linhagem causal @prompt encontrada".to_string(),
-        location: Location { path: Cow::Borrowed(file.path()), line: 1, column: 0 },
+        message,
+        location: Location {
+            path: Cow::Borrowed(file.path()),
+            line: 1,
+            column: 0,
+        },
     }]
 }
 
@@ -45,12 +57,16 @@ mod tests {
     use std::path::Path;
 
     struct MockFile {
+        layer: Layer,
         header: Option<PromptHeader<'static>>,
         exists: bool,
         path: &'static Path,
     }
 
     impl HasPromptFilesystem<'static> for MockFile {
+        fn layer(&self) -> &Layer {
+            &self.layer
+        }
         fn prompt_header(&self) -> Option<&PromptHeader<'static>> {
             self.header.as_ref()
         }
@@ -64,6 +80,7 @@ mod tests {
 
     fn base_file() -> MockFile {
         MockFile {
+            layer: Layer::L1,
             header: None,
             exists: false,
             path: Path::new("01_core/foo.rs"),
@@ -115,6 +132,13 @@ mod tests {
         let violations = check(&file, &[]);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "V1");
+        assert!(violations[0]
+            .message
+            .contains("00_nucleo/prompts/linter-core.md"));
+        assert_ne!(
+            violations[0].message,
+            "Arquivo Cristalino sem linhagem causal @prompt encontrada"
+        );
     }
 
     #[test]
@@ -122,5 +146,48 @@ mod tests {
         let file = base_file();
         let violations = check(&file, &[]);
         assert_eq!(violations[0].location.line, 1);
+    }
+
+    #[test]
+    fn only_executable_layers_are_in_scope_for_all_header_states() {
+        let layers = [
+            Layer::L0,
+            Layer::L1,
+            Layer::L2,
+            Layer::L3,
+            Layer::L4,
+            Layer::Lab,
+            Layer::Unknown,
+        ];
+        for layer in layers {
+            for (header, exists) in [
+                (None, false),
+                (Some(valid_header()), false),
+                (Some(valid_header()), true),
+            ] {
+                let file = MockFile {
+                    layer: layer.clone(),
+                    header,
+                    exists,
+                    path: Path::new("some/file.rs"),
+                };
+                let applicable = matches!(layer, Layer::L1 | Layer::L2 | Layer::L3 | Layer::L4);
+                let expected = usize::from(applicable && (!exists || file.header.is_none()));
+                assert_eq!(check(&file, &[]).len(), expected, "layer={layer:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn missing_prompt_path_is_preserved_literally() {
+        let mut file = base_file();
+        file.header = Some(PromptHeader {
+            prompt_path: "00_nucleo/Prompts/naïve-é.md",
+            ..valid_header()
+        });
+        let violations = check(&file, &[]);
+        assert!(violations[0]
+            .message
+            .contains("00_nucleo/Prompts/naïve-é.md"));
     }
 }

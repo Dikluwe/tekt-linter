@@ -6,12 +6,16 @@ use crystalline_lint::rules::{multi_prompt_header, prompt_header};
 use std::path::Path;
 
 struct HeaderFixture<'a> {
+    layer: Layer,
     header: Option<PromptHeader<'a>>,
     exists: bool,
     path: &'a Path,
 }
 
 impl<'a> HasPromptFilesystem<'a> for HeaderFixture<'a> {
+    fn layer(&self) -> &Layer {
+        &self.layer
+    }
     fn prompt_header(&self) -> Option<&PromptHeader<'a>> {
         self.header.as_ref()
     }
@@ -25,7 +29,7 @@ impl<'a> HasPromptFilesystem<'a> for HeaderFixture<'a> {
 
 fn header(layer: Layer) -> PromptHeader<'static> {
     PromptHeader {
-        prompt_path: "00_nucleo/prompts/causal.md",
+        prompt_path: "00_nucleo/prompts/Á-A\u{301}-核.md",
         prompt_hash: Some("aaaaaaaa"),
         current_hash: Some("aaaaaaaa".to_string()),
         layer,
@@ -34,45 +38,64 @@ fn header(layer: Layer) -> PromptHeader<'static> {
 }
 
 #[test]
-fn v1_observable_layer_scope_exempts_non_production_headers() {
-    for layer in [Layer::L0, Layer::Lab, Layer::Unknown] {
-        let fixture = HeaderFixture {
-            header: Some(header(layer.clone())),
-            exists: false,
-            path: Path::new("outside/value.rs"),
-        };
-        assert!(
-            prompt_header::check(&fixture, &[]).is_empty(),
-            "V1 applied to exempt layer {layer:?}"
-        );
+fn v1_seven_layers_by_three_states_truth_table_and_exemption_priority() {
+    for layer in [
+        Layer::L0,
+        Layer::L1,
+        Layer::L2,
+        Layer::L3,
+        Layer::L4,
+        Layer::Lab,
+        Layer::Unknown,
+    ] {
+        for state in ["none", "missing", "exists"] {
+            let fixture = HeaderFixture {
+                layer: layer.clone(),
+                header: (state != "none").then(|| header(layer.clone())),
+                exists: state == "exists",
+                path: Path::new("strict/module.rs"),
+            };
+            let violations = prompt_header::check(&fixture, &["strict".to_string()]);
+            let production = matches!(layer, Layer::L1 | Layer::L2 | Layer::L3 | Layer::L4);
+            assert_eq!(
+                violations.len(),
+                usize::from(production && state != "exists"),
+                "V1 table mismatch: {layer:?}, state={state}"
+            );
+            if let Some(v) = violations.first() {
+                assert_eq!(v.rule_id, "V1");
+                assert_eq!(v.level, ViolationLevel::Fatal);
+            }
+        }
     }
-
-    // SPEC-GAP(A1): HasPromptFilesystem has no layer() method. Once header is None,
-    // public inputs cannot distinguish an L1 file from L0/Lab/Unknown.
 }
 
 #[test]
-fn v1_header_exists_truth_table_is_complete_and_emits_at_most_once() {
-    for layer in [Layer::L1, Layer::L2, Layer::L3, Layer::L4] {
-        for has_header in [false, true] {
-            for exists in [false, true] {
-                let fixture = HeaderFixture {
-                    header: has_header.then(|| header(layer.clone())),
-                    exists,
-                    path: Path::new("module/value.rs"),
-                };
-                let violations = prompt_header::check(&fixture, &[]);
-                assert_eq!(
-                    violations.len(),
-                    usize::from(!has_header || !exists),
-                    "V1 table mismatch: {layer:?}, header={has_header}, exists={exists}"
-                );
-                if let Some(v) = violations.first() {
-                    assert_eq!(v.rule_id, "V1");
-                    assert_eq!(v.level, ViolationLevel::Error);
-                }
-            }
-        }
+fn v1_missing_lineage_and_missing_reference_are_distinct_and_preserve_literal_evidence() {
+    let path = Path::new("01_core/linhagem/Δ.rs");
+    let absent = HeaderFixture {
+        layer: Layer::L1,
+        header: None,
+        exists: false,
+        path,
+    };
+    let missing = HeaderFixture {
+        layer: Layer::L1,
+        header: Some(header(Layer::L1)),
+        exists: false,
+        path,
+    };
+    let absent_violation = prompt_header::check(&absent, &[]).pop().unwrap();
+    let missing_violation = prompt_header::check(&missing, &[]).pop().unwrap();
+    assert_ne!(absent_violation.message, missing_violation.message);
+    assert!(missing_violation
+        .message
+        .contains("00_nucleo/prompts/Á-A\u{301}-核.md"));
+    for violation in [&absent_violation, &missing_violation] {
+        assert_eq!(violation.rule_id, "V1");
+        assert_eq!(violation.level, ViolationLevel::Error);
+        assert_eq!(violation.location.path.as_ref(), path);
+        assert_eq!((violation.location.line, violation.location.column), (1, 0));
     }
 }
 
@@ -88,22 +111,25 @@ fn v1_strict_directories_match_path_components_not_textual_prefixes() {
         ("área/核心/file.rs", ViolationLevel::Error),
     ];
     for (path, expected_level) in cases {
-        let fixture = HeaderFixture {
-            header: None,
-            exists: false,
-            path: Path::new(path),
-        };
-        let violations = prompt_header::check(&fixture, &strict);
-        assert_eq!(violations.len(), 1, "V1 missing at {path}");
-        assert_eq!(
-            violations[0].level, expected_level,
-            "strict match at {path}"
-        );
-        assert_eq!(violations[0].location.path.as_ref(), Path::new(path));
-        assert_eq!(
-            (violations[0].location.line, violations[0].location.column),
-            (1, 0)
-        );
+        for cause in ["none", "missing"] {
+            let fixture = HeaderFixture {
+                layer: Layer::L2,
+                header: (cause == "missing").then(|| header(Layer::L2)),
+                exists: false,
+                path: Path::new(path),
+            };
+            let violations = prompt_header::check(&fixture, &strict);
+            assert_eq!(violations.len(), 1, "V1 missing at {path}, cause={cause}");
+            assert_eq!(
+                violations[0].level, expected_level,
+                "strict match at {path}, cause={cause}"
+            );
+            assert_eq!(violations[0].location.path.as_ref(), Path::new(path));
+            assert_eq!(
+                (violations[0].location.line, violations[0].location.column),
+                (1, 0)
+            );
+        }
     }
 }
 
@@ -205,6 +231,7 @@ fn v1_and_v15_are_deterministic_and_preserve_distinct_unicode_representations() 
     assert!(first[0].message.contains("prompts/A\u{301}.md"));
 
     let missing = HeaderFixture {
+        layer: Layer::L4,
         header: Some(header(Layer::L4)),
         exists: false,
         path: Path::new("04_wiring/Á.rs"),
@@ -213,5 +240,5 @@ fn v1_and_v15_are_deterministic_and_preserve_distinct_unicode_representations() 
     let b = prompt_header::check(&missing, &[]);
     assert_eq!(a, b);
     assert_eq!(a[0].location.path.as_ref(), missing.path);
-    assert!(a[0].message.contains("00_nucleo/prompts/causal.md"));
+    assert!(a[0].message.contains("00_nucleo/prompts/Á-A\u{301}-核.md"));
 }

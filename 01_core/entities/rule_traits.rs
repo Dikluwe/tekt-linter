@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/rule-traits.md
-//! @prompt-hash 1b36408c
+//! @prompt-hash 4c753698
 //! @layer L1
 //! @updated 2026-03-22
 
@@ -15,6 +15,7 @@ use crate::entities::parsed_file::{
 
 /// Para V1 — verifica presença e validade do @prompt header.
 pub trait HasPromptFilesystem<'a> {
+    fn layer(&self) -> &Layer;
     fn prompt_header(&self) -> Option<&PromptHeader<'a>>;
     fn prompt_file_exists(&self) -> bool;
     fn path(&self) -> &'a Path;
@@ -313,9 +314,13 @@ mod tests {
     // ── Minimal mocks verifying each trait is implementable independently ──
 
     struct MockV1 {
+        layer: Layer,
         path: &'static Path,
     }
     impl HasPromptFilesystem<'static> for MockV1 {
+        fn layer(&self) -> &Layer {
+            &self.layer
+        }
         fn prompt_header(&self) -> Option<&PromptHeader<'static>> {
             None
         }
@@ -466,8 +471,10 @@ mod tests {
     #[test]
     fn mock_v1_implements_has_prompt_filesystem() {
         let m = MockV1 {
+            layer: Layer::L1,
             path: Path::new("foo.rs"),
         };
+        assert_eq!(m.layer(), &Layer::L1);
         assert!(!m.prompt_file_exists());
         assert!(m.prompt_header().is_none());
     }
