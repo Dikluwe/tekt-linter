@@ -114,6 +114,8 @@ que opera sobre directórios. `lib.rs` na raiz excluído via
   controla exit code. Não conhece L3.
 - **L3**: implementa `FileProvider`, `LanguageParser`,
   `PromptReader`, `PromptSnapshotReader`, `PromptProvider`.
+  Implementa também `CitationFreshnessResolver` por adapter filesystem causal de
+  `prompts/contracts/citation-freshness.md`; nenhum classificador L1 lê filesystem.
   Propaga `SourceError`. Resolve FQN, `target_subdir`,
   `declared_traits`, `implemented_traits` e `declarations`.
   Para TypeScript e Python: resolve imports fisicamente via
@@ -122,6 +124,8 @@ que opera sobre directórios. `lib.rs` na raiz excluído via
   o parser correcto por `file.language`. Orquestra pipeline
   Map-Reduce via rayon. Ordena violations após reduce.
   Zero lógica de negócio.
+  Para V21, instancia o adapter de frescura sob a raiz do projeto e o injeta no
+  classificador; consumidores sem adapter usam somente o fallback fail-closed L1.
 
 ---
 

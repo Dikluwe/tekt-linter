@@ -290,6 +290,18 @@ deduplica, ordena nem interpreta `detail`; classifiers preservam ordem e multipl
 `ParsedFile` implementa `HasSemanticObservations` por empréstimo somente leitura. A
 decisão que produz cada kind pertence a L3 e será auditada separadamente.
 
+## Contrato de constantes e citações V21
+
+V21 consome `ConstantKind`, `CitationKind`, `Citation`, `SourceConstant` e
+`HasConstants`. Os campos públicos normativos são os materializados em
+`01_core/entities/rule_traits.rs`: kind, snippet, line, column, citation, test-origin,
+function-return-type, scaling, context-var, geometric-sink e data-table. A trait expõe
+layer, constants, path e language somente leitura.
+
+Frescura de `CitationKind::Ref` não pertence à IR nem ao parser. O classificador recebe
+a porta pura `contracts/citation-freshness.md`; entities/rules não importam filesystem ou
+o adapter L3.
+
 ---
 
 ## Restrições
@@ -406,3 +418,4 @@ Então retorna Violation V3
 | 2026-03-18 | ADR-0009 correcção: HasTokens ganha language() para V4 multi-linguagem; nota sobre V4 nunca usar ImportKind; mock de V4 actualizado com campo language; critérios de Rust/Python/TypeScript/Unknown adicionados; critério V3 com ImportKind::Named documenta agnósticidade | rule_traits.rs, impure_core.rs |
 | 2026-08-24 | HasPromptFilesystem ganha layer() como oráculo único do escopo L1–L4 de V1 | rule_traits.rs, parsed_file.rs, prompt_header.rs |
 | 2026-08-24 | Taxonomia pública V23–V25 documentada; DirectDecisionReimplementation fecha a quarta modalidade sem colapsá-la em proxy/canonicalizer | rule_traits.rs, decision_ownership.rs |
+| 2026-08-24 | IR V21 vinculada à porta pura de frescura; filesystem permanece fora de entities/rules | rule_traits.rs, citation_freshness.rs, unsourced_constant.rs |

@@ -10,17 +10,19 @@
 
 | Unidade | Caminho | SHA-256 |
 |---|---|---|
-| V21 | `00_nucleo/prompts/unsourced-constant.md` | `e1bc92fa1c56585ed0b15cc22762a7538ea13676010c41875ab5f1db3f662fd3` |
-| IR | `00_nucleo/prompts/contracts/rule-traits.md` | `aeced5c851ac21a6214c1c4ca2cdd12e011926af9ae64898b95fcda0690ac4df` |
+| V21 | `00_nucleo/prompts/unsourced-constant.md` | `e179f9d134956c3bdaae8f57938d25096b2f4bc95bc85bdb246845ec4d9ed05a` |
+| IR | `00_nucleo/prompts/contracts/rule-traits.md` | `53c622749e5447385b6bc47a7c4410a21d4b6d27ae459f2d307e3742a863c2c1` |
+| porta de frescura | `00_nucleo/prompts/contracts/citation-freshness.md` | `7b2e4f285dada19b500d3d653bde3d12ff1fa0f05d1d6a34039deff70e7efb5c` |
+| arquitetura/wiring | `00_nucleo/prompts/linter-core.md` | `ed44ffdda0a323df26a25cef40c0acb46bd692db6fdaef861a20a509adeb7029` |
 | distinção V16/V21 | `00_nucleo/adr/0017-v16-v21-diferenca-categorica.md` | `79f406654aacf3693616232a4fdbb911e359486d089ffde841af5375625104dd` |
 | protocolo | `00_nucleo/tekt-linter-passo-0088-triagem-v21.md` | `b1df39f121022b2b6d8a0a47f9e1c25202af055a4b9f50cea6c7c0839997b3a1` |
 
 ## Natureza e bloqueio inicial
 
-Assessment retroativo. O L0 exige anti-apodrecimento de `// ref:`, mas a arquitetura
-Tekt proíbe filesystem em L1. Até existir porta causal explícita e política executável
-para `valid/stale/unknown`, qualquer tentativa de ratificar I/O no classificador é
-`SPEC-GAP` bloqueante. Produção não pode ser alterada antes do achado ser congelado.
+Assessment retroativo. O L0 agora fecha o anti-apodrecimento de `// ref:` por porta
+causal explícita e política executável `valid/stale/unknown`, preservando a proibição de
+filesystem em L1. O I/O direto observado no classificador permanece `RED` arquitetural;
+produção só pode mudar depois de gates cegos congelados contra estes hashes.
 
 ## Alegações L1 a congelar
 
