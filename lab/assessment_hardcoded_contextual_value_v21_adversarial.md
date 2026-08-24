@@ -98,3 +98,57 @@ independentes da implementação.
 
 Não recomendar merge. Fechar RED-D1 e os dois GATE-DEFECTs, repetir B2 e então solicitar
 novo adversário final.
+
+## Fase D reaberta — fechamento pós-correção
+
+**Sequência confrontada:** `310d14e` L0 → `9fb185b` gates → `d286cd9` produção
+
+**Veredito final:** `READY WITH RESIDUAL AUDIT`
+
+### Fechamento dos achados
+
+- **RED-D1: FECHADO.** Em Linux, `open_confined` abre a raiz e percorre cada componente
+  relativamente ao handle de diretório anterior, com `O_NOFOLLOW`; o arquivo final é
+  lido e revalidado pelo mesmo handle. A troca posterior do nome no filesystem não muda
+  o objeto já aberto e a corrida não pode redirecionar a leitura para o marcador externo.
+- **GATE-DEFECT-D1: FECHADO.** B2 agora executa 20.000 resoluções enquanto um diretório
+  interno é alternado com symlink para uma raiz externa. O único conteúdo interno é
+  vazio, portanto qualquer `Valid` denunciaria escape; nenhuma tentativa foi válida.
+- **GATE-DEFECT-D2: FECHADO.** B2 também alterna remoção e recriação do alvo vazio por
+  10.000 resoluções e exige fail-closed. Junto aos casos existentes de alvo-diretório,
+  raiz inválida, symlink, UTF-8 e orçamento, cobre erros de abertura/metadata e mutação
+  sem exigir uma razão única onde o L0 permite `Symlink`, `Io` ou
+  `ConcurrentMutation`.
+
+A correção respeita causalidade Tekt: a garantia atômica foi publicada e resselada no
+L0 antes do gate e da produção. Nenhuma lista, predicado, severidade ou mensagem V21 foi
+movida para L3; L1 continua sem I/O; L4 e V22 não mudaram nesta sequência.
+
+### Evidência da reabertura
+
+- sete hashes do Assessment 0017: PASS, incluindo porta
+  `459a7c29e8ad2f842ba4ef2d6cece4d50b5fd76a6da72067f212d99f8c155402`;
+- corridas concorrentes B2 repetidas três vezes: 6/6 PASS;
+- gate B2 completo: 9/9 PASS;
+- gate B1: 9/9 PASS;
+- `cargo test --workspace --quiet`: 628 unitários, 83 fixtures e toda a integração PASS;
+- regressão V22 incluída na suíte: PASS;
+- busca mecânica de I/O em V21 e na porta L1: zero ocorrências;
+- `git diff --check 505c312..d286cd9`: PASS;
+- delta de fechamento restrito ao L0/assessment, porta L1, adapter L3, gate B2 e este
+  relatório; nenhum parser, config, CLI ou wiring foi alterado.
+
+### Residuais finais
+
+- O caminho atômico usa `/proc/self/fd` e flags Linux. Em plataformas não Linux, o
+  adapter retorna deliberadamente `Unknown(Io)`, preservando fail-closed, mas a
+  disponibilidade funcional e a portabilidade do gate B2 precisam de lote próprio.
+- Detecção de conteúdo alterado no mesmo handle continua baseada em tamanho/mtime; isso
+  pode perder mutação adversarial com metadados preservados, porém não reabre o escape de
+  confinamento: a leitura permanece no handle validado e resultado suspeito ainda não
+  concede acesso fora da raiz.
+- Permanecem os residuais anteriores de parser/janela, orçamento L4 configurável e o
+  warning legado alheio em `ts_parser.rs`.
+
+Não reabrir P0088 pelos residuais acima. O lote pode seguir para relatório de fechamento
+e revisão de merge separada.
