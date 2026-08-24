@@ -91,6 +91,19 @@ publica selo parcial.
   versão 1 não possui vínculo causal suficiente para distinguir uma testemunha válida
   de uma divergência-isca que lave uma mutação inconclusiva.
 
+## Insumos normativos do verificador
+
+O isolamento do verificador não o autoriza a adivinhar o contrato. Seu pacote de entrada
+deve conter os valores normativos completos ou referências L0 explicitamente autorizadas
+e fixadas por caminho mais SHA-256 exato. Contagens, nomes parciais e referências que o
+papel não pode ler não constituem contrato executável.
+
+O verificador pode ler somente os artefatos L0 listados no pacote; continua proibido de
+ler L1–L4, patches e testes do implementador. Expectativas do gate são derivadas de L0 e
+não podem importar uma constante da própria produção, pois isso compartilharia o oráculo
+com o alvo. Referência ausente, inacessível ou com hash divergente bloqueia a alegação e
+é registrada como `SPEC-GAP`, nunca convertida silenciosamente em PASS.
+
 ## Fixtures RED
 
 1. pacote válido com positivo, negativo e unknown produz selo;
@@ -111,3 +124,4 @@ publica selo parcial.
 | Data | Estado | Motivo |
 |---|---|---|
 | 2026-08-24 | Vigente | Piloto autorizado para testar a ADR-0003 do Tekt no próprio linter |
+| 2026-08-24 | Vigente | Insumos normativos completos ou L0 autorizada e fixada por hash para verificadores segregados |

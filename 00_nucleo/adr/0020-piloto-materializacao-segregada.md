@@ -49,6 +49,14 @@ Prompt causal e fixtures RED precedem implementação. Agente de contrato/testes
 o patch implementador; implementador recebe prompt e contrato já congelados. O piloto
 fica em branch dedicado e não altera o binário instalado.
 
+### Emenda — contrato executável do verificador
+
+O papel verificador recebe valores normativos completos ou uma lista explícita de
+artefatos L0 autorizados, cada um fixado por caminho e SHA-256 exato. Proibir produção
+não implica proibir sua especificação causal. Cardinalidade sem enumeração e referência
+que o papel não pode ler são `SPEC-GAP` bloqueante. Testes não usam constantes exportadas
+pelo alvo como expectativa, para não compartilhar o mesmo oráculo com a implementação.
+
 ## Adiado
 
 Sandbox atestável, assinatura criptográfica de agentes, serviço remoto de identidade,
