@@ -1,6 +1,6 @@
 # Assessment 0015 — preservação semântica V23–V25
 
-**Estado:** CONGELADO PARA TRIAGEM SEGREGADA
+**Estado:** READY WITH RESIDUAL AUDIT
 **Data:** 2026-08-24
 **Alvos:** `context_erasure`, `semantic_field_loss`, `decision_ownership`
 **Baseline:** `ce15824d57aa1f906b05a215ffa688258ef80153`
@@ -70,3 +70,25 @@ Antes de merge: achados congelados, saneamento normativo anterior à produção,
 independente verde, adversário final `NÃO REABRIR`, suíte global, hashes dry-run,
 auto-lint, rustfmt scoped, `git diff --check`, relatório P0086 e estado final
 `READY WITH RESIDUAL AUDIT` ou `BLOCKED`. Este branch não executa merge.
+
+## Resultado e fechamento
+
+A rodada inicial bloqueou por doze SPEC-GAPs: API ausente e mistura entre decisão L3 e
+classificação L1. Os achados e o gate fail-closed foram congelados em `cf4ee3c`.
+
+O saneamento `de1b1a6` separou explicitamente a extração semântica upstream do mapeamento
+puro de ocorrências. Após revisão de arquitetura, o L0 causal de `rule_traits.rs` também
+foi atualizado e hash-pinned em `a6a23f8`, antes da materialização L1 `c4069c4`. Essa
+materialização adicionou `DirectDecisionReimplementation` como quarta modalidade V25 e
+resselou os quatro headers pela ferramenta oficial.
+
+O gate cego passou 5/5. O adversário final encontrou um GATE-DEFECT de evidência; o gate
+foi ampliado, sem mudança de produção, em `a811b3c`. Seu SHA-256 final é
+`9d7bbda9cd97f164785e7e8f1dea406a4d9190148396452afea36839029dd1e6`.
+
+O adversário declarou `NÃO REABRIR` para os classificadores L1 puros: nenhum RED,
+SPEC-GAP ou GATE-DEFECT residual. A causalidade L0→L1, a direção rules→entities e a
+pureza de L1 foram preservadas. Neutralidade, fluxo, dependência, owners e temporalidade
+continuam explicitamente fora do escopo, para auditoria L3/integração.
+
+Veredito: `READY WITH RESIDUAL AUDIT`. Nenhum merge, instalação ou release foi executado.
