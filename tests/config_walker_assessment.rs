@@ -26,7 +26,6 @@ fn relative_paths(root: &Path, files: &[SourceFile]) -> Vec<PathBuf> {
 }
 
 #[test]
-#[ignore = "RED congelado: layers ambíguas ou desconhecidas são aceitas"]
 fn ambiguous_or_unknown_layer_mappings_are_rejected_independent_of_toml_order() {
     let cases = [
         ("duplicate-forward", "[layers]\nL1='shared'\nL2='shared'\n"),
@@ -54,10 +53,44 @@ fn ambiguous_or_unknown_layer_mappings_are_rejected_independent_of_toml_order() 
         accepted.is_empty(),
         "accepted ambiguous layer cases: {accepted:?}"
     );
+
+    for invalid in ["", "/absolute", ".", "..", "one/two", "one\\two"] {
+        let root = tempfile::tempdir().unwrap();
+        let text = format!("[layers]\nL1={invalid:?}\n");
+        assert!(
+            load_config(root.path(), &text).is_err(),
+            "accepted invalid layer path {invalid:?}"
+        );
+    }
+
+    for alias in ["lab", "Lab"] {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("research")).unwrap();
+        fs::write(root.path().join("research/probe.rs"), "fn probe() {}\n").unwrap();
+        let config = load_config(root.path(), &format!("[layers]\n{alias}='research'\n")).unwrap();
+        let files: Vec<_> = walk(root.path(), config)
+            .into_iter()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(files.len(), 1);
+        assert_eq!(
+            files[0].layer,
+            Layer::Lab,
+            "alias {alias} did not map to Lab"
+        );
+    }
+
+    let root = tempfile::tempdir().unwrap();
+    assert!(
+        load_config(root.path(), "[layers]\nlab='one'\nLab='two'\n").is_err(),
+        "accepted simultaneous lab and Lab aliases"
+    );
 }
 
 #[test]
 fn unreadable_eligible_source_is_an_error_and_does_not_hide_readable_files() {
+    // LIMITATION(P0073): FileProvider exposes no deterministic injection point for a
+    // WalkDir traversal error; permissions are not reliable when the gate runs as root.
     let root = tempfile::tempdir().unwrap();
     fs::create_dir(root.path().join("01_core")).unwrap();
     fs::write(root.path().join("01_core/good.rs"), b"fn good() {}\n").unwrap();
@@ -97,7 +130,6 @@ fn build_order_fixture(root: &Path, reverse: bool) {
 }
 
 #[test]
-#[ignore = "RED congelado: enumeração depende da ordem de criação"]
 fn enumeration_order_is_canonical_across_opposite_creation_orders() {
     let first = tempfile::tempdir().unwrap();
     let second = tempfile::tempdir().unwrap();
@@ -121,14 +153,21 @@ fn enumeration_order_is_canonical_across_opposite_creation_orders() {
 
 #[cfg(unix)]
 #[test]
-#[ignore = "RED congelado: symlink externo conta como teste adjacente"]
 fn symlinks_never_escape_root_or_count_as_adjacent_test_coverage() {
     use std::os::unix::fs::symlink;
+    use std::process::Command;
     let root = tempfile::tempdir().unwrap();
     let outside = tempfile::tempdir().unwrap();
     fs::write(outside.path().join("secret.rs"), "fn secret() {}\n").unwrap();
     fs::create_dir(root.path().join("01_core")).unwrap();
-    fs::write(root.path().join("01_core/foo.rs"), "fn foo() {}\n").unwrap();
+    for source in ["external.rs", "internal.rs", "fifo.rs"] {
+        fs::write(
+            root.path().join("01_core").join(source),
+            format!("fn {}() {{}}\n", source.trim_end_matches(".rs")),
+        )
+        .unwrap();
+    }
+    fs::write(root.path().join("internal-target.txt"), "not a source\n").unwrap();
     symlink(
         outside.path().join("secret.rs"),
         root.path().join("link.rs"),
@@ -137,7 +176,12 @@ fn symlinks_never_escape_root_or_count_as_adjacent_test_coverage() {
     symlink(outside.path(), root.path().join("linked_dir")).unwrap();
     symlink(
         outside.path().join("secret.rs"),
-        root.path().join("01_core/foo_test.rs"),
+        root.path().join("01_core/external_test.rs"),
+    )
+    .unwrap();
+    symlink(
+        root.path().join("internal-target.txt"),
+        root.path().join("01_core/internal_test.rs"),
     )
     .unwrap();
     symlink(
@@ -146,15 +190,32 @@ fn symlinks_never_escape_root_or_count_as_adjacent_test_coverage() {
     )
     .unwrap();
     symlink(root.path(), root.path().join("loop")).unwrap();
+    let fifo = root.path().join("01_core/fifo_test.rs");
+    let status = Command::new("mkfifo").arg(&fifo).status().unwrap();
+    assert!(
+        status.success(),
+        "mkfifo failed for deterministic FIFO fixture"
+    );
 
     let files: Vec<_> = walk(root.path(), CrystallineConfig::default())
         .into_iter()
         .map(Result::unwrap)
         .collect();
-    assert_eq!(files.len(), 1);
-    assert!(files[0].path.ends_with("01_core/foo.rs"));
-    assert_eq!(files[0].content, "fn foo() {}\n");
-    assert!(!files[0].has_adjacent_test);
+    assert_eq!(files.len(), 3, "symlink or FIFO was enumerated: {files:?}");
+    let mut false_coverage = Vec::new();
+    for source in ["external.rs", "internal.rs", "fifo.rs"] {
+        let file = files
+            .iter()
+            .find(|file| file.path.ends_with(Path::new("01_core").join(source)))
+            .unwrap();
+        if file.has_adjacent_test {
+            false_coverage.push(source);
+        }
+    }
+    assert!(
+        false_coverage.is_empty(),
+        "non-regular adjacent candidates counted as coverage: {false_coverage:?}"
+    );
 }
 
 #[test]
@@ -225,7 +286,6 @@ fn exclusions_are_component_and_exact_path_based_without_prefix_leakage() {
 }
 
 #[test]
-#[ignore = "RED congelado: diretório conta como teste adjacente"]
 fn adjacent_tests_require_regular_files_and_self_tests_are_not_coverage() {
     let root = tempfile::tempdir().unwrap();
     let cases = [
