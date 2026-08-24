@@ -41,8 +41,9 @@ facilitar teste.
 
 | Unidade | Caminho | SHA-256 |
 |---|---|---|
-| sistema/composição | `00_nucleo/prompts/linter-core.md` | `2e5da1cfb9d1f66e5015cf67bf2f6fb9e8992ad29c59d05d5acef4ea2705f8d3` |
-| contrato parser | `00_nucleo/prompts/contracts/language-parser.md` | `203ed423a5149331525a6c7bc1662e74b87e6bcab7a5ee5337cda7581523791b` |
+| sistema/composição | `00_nucleo/prompts/linter-core.md` | `3e4e0c4f80cca0d139a145a7f17dde8b8decd61ff02dfab2de91d3667610ef7e` |
+| contrato parser | `00_nucleo/prompts/contracts/language-parser.md` | `ffb5ef5658e3882dc518fe71e90eb0541ed8cd5083905f3b4bbbe3edaf9c87d5` |
+| enum Language | `00_nucleo/prompts/violation-types.md` | `0979ed5856022466aad8d60a37da9858c3fe06263e3295c648422ae7f3e215e9` |
 | ParseError | `00_nucleo/prompts/contracts/parse-error.md` | `1f8c47cb5d0001c356c71e2df8ec0619d76dd5a439a5ba9e9b8f8d7285282645` |
 | SourceFile/Language | `00_nucleo/prompts/contracts/file-provider.md` | `1574ce788513573901376fc80933464cca5e7b6bc17acf5af8bfcd28e4d7335d` |
 | isolamento multilíngue | `00_nucleo/adr/0009-isolamento- de-parsers-por-linguagem.md` | `fbfeb007115f2464ece7e1f0e2a5615bb06b459e7bb7446bbd2957a06ee67452` |

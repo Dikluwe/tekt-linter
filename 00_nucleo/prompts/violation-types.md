@@ -413,7 +413,16 @@ pub enum Layer {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Language {
-    Rust, TypeScript, Python, Unknown,
+    Rust,
+    TypeScript,
+    Python,
+    C,
+    Cpp,
+    Zig,
+    Go,
+    Java,
+    Elixir,
+    Unknown,
 }
 ```
 
