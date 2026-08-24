@@ -2,7 +2,7 @@
 
 Hash do Código: ausente
 
-**Camada:** L1 (`01_core/rules/infrastructure_error.rs`)  
+**Camada:** L1 (`01_core/rules/infrastructure_error.rs`)
 **Consumidor:** L4 (`04_wiring/main.rs`)
 
 ## Decisão

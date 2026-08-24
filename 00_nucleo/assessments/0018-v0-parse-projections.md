@@ -1,8 +1,8 @@
 # Assessment 0018 — projeções V0/PARSE
 
-**Estado:** RESSELADO APÓS SPEC-GAP; AGUARDA GATE CEGO  
-**Data:** 2026-08-24  
-**Passo:** P0089  
+**Estado:** RESSELADO APÓS SPEC-GAP; AGUARDA GATE CEGO
+**Data:** 2026-08-24
+**Passo:** P0089
 **Baseline:** `cc1924b52f2079034c7814241ade88e0ca8f7583`
 
 ## Insumos normativos autorizados
@@ -16,7 +16,7 @@
 | fail-fast | `00_nucleo/adr/0004-reformulação-do-motor-de-análise.md` | `25d0571e0621b207b59d79ffd4ce6dfd31008738812a06fd82d0ac95d8d7fe3d` |
 | paths owned | `00_nucleo/adr/0005-location-owned-paths-e-cargo.toml-como-artefato-gerido.md` | `917f4a1194e3d7b2a6955b6182684ad55bf909705cbf2537b095145d22b78421` |
 | protocolo | `00_nucleo/tekt-linter-passo-0089-auditoria-v0-parse.md` | `f4bd91b4b438c0ee58e1e4d46968860d5c8f0fb3b1fc7167f5dccc8c7289d54f` |
-| projetor puro | `00_nucleo/prompts/rules/infrastructure-error.md` | `4f9c2e897151e0aff5f1f0d3d6c6d2de9053eec31477d0df257eb7ba34122170` |
+| projetor puro | `00_nucleo/prompts/rules/infrastructure-error.md` | `bb2f8f5669ca264b205d03240a06d53c576b57847450388f44663f4f89cab119` |
 
 ## Alegações a congelar
 
