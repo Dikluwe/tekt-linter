@@ -1,5 +1,5 @@
 # Prompt: Rule V14 — External Type In Contract (external-type-in-contract)
-Hash do Código: f208b000
+Hash do Código: 0473cddc
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V14
@@ -158,6 +158,39 @@ ao toml é o gesto explícito de autorização.
 
 ---
 
+## Emenda normativa P0083 — contrato vigente
+
+Esta seção substitui, nos pontos em que houver diferença, os snippets simplificados acima.
+
+1. `L1AllowedExternal` armazena `HashMap<String, HashSet<String>>`: pacote para itens
+   autorizados. Conjunto vazio autoriza qualquer item do pacote (modo legacy); conjunto
+   não vazio autoriza apenas o path declarado ou seu último segmento.
+2. Para Rust, `std`, `core` e `alloc` são stdlib isenta. `crate` e `super` também são
+   isentos porque são qualificadores intra-crate, não dependências externas.
+3. `check` recebe `check_test_imports: bool`. Quando falso, imports com
+   `is_test_origin=true` são ignorados; quando verdadeiro, passam pela política normal.
+4. A mensagem de violação usa `package_name(import.path)`, nunca o path completo do item.
+5. `package_name` preserva pacotes npm scoped: `@scope/pkg` e
+   `@scope/pkg/subpath` resultam em `@scope/pkg`. Para Rust, o primeiro segmento antes de
+   `::` continua sendo o pacote; para pacote não-scoped com subpath, vale o primeiro
+   segmento antes de `/`.
+6. Imports agrupados, globs e paths qualificados são decompostos em itens. Todos os itens
+   devem ser autorizados quando a lista do pacote não for vazia.
+
+Forma efetiva da verificação:
+
+```rust
+file.imports()
+    .iter()
+    .filter(|import| check_test_imports || !import.is_test_origin)
+    .filter(|import| import.target_layer == Layer::Unknown)
+    .filter(|import| !import_is_allowed(import.path, allowed))
+    .map(|import| make_violation(package_name(import.path)))
+    .collect()
+```
+
+---
+
 ## Critérios de Verificação
 
 ```
@@ -226,6 +259,20 @@ Então retorna vec![]
 Dado arquivo L1 com dois imports externos não autorizados
 Quando V14::check() for chamado
 Então retorna duas violations — uma por import
+
+Dado pacote ecow autorizado somente para item EcoString
+E imports ecow::EcoString e ecow::EcoMap
+Quando V14::check() for chamado
+Então somente EcoMap produz violação
+
+Dado import externo nascido em cfg(test)
+Quando check_test_imports=false
+Então não produz violação
+Quando check_test_imports=true
+Então aplica a política normalmente
+
+Dado import @scope/pkg/subpath
+Então o nome do pacote para whitelist e mensagem é @scope/pkg
 ```
 
 ---
@@ -245,3 +292,4 @@ Então retorna duas violations — uma por import
 |------|--------|-------------------|
 | 2026-03-20 | Criação inicial (ADR-0012) | external_type_in_contract.rs |
 | 2026-06-09 | 0061: param `check_test_imports` (default false) — guard pula externos test-origin (`#[cfg(test)]`); dev-dep só de teste não contamina o contrato de produção de L1 | external_type_in_contract.rs |
+| 2026-08-24 | P0083: granularidade por item, test-origin, isenções crate/super, mensagem por pacote e npm scoped completo incorporados ao corpo normativo | external_type_in_contract.rs, l1_allowed_external.rs |

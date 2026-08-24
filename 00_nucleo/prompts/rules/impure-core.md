@@ -123,6 +123,32 @@ fn forbidden_symbols_for(language: &Language) -> &'static [&'static str] {
             "datetime.now",
         ],
 
+        Language::C => &[
+            "stdio.h", "stdlib.h", "time.h", "unistd.h", "fcntl.h",
+            "sys/socket.h", "pthread.h", "sys/stat.h", "windows.h",
+        ],
+        Language::Cpp => &[
+            "iostream", "fstream", "thread", "mutex", "chrono", "filesystem",
+            "net", "stdio.h", "stdlib.h", "time.h", "unistd.h",
+            "sys/socket.h", "windows.h",
+        ],
+        Language::Zig => &[
+            "std.fs", "std.io", "std.net", "std.os", "std.process",
+            "std.time", "std.crypto",
+        ],
+        Language::Go => &[
+            "os", "net", "net/http", "io/ioutil", "os/exec", "database/sql",
+        ],
+        Language::Java => &[
+            "java.io", "java.net", "java.nio.file", "java.lang.ProcessBuilder",
+            "java.sql", "javax.sql", "System.out", "System.err",
+            "System.currentTimeMillis",
+        ],
+        Language::Elixir => &[
+            "File", "File.Stream", "IO", "Path", "System.cmd",
+            "HTTPoison", "Req", "Ecto",
+        ],
+
         Language::Unknown => &[],
     }
 }
@@ -184,6 +210,10 @@ Violation {
   V4 não inspeciona atributos de teste directamente
 - `Language::Unknown` → lista vazia → zero violações V4
 - Os tokens chegam com FQN resolvido — aliases não burlam V4
+- Cada linguagem consulta somente a própria tabela. Um símbolo exclusivo de outra
+  linguagem permanece permitido.
+- Near misses são avaliados contra a união completa da tabela selecionada: uma variação
+  de uma entrada continua proibida se casar com outra entrada mais ampla.
 
 ---
 
@@ -277,3 +307,4 @@ Então retorna Violation — testável com mock puro
 |------|--------|-------------------|
 | 2025-03-13 | Criação inicial | impure_core.rs |
 | 2026-03-18 | ADR-0009 correcção: V4 multi-linguagem via file.language(); forbidden_symbols_for() com listas por Language; HasTokens ganha language(); critérios TypeScript e Python adicionados; restrição sobre ImportKind documentada | impure_core.rs, rule_traits.rs |
+| 2026-08-24 | P0083: tabelas C, C++, Zig, Go, Java e Elixir incorporadas ao L0; isolamento entre linguagens e near misses contra a união da tabela normatizados | impure_core.rs, gate P0082 |

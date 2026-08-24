@@ -55,6 +55,11 @@ fn rust_allowed(packages: &[&str]) -> L1AllowedExternal {
     L1AllowedExternal::for_rust(allowed)
 }
 
+fn rust_allowed_items(package: &str, items: &[&str]) -> L1AllowedExternal {
+    let item_set = items.iter().map(|item| (*item).to_string()).collect();
+    L1AllowedExternal::for_rust(HashMap::from([(package.to_string(), item_set)]))
+}
+
 #[test]
 fn deny_by_default_and_violation_shape_are_normative() {
     let subject = file(
@@ -114,7 +119,7 @@ fn only_unknown_targets_are_external_and_only_l1_is_in_scope() {
 }
 
 #[test]
-fn package_is_the_first_rust_segment_and_slash_segment() {
+fn package_is_the_first_rust_segment_and_preserves_scoped_npm_name() {
     let subject = file(
         Layer::L1,
         vec![
@@ -123,7 +128,35 @@ fn package_is_the_first_rust_segment_and_slash_segment() {
         ],
     );
 
-    assert!(check(&subject, &rust_allowed(&["serde", "@scope"]), false).is_empty());
+    assert!(check(&subject, &rust_allowed(&["serde", "@scope/pkg"]), false).is_empty());
+}
+
+#[test]
+fn type_level_whitelist_allows_only_named_items() {
+    let allowed = rust_allowed_items("ecow", &["EcoString"]);
+    let subject = file(
+        Layer::L1,
+        vec![
+            import("ecow::EcoString", 1, Layer::Unknown),
+            import("ecow::EcoMap", 2, Layer::Unknown),
+        ],
+    );
+    let violations = check(&subject, &allowed, false);
+    assert_eq!(violations.len(), 1);
+    assert_eq!(violations[0].location.line, 2);
+    assert!(violations[0].message.contains("'ecow'"));
+}
+
+#[test]
+fn intra_crate_qualifiers_are_exempt() {
+    let subject = file(
+        Layer::L1,
+        vec![
+            import("crate::entities::Value", 1, Layer::Unknown),
+            import("super::policy::Rule", 2, Layer::Unknown),
+        ],
+    );
+    assert!(check(&subject, &rust_allowed(&[]), false).is_empty());
 }
 
 #[test]

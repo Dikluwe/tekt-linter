@@ -1,6 +1,6 @@
 # Assessment 0012 — V4 Impure Core e V14 External Type In Contract
 
-**Estado:** RED/SPEC-GAP — merge não recomendado
+**Estado:** PASS após saneamento P0083
 **Data:** 2026-08-24
 **Passo:** P0082
 **Alvos:** `impure_core.rs`, `external_type_in_contract.rs`
@@ -69,3 +69,19 @@ de entregá-los aos agentes, em vez de autorizar arquivos inteiros.
 
 Este assessment registra diagnóstico, não saneamento. Nenhum merge, instalação ou release
 foi realizado.
+
+## Fechamento P0083
+
+As seis condições foram executadas. O gate V4 agora descarta falsos near misses capturados
+por outra entrada da mesma tabela, cobre nominalmente as nove linguagens materializadas e
+prova isolamento entre elas. Resultado: 7/7.
+
+O L0 V14 incorporou a whitelist por pacote/item, os dois estados de imports de teste, as
+isenções `crate`/`super` e a preservação de pacote npm scoped. A produção passou a emitir
+o pacote extraído na mensagem e a reconhecer `@scope/pkg/subpath` como pacote
+`@scope/pkg`. Resultado do gate: 9/9.
+
+A suíte global passou com 628 testes unitários, 83 fixtures e todos os gates de integração.
+Hashes ficaram estáveis e o auto-lint V1/V5/V7 não encontrou violações. Assim, os
+RED/SPEC-GAP deste assessment estão encerrados; a recomendação de bloqueio ao merge foi
+removida.

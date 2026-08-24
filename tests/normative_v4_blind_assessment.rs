@@ -63,6 +63,94 @@ const PYTHON_FORBIDDEN: &[&str] = &[
     "datetime.now",
 ];
 
+const C_FORBIDDEN: &[&str] = &[
+    "stdio.h",
+    "stdlib.h",
+    "time.h",
+    "unistd.h",
+    "fcntl.h",
+    "sys/socket.h",
+    "pthread.h",
+    "sys/stat.h",
+    "windows.h",
+];
+const CPP_FORBIDDEN: &[&str] = &[
+    "iostream",
+    "fstream",
+    "thread",
+    "mutex",
+    "chrono",
+    "filesystem",
+    "net",
+    "stdio.h",
+    "stdlib.h",
+    "time.h",
+    "unistd.h",
+    "sys/socket.h",
+    "windows.h",
+];
+const ZIG_FORBIDDEN: &[&str] = &[
+    "std.fs",
+    "std.io",
+    "std.net",
+    "std.os",
+    "std.process",
+    "std.time",
+    "std.crypto",
+];
+const GO_FORBIDDEN: &[&str] = &[
+    "os",
+    "net",
+    "net/http",
+    "io/ioutil",
+    "os/exec",
+    "database/sql",
+];
+const JAVA_FORBIDDEN: &[&str] = &[
+    "java.io",
+    "java.net",
+    "java.nio.file",
+    "java.lang.ProcessBuilder",
+    "java.sql",
+    "javax.sql",
+    "System.out",
+    "System.err",
+    "System.currentTimeMillis",
+];
+const ELIXIR_FORBIDDEN: &[&str] = &[
+    "File",
+    "File.Stream",
+    "IO",
+    "Path",
+    "System.cmd",
+    "HTTPoison",
+    "Req",
+    "Ecto",
+];
+
+fn normative_tables() -> [(Language, &'static [&'static str]); 9] {
+    [
+        (Language::Rust, RUST_FORBIDDEN),
+        (Language::TypeScript, TYPESCRIPT_FORBIDDEN),
+        (Language::Python, PYTHON_FORBIDDEN),
+        (Language::C, C_FORBIDDEN),
+        (Language::Cpp, CPP_FORBIDDEN),
+        (Language::Zig, ZIG_FORBIDDEN),
+        (Language::Go, GO_FORBIDDEN),
+        (Language::Java, JAVA_FORBIDDEN),
+        (Language::Elixir, ELIXIR_FORBIDDEN),
+    ]
+}
+
+fn matches_table(symbol: &str, forbidden: &[&str]) -> bool {
+    forbidden.iter().any(|entry| {
+        symbol == *entry
+            || symbol
+                .strip_prefix(entry)
+                .is_some_and(|suffix| suffix.starts_with("::") || suffix.starts_with('.'))
+    })
+}
+
 struct MockFile<'a> {
     layer: Layer,
     language: Language,
@@ -140,21 +228,42 @@ fn every_normative_entry_accepts_equality_and_both_delimited_prefix_forms() {
     assert_complete_table(Language::Rust, RUST_FORBIDDEN);
     assert_complete_table(Language::TypeScript, TYPESCRIPT_FORBIDDEN);
     assert_complete_table(Language::Python, PYTHON_FORBIDDEN);
+    assert_complete_table(Language::C, C_FORBIDDEN);
+    assert_complete_table(Language::Cpp, CPP_FORBIDDEN);
+    assert_complete_table(Language::Zig, ZIG_FORBIDDEN);
+    assert_complete_table(Language::Go, GO_FORBIDDEN);
+    assert_complete_table(Language::Java, JAVA_FORBIDDEN);
+    assert_complete_table(Language::Elixir, ELIXIR_FORBIDDEN);
 }
 
 #[test]
 fn near_misses_for_every_normative_entry_are_allowed() {
-    for (language, forbidden) in [
-        (Language::Rust, RUST_FORBIDDEN),
-        (Language::TypeScript, TYPESCRIPT_FORBIDDEN),
-        (Language::Python, PYTHON_FORBIDDEN),
-    ] {
+    for (language, forbidden) in normative_tables() {
         let symbols = forbidden
             .iter()
             .flat_map(|entry| [format!("x{entry}"), format!("{entry}_near")])
+            .filter(|candidate| !matches_table(candidate, forbidden))
             .collect();
         let mock = file(language, Layer::L1, symbols);
         assert!(impure_core::check(&mock).is_empty());
+    }
+}
+
+#[test]
+fn language_tables_are_isolated() {
+    for (language, forbidden) in normative_tables() {
+        for (other_language, other_forbidden) in normative_tables() {
+            if language == other_language {
+                continue;
+            }
+            let candidates = other_forbidden
+                .iter()
+                .copied()
+                .filter(|symbol| !matches_table(symbol, forbidden))
+                .map(str::to_string)
+                .collect();
+            assert!(impure_core::check(&file(language.clone(), Layer::L1, candidates)).is_empty());
+        }
     }
 }
 
