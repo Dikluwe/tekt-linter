@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/decision-ownership.md
-//! @prompt-hash 11c8fa39
+//! @prompt-hash e05a4cf8
 //! @layer L1
 //! @updated 2026-08-23
 
@@ -19,6 +19,9 @@ pub fn check<'a, T: HasSemanticObservations<'a>>(
                 SemanticObservationKind::DuplicateDecisionOwner => "duplicate-owner",
                 SemanticObservationKind::DecisionProxyReentry => "proxy-reentry",
                 SemanticObservationKind::CanonicalizerReentry => "canonicalizer-reentry",
+                SemanticObservationKind::DirectDecisionReimplementation => {
+                    "direct-reimplementation"
+                }
                 SemanticObservationKind::ContextNeutralArgument
                 | SemanticObservationKind::ContextErasingProjection
                 | SemanticObservationKind::NeutralProjectionDestination => return None,

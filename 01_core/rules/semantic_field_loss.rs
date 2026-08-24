@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/semantic-field-loss.md
-//! @prompt-hash e6684fec
+//! @prompt-hash d356e01a
 //! @layer L1
 //! @updated 2026-08-23
 

@@ -1,5 +1,5 @@
 # Prompt: Rule Traits (rule-traits)
-Hash do Código: 5b6a9b53
+Hash do Código: e9d12481
 
 **Camada**: L1 (Core — Contracts)
 **Criado em**: 2026-03-15 (ADR-0006 refactor)
@@ -247,6 +247,49 @@ impl HasTokens<'static> for MockFile {
 }
 ```
 
+## Contrato de observações semânticas V23–V25
+
+V23–V25 preservam a direção cristalina `rules → entities`: as regras L1 não importam
+parsers, configuração ou infraestrutura. L3 resolve contratos e fluxo e materializa uma
+ocorrência já classificada nesta IR pública:
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SemanticObservationKind {
+    ContextNeutralArgument,
+    ContextErasingProjection,
+    NeutralProjectionDestination,
+    DuplicateDecisionOwner,
+    DecisionProxyReentry,
+    CanonicalizerReentry,
+    DirectDecisionReimplementation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SemanticObservation {
+    pub contract_id: String,
+    pub kind: SemanticObservationKind,
+    pub detail: String,
+    pub line: usize,
+    pub column: usize,
+}
+
+pub trait HasSemanticObservations<'a> {
+    fn semantic_observations(&self) -> &[SemanticObservation];
+    fn path(&self) -> &'a Path;
+    fn language(&self) -> &Language;
+}
+```
+
+`DirectDecisionReimplementation` representa a quarta modalidade V25 definida pelo
+prompt `rules/decision-ownership.md`. A taxonomia é fechada: adicionar, remover ou fundir
+uma variante exige primeiro revisão coordenada deste L0 e do L0 da regra consumidora.
+
+`SemanticObservation` é ocorrência diagnóstica, não fato de conjunto. A entidade não
+deduplica, ordena nem interpreta `detail`; classifiers preservam ordem e multiplicidade.
+`ParsedFile` implementa `HasSemanticObservations` por empréstimo somente leitura. A
+decisão que produz cada kind pertence a L3 e será auditada separadamente.
+
 ---
 
 ## Restrições
@@ -290,11 +333,21 @@ Então importa apenas de crate::entities::*
 — sem imports de rules/ ou contracts/
 
 Dado rule_traits.rs
-Quando inspecionado
-Então contém exactamente as traits:
+Quando inspecionado no núcleo histórico V1–V12
+Então contém as traits:
   HasPromptFilesystem, HasCoverage, HasImports, HasTokens,
   HasHashes, HasPublicInterface, HasPubLeak, HasWiringPurity
 — sem traits locais remanescentes em arquivos de regra
+
+Dado SemanticObservationKind
+Quando inspecionado
+Então contém exatamente as sete variantes normativas V23–V25
+E DirectDecisionReimplementation é distinta de proxy e canonicalizer reentry
+
+Dado ParsedFile
+Quando usado como HasSemanticObservations
+Então expõe observações por empréstimo somente leitura, path e language
+E nenhuma regra L1 importa parser ou configuração L3
 
 Dado MockFile implementando HasTokens
 Com layer = L1, language = Rust
@@ -352,3 +405,4 @@ Então retorna Violation V3
 | 2026-03-16 | ADR-0007 fecho: rule_traits.rs movido de contracts/ para entities/ | rule_traits.rs |
 | 2026-03-18 | ADR-0009 correcção: HasTokens ganha language() para V4 multi-linguagem; nota sobre V4 nunca usar ImportKind; mock de V4 actualizado com campo language; critérios de Rust/Python/TypeScript/Unknown adicionados; critério V3 com ImportKind::Named documenta agnósticidade | rule_traits.rs, impure_core.rs |
 | 2026-08-24 | HasPromptFilesystem ganha layer() como oráculo único do escopo L1–L4 de V1 | rule_traits.rs, parsed_file.rs, prompt_header.rs |
+| 2026-08-24 | Taxonomia pública V23–V25 documentada; DirectDecisionReimplementation fecha a quarta modalidade sem colapsá-la em proxy/canonicalizer | rule_traits.rs, decision_ownership.rs |
