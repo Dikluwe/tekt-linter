@@ -36,3 +36,26 @@ do teste ou desta especificação antes de autorizar correção.
 Se nenhum RED surgir, o resultado aumenta confiança somente nessas alegações. Se um
 RED legítimo surgir, ele justifica assessments graduais nos demais adaptadores de
 entrada e nos pontos capazes de silenciar `UNKNOWN`.
+
+## Resultado observado
+
+O gate independente terminou com três casos verdes e um vermelho:
+
+- pathspec mágico foi rejeitado como entrada;
+- sucesso e erro preservaram byte a byte todo o estado preexistente do repositório;
+- blob acima do limite produziu `BudgetExhausted`, nunca `PRESERVED`;
+- um repositório nominalmente vazio, configurado com `.git/objects/info/alternates`,
+  resolveu commits e blobs de outro repositório e retornou `PRESERVED`.
+
+O último caso demonstra que “repositório analisado” não implica hoje autocontenção do
+object database. O prompt histórico proíbe rede, fetch e efeitos executáveis, mas não
+decide explicitamente se object stores locais compartilhados são entrada autorizada.
+Por isso o RED fica congelado como **lacuna de contrato e proveniência**, não como bug
+de implementação já autorizado para correção.
+
+Antes de tornar este gate obrigatório, o Tekt deve escolher entre duas políticas:
+
+1. permitir alternates, registrando no recibo a cadeia completa de object stores; ou
+2. exigir autocontenção e bloquear alternates/configurações de ambiente equivalentes.
+
+Para selos reproduzíveis e portáveis, este assessment recomenda a segunda política.
