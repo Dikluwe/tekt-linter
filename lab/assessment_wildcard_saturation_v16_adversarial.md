@@ -1,7 +1,7 @@
 # Assessment 0016 — revisão adversarial segregada V16
 
 **Produtor:** `adversary/v16/0016`
-**L0 validado:** SHA-256 `5941adf0c444a65e101224dacfdb1fea0cbafebf46a5a9ac6be5bed25063cc08`
+**L0 inicial validado:** SHA-256 `5941adf0c444a65e101224dacfdb1fea0cbafebf46a5a9ac6be5bed25063cc08`
 **Resultado inicial:** `SPEC-GAP`
 
 ## Achados congelados
@@ -29,3 +29,15 @@
 - campos V17–V20 ativados sem vazamento de rule_id.
 
 Nenhum RED funcional é alegado até o L0 tornar o gate integral executável.
+
+## Reteste e fechamento
+
+O L0 saneado final tem SHA-256
+`19f79428f1e7c9740ae7f2466f03bc82c22a5632a2388e5b2c587a3fa2588609`. O gate cego
+congelou três REDs: duplicata intrabraço, stale falso em catch-all isento e ordem de
+HashMap observável. `df3f750` fechou os três sem alterar parser/config/wiring.
+
+Gate final `e4657dd46d03339afe861460cf2a4cfaf3a043b56a1223cef38d497fa032e02f`:
+8/8 PASS. Regressão V17–V20: 10/10. O adversário final não encontrou RED, SPEC-GAP ou
+GATE-DEFECT residual no classificador L1 e recomendou **NÃO REABRIR** após a reconciliação
+destes artefatos documentais.

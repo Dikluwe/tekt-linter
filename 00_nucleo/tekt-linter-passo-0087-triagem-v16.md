@@ -1,7 +1,7 @@
 # Passo operacional 0087 — triagem segregada V16
 
 > **Natureza:** envelope operacional temporário
-> **Estado:** contrato congelado; triagem em execução
+> **Estado:** executado; READY WITH RESIDUAL AUDIT
 > **Branch:** `codex/audit-wildcard-saturation-v16`
 > **Base:** `master@2b7e19f`
 > **Assessment:** 0016
@@ -26,3 +26,10 @@ SARIF, instalação, release e merge estão proibidos.
 
 Assessment 0016, gate independente, relatório adversarial e relatório P0087, terminando
 em `READY WITH RESIDUAL AUDIT` ou `BLOCKED`.
+
+## Resultado
+
+O protocolo congelou SPEC-GAP antes do saneamento L0 e três REDs antes das correções.
+Após `df3f750`, gate V16 8/8, regressão V17–V20 10/10, suíte, hashes, auto-lint,
+rustfmt scoped e diff-check passaram. Estado final: `READY WITH RESIDUAL AUDIT`.
+Parser/config/wiring de exceções continuam fora do escopo. Nenhum merge foi executado.
