@@ -1,5 +1,5 @@
 # Prompt L0 — Regra V16 `WildcardSaturation` (e família V17–V20: decisões mecânicas)
-Hash do Código: 7a715b90
+Hash do Código: a167a9a8
 
 > Causalidade: este prompt é a origem de `01_core/rules/wildcard_saturation.rs`,
 > do trait `HasDecisionArms` em `01_core/entities/rule_traits.rs` e da extracção
@@ -31,7 +31,7 @@ tiver extractor):
 ```
 DecisionExpr {
     snippet_scrutinee: String,      // verbatim: "unit_kind", "self.kind()", …
-    scrutinee_form: Path | FieldAccess | MethodCall | Index | Literal | Tuple,
+    scrutinee_form: Path | FieldAccess | MethodCall | Index | Literal | Tuple | Other,
     arms: Vec<DecisionArm>,
     span: Span,
 }
@@ -64,7 +64,7 @@ catchall detectado (is_catchall)
  ├─ scrutinee_form ∈ {MethodCall, Index, Literal} . ISENTO (scrutinee aberto)
  ├─ body_form = ErrorBarrier ............ ISENTO (barreira de erro em compile/runtime)
  ├─ body_form = MessageProducer ......... ISENTO (falha ruidosa: format!, write!, error/cannot/expected)
- └─ enum candidato (≥2 braços partilham qualified_prefixes no mesmo match)
+ └─ enum candidato (o mesmo prefixo textual não vazio aparece em ≥2 braços distintos)
      ├─ body_form = EnumPath | LiteralOther ... VIOLAÇÃO DENY-class (saturação arbitrária)
      ├─ body_form = LiteralNeutral ............ VIOLAÇÃO WARN-class (default neutro)
      ├─ body_form = Call ...................... INFO (delegação a outro despachante)
@@ -107,6 +107,8 @@ Um gate segregado pode importar:
 - `crystalline_lint::entities::violation::{Location, Violation, ViolationLevel}`;
 - `crystalline_lint::rules::{compound_guard, range_pattern,
   or_pattern_alternatives, deep_pattern_nesting}`.
+- `crystalline_lint::rules::wildcard_saturation` e
+  `std::collections::HashMap` para V16.
 
 `DecisionExpr` e `DecisionArm` são structs públicas com exatamente os campos e tipos
 abaixo; todos os campos são públicos:
@@ -153,6 +155,19 @@ As mensagens de V17–V20 não têm snapshot textual integral normativo. O contr
 apenas `rule_id`, severidade, snippet verbatim, contagem em V19, profundidade em V20 e
 location integral do braço. Alterações de redação fora desses campos não são RED.
 
+V16 é a exceção de assinatura nesta família:
+
+```rust
+pub fn check<'a, T: HasDecisionArms<'a>>(
+    file: &T,
+    exceptions: &HashMap<String, String>,
+) -> Vec<Violation<'a>>
+```
+
+`qualified_prefixes` usa identidade textual case-sensitive. Um prefixo repetido dentro
+do mesmo braço conta uma vez; somente presença em dois braços distintos torna a expressão
+candidata. Prefixo do próprio catch-all pode participar se o IR o fornecer.
+
 ## 4. Severidades e promoção
 
 | Regra | Nível inicial | Promoção |
@@ -190,6 +205,31 @@ Implementação: `decision_arm_term_for(language)` em `rule_traits.rs`, ao lado 
 Formato obrigatório da justificativa: frase com a razão (não «ok»). Excepção sem
 justificativa ou com span obsoleto (linha deixou de ser catch-all) é ela própria
 uma violação `warning` — as excepções apodrecem se ninguém as regar.
+
+A API L1 recebe um `HashMap<String,String>` já validado sintaticamente por upstream. A
+chave é exatamente `file.path().to_string_lossy() + ":" + line`, sem normalização,
+case-folding, sufixo ou equivalência relativo/absoluto/separador. Chaves de outro path e
+chaves sem último `:<usize>` são ignoradas por esta execução por arquivo.
+
+“Catch-all ativo” significa presença sintática `is_catchall` na linha, mesmo quando o
+braço é isento por reincorporação, barreira, scrutinee aberto ou ausência de enum
+candidato. Portanto só uma linha sem catch-all sintático é obsoleta.
+
+Justificativa é inválida quando, após `trim`, fica vazia ou igual a `ok` por comparação
+ASCII case-insensitive. `ok.` e `okay` são frases diferentes e não são rejeitadas por
+essa regra mecânica. Se o texto contém literalmente `N16[`, aceita somente tags
+`N16[α]`, `N16[β]`, `N16[γ]` ou equivalentes A/B/C em qualquer case; outra tag gera
+warning adicional sem silenciar o principal.
+
+Diagnósticos principais e warnings da exceção ativa são emitidos na ordem estrutural de
+expressões/braços, com warnings da exceção imediatamente antes do principal. Warnings de
+exceções obsoletas do arquivo atual vêm depois, ordenados pela chave completa. Ordem de
+inserção do HashMap nunca é observável.
+
+O escopo executável atual de V16 é somente Rust; a tabela de termos das outras linguagens
+é reserva de evolução dos parsers. “DENY-class” descreve gravidade conceitual, mas o nível
+inicial continua `Warning`. `body_snippet` chega a L1 já truncado pelo parser; V16 o
+preserva e não aplica novo truncamento.
 
 ## 7. Critérios de aceitação
 
