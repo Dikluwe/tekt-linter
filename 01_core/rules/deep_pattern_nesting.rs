@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/wildcard-saturation.md
-//! @prompt-hash 60c277e6
+//! @prompt-hash a5de3b49
 //! @layer L1
 //! @updated 2026-08-14
 
@@ -49,20 +49,26 @@ pub fn check<'a, T: HasDecisionArms<'a>>(file: &T) -> Vec<Violation<'a>> {
     violations
 }
 
-
 fn is_regular_table_context(expr: &crate::entities::rule_traits::DecisionExpr) -> bool {
     if expr.arms.len() < 3 {
         return false;
     }
-    let tuple_pattern_count = expr
+
+    let catchalls: Vec<_> = expr
         .arms
         .iter()
-        .filter(|a| a.pattern_snippet.starts_with('(') || a.is_catchall)
-        .count();
-    if tuple_pattern_count * 10 >= expr.arms.len() * 8 {
-        return true;
-    }
-    false
+        .enumerate()
+        .filter(|(_, arm)| arm.is_catchall)
+        .collect();
+
+    catchalls.len() <= 1
+        && catchalls
+            .first()
+            .is_none_or(|(index, _)| *index == expr.arms.len() - 1)
+        && expr
+            .arms
+            .iter()
+            .all(|arm| arm.is_catchall || arm.pattern_snippet.starts_with('('))
 }
 
 #[cfg(test)]
@@ -79,10 +85,18 @@ mod tests {
     }
 
     impl HasDecisionArms<'static> for MockFile {
-        fn layer(&self) -> &Layer { &Layer::L1 }
-        fn decision_exprs(&self) -> &[DecisionExpr<'static>] { &self.exprs }
-        fn path(&self) -> &'static Path { self.path }
-        fn language(&self) -> &Language { &self.language }
+        fn layer(&self) -> &Layer {
+            &Layer::L1
+        }
+        fn decision_exprs(&self) -> &[DecisionExpr<'static>] {
+            &self.exprs
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
+        fn language(&self) -> &Language {
+            &self.language
+        }
     }
 
     #[test]
