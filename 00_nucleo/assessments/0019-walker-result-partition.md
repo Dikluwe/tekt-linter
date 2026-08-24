@@ -9,8 +9,8 @@
 
 | Unidade | Caminho | SHA-256 |
 |---|---|---|
-| sistema/pipeline | `00_nucleo/prompts/linter-core.md` | `200c8dad9e1408ef4d930553675282777b8a862af8a1a76d7622b74359b3480e` |
-| tipos/contrato | `00_nucleo/prompts/contracts/file-provider.md` | `fc4988033a6cb8d54dcef76ae16f12486dc5e3bc0edcd1be947793dcb817d817` |
+| sistema/pipeline | `00_nucleo/prompts/linter-core.md` | `2e5da1cfb9d1f66e5015cf67bf2f6fb9e8992ad29c59d05d5acef4ea2705f8d3` |
+| tipos/contrato | `00_nucleo/prompts/contracts/file-provider.md` | `1574ce788513573901376fc80933464cca5e7b6bc17acf5af8bfcd28e4d7335d` |
 | walker | `00_nucleo/prompts/file-walker.md` | `6deeec38a766c6ac16f8aa90944e75a6b6d22c91db1249f1d99fdf51c697a7c2` |
 | motor/fail-fast | `00_nucleo/adr/0004-reformulação-do-motor-de-análise.md` | `33380a0bbcfb93dcdfa5ee7511d2be31bbcdfb1a4752b436726713458783a5d0` |
 | protocolo segregado | `00_nucleo/prompts/segregated-materialization.md` | `366fd0855c6b04e533f4f4a477a73d7e5ec65f24c056720c61fca906bb5299a4` |
@@ -43,6 +43,9 @@ O adversário A confirmou que a partição é L1 e bloqueou por ausência de API
 consumo. O L0 resselado publica `collect_walker_results<I: Iterator<...>>`, movimento
 sem clone, subsequências estáveis, `Vec::new` + `push`, exatamente uma observação terminal
 `None`, nenhuma chamada pós-EOF e nenhuma consulta a `size_hint`. L4 apenas chama.
+
+Após materialização, o reparador oficial atualizou somente `Hash do Código` nesses dois
+prompts; os hashes acima resselam a metadata sem alterar o oráculo do gate cego.
 
 ## Papéis
 

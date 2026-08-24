@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash e042f8ff
+//! @prompt-hash 4f04c0c9
 //! @layer L4
 //! @updated 2026-08-24
 
@@ -13,7 +13,9 @@ use rayon::prelude::*;
 use crystalline_lint::contracts::citation_freshness::{
     CitationFreshnessResolver, UnknownCitationFreshness,
 };
-use crystalline_lint::contracts::file_provider::{FileProvider, SourceError, SourceFile};
+use crystalline_lint::contracts::file_provider::{
+    collect_walker_results, FileProvider, SourceError, SourceFile,
+};
 use crystalline_lint::contracts::language_parser::LanguageParser;
 use crystalline_lint::contracts::parse_error::ParseError;
 use crystalline_lint::contracts::prompt_provider::PromptProvider;
@@ -916,23 +918,6 @@ impl LanguageParser for MultiParser {
             }),
         }
     }
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/// Separates walker results into Ok (SourceFile) and Err (SourceError) buckets.
-fn collect_walker_results(
-    iter: impl Iterator<Item = Result<SourceFile, SourceError>>,
-) -> (Vec<SourceFile>, Vec<SourceError>) {
-    let mut files = Vec::new();
-    let mut errors = Vec::new();
-    for result in iter {
-        match result {
-            Ok(sf) => files.push(sf),
-            Err(e) => errors.push(e),
-        }
-    }
-    (files, errors)
 }
 
 // ── L4 adapter: HashRewriter (L3 hash_writer → L2 port) ──────────────────────

@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/file-provider.md
-//! @prompt-hash ace5d315
+//! @prompt-hash d4ae996a
 //! @layer L1
 //! @updated 2026-03-16
 
@@ -42,6 +42,21 @@ pub struct SourceFile {
 
 pub trait FileProvider {
     fn files(&self) -> impl Iterator<Item = Result<SourceFile, SourceError>>;
+}
+
+pub fn collect_walker_results<I>(results: I) -> (Vec<SourceFile>, Vec<SourceError>)
+where
+    I: Iterator<Item = Result<SourceFile, SourceError>>,
+{
+    let mut files = Vec::new();
+    let mut errors = Vec::new();
+    for result in results {
+        match result {
+            Ok(file) => files.push(file),
+            Err(error) => errors.push(error),
+        }
+    }
+    (files, errors)
 }
 
 #[cfg(test)]
