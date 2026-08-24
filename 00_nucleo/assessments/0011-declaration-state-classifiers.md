@@ -1,6 +1,6 @@
 # Assessment 0011 — classificadores de declaração V12/V13
 
-**Estado:** CONGELADO PARA TRIAGEM
+**Estado:** PASS FUNCIONAL — 6/6; SPEC-GAP documental esclarecido
 **Data:** 2026-08-24
 **Alvos:** `wiring_logic_leak.rs`, `mutable_state_core.rs`
 
@@ -40,3 +40,24 @@ Produção não é alterada. Resultado por alegação: `PASS`, `RED` ou `SPEC-GA
 
 Se houver RED, registrar evidência e parar antes de modificar L1. Se tudo passar, emitir
 laudo e avançar. Não fazer merge, instalação ou release.
+
+## Resultado da triagem
+
+B terminou com 6/6 e nenhum RED. C repetiu seis ataques próprios e confirmou a matriz
+V12 completa, os dois estados de configuração e a semântica V13 em todas as camadas.
+Produção e prompts permaneceram intactos.
+
+O gate cego classificou um `SPEC-GAP`: a alegação dizia “18 tokens”, mas não os enumerava
+nem referenciava normativamente. Sem ler o alvo proibido, B identificou apenas 16 nomes
+e corretamente recusou inventar `Cell`/`OnceCell`. C, autorizado a ler o prompt causal,
+confirmou que prompt e produção coincidem nos 18 e que todos passam.
+
+## Clarificação pós-triagem
+
+Para execuções cegas futuras, a lista referenciada pela alegação 5 é:
+`Mutex`, `RwLock`, `OnceLock`, `LazyLock`, `AtomicBool`, `AtomicI8`, `AtomicI16`,
+`AtomicI32`, `AtomicI64`, `AtomicIsize`, `AtomicU8`, `AtomicU16`, `AtomicU32`,
+`AtomicU64`, `AtomicUsize`, `AtomicPtr`, `RefCell`, `UnsafeCell`.
+
+Esta enumeração esclarece o gate futuro; não é usada retroativamente para alegar que B
+a conhecia durante a primeira execução.

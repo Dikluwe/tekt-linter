@@ -1,0 +1,79 @@
+// Probe independente do Assessment 0011/P0080. `.txt` evita auto-lint como produção.
+use crystalline_lint::entities::layer::Layer;
+use crystalline_lint::entities::parsed_file::{
+    Declaration, DeclarationKind as K, StaticDeclaration, WiringConfig,
+};
+use crystalline_lint::entities::rule_traits::{HasStaticDeclarations, HasWiringPurity};
+use crystalline_lint::entities::violation::ViolationLevel;
+use crystalline_lint::rules::{mutable_state_core, wiring_logic_leak};
+use std::path::Path;
+
+const TOKENS:[&str;18]=[
+    "Mutex","RwLock","OnceLock","LazyLock","AtomicBool","AtomicI8","AtomicI16","AtomicI32",
+    "AtomicI64","AtomicIsize","AtomicU8","AtomicU16","AtomicU32","AtomicU64","AtomicUsize",
+    "AtomicPtr","RefCell","UnsafeCell",
+];
+struct WFile{layer:Layer,decls:Vec<Declaration<'static>>,path:&'static Path}
+impl HasWiringPurity<'static> for WFile{fn layer(&self)->&Layer{&self.layer}fn declarations(&self)->&[Declaration<'static>]{&self.decls}fn path(&self)->&'static Path{self.path}}
+struct SFile{layer:Layer,statics:Vec<StaticDeclaration<'static>>,path:&'static Path}
+impl HasStaticDeclarations<'static> for SFile{fn layer(&self)->&Layer{&self.layer}fn static_declarations(&self)->&[StaticDeclaration<'static>]{&self.statics}fn path(&self)->&'static Path{self.path}}
+fn layers()->Vec<Layer>{vec![Layer::L0,Layer::L1,Layer::L2,Layer::L3,Layer::L4,Layer::Lab,Layer::Unknown]}
+fn kinds()->Vec<K>{vec![K::Struct,K::Enum,K::Impl,K::Class,K::Interface,K::TypeAlias]}
+fn forbidden(kind:&K,allow:bool)->bool{match kind{K::Struct|K::Class=>!allow,_=>true}}
+
+fn main(){
+    // P1: V12 completa 7 camadas x 6 kinds x 2 configurações.
+    for layer in layers(){for kind in kinds(){for allow in [false,true]{
+        let f=WFile{layer:layer.clone(),decls:vec![Declaration{kind:kind.clone(),name:"Δ",line:3}],path:Path::new("04/x.rs")};
+        let v=wiring_logic_leak::check(&f,&WiringConfig{allow_adapter_structs:allow});
+        assert_eq!(v.len(),usize::from(layer==Layer::L4&&forbidden(&kind,allow)),"{layer:?}/{kind:?}/{allow}");
+    }}}
+    println!("PASS P1 V12 exhaustive 7x6x2");
+
+    // P2: configuração só altera Struct/Class; input, ordem, duplicata e evidência permanecem.
+    let decls=vec![
+        Declaration{kind:K::Enum,name:"É",line:9},Declaration{kind:K::Struct,name:"e\u{301}",line:4},
+        Declaration{kind:K::Impl,name:"É",line:9},Declaration{kind:K::Class,name:"C",line:7},
+        Declaration{kind:K::Interface,name:"I",line:2},Declaration{kind:K::TypeAlias,name:"T",line:8},
+        Declaration{kind:K::Enum,name:"É",line:9},];
+    let original=decls.clone();let f=WFile{layer:Layer::L4,decls,path:Path::new("04/host-é.rs")};
+    let deny=wiring_logic_leak::check(&f,&WiringConfig{allow_adapter_structs:false});
+    let allow=wiring_logic_leak::check(&f,&WiringConfig{allow_adapter_structs:true});
+    assert_eq!(f.decls,original);assert_eq!(deny.len(),7);assert_eq!(allow.len(),5);
+    assert_eq!(deny.iter().map(|v|v.location.line).collect::<Vec<_>>(),vec![9,4,9,7,2,8,9]);
+    for v in &deny{assert_eq!(v.rule_id,"V12");assert_eq!(v.level,ViolationLevel::Warning);assert_eq!(v.location.path.as_ref(),Path::new("04/host-é.rs"));}
+    for (word,name) in [("enum","É"),("struct","e\u{301}"),("impl","É"),("class","C"),("interface","I"),("type","T")]{assert!(deny.iter().any(|v|v.message.contains(word)&&v.message.contains(name)));}
+    println!("PASS P2 V12 config isolation/order/multiplicity/evidence/no mutation");
+
+    // P3: V13 7 camadas x is_mut com tipo inofensivo.
+    for layer in layers(){for is_mut in [false,true]{
+        let f=SFile{layer:layer.clone(),statics:vec![StaticDeclaration{name:"S",type_text:"u32",is_mut,line:5}],path:Path::new("src/x.rs")};
+        assert_eq!(mutable_state_core::check(&f).len(),usize::from(layer==Layer::L1&&is_mut));
+    }}
+    println!("PASS P3 V13 exhaustive layers x is_mut");
+
+    // P4: todos os 18 tokens causais, embutidos em tipos compostos, são detectados e reportados.
+    let statics=TOKENS.iter().enumerate().map(|(n,t)|StaticDeclaration{name:*t,type_text:*t,is_mut:false,line:100+n}).collect();
+    let f=SFile{layer:Layer::L1,statics,path:Path::new("01_core/tokens.rs")};
+    let v=mutable_state_core::check(&f);assert_eq!(v.len(),18);
+    for ((diag,token),line) in v.iter().zip(TOKENS).zip(100..118){assert_eq!(diag.location.line,line);assert!(diag.message.contains(token));}
+    println!("PASS P4 V13 all 18 causal tokens");
+
+    // P5: representações próximas que não contêm nenhum token permanecem legítimas.
+    let near=["mutex","RWLock","Once_Lock","Lazy","AtomicU128","AtomicI","AtomicU","AtomicPointer","ReferenceCell","Unsafe_Cell","Μutex","&'static str"];
+    for text in near{assert!(!TOKENS.iter().any(|t|text.contains(t)));let f=SFile{layer:Layer::L1,statics:vec![StaticDeclaration{name:"OK",type_text:text,is_mut:false,line:1}],path:Path::new("01/ok.rs")};assert!(mutable_state_core::check(&f).is_empty(),"{text}");}
+    println!("PASS P5 V13 legitimate near-substrings");
+
+    // P6: múltiplos tokens, precedência mut/lista, ordem, duplicata, evidência e determinismo.
+    let statics=vec![
+        StaticDeclaration{name:"MUT_é",type_text:"Mutex<RwLock<T>>",is_mut:true,line:9},
+        StaticDeclaration{name:"BOTH",type_text:"RwLock<Mutex<T>>",is_mut:false,line:4},
+        StaticDeclaration{name:"BOTH",type_text:"RwLock<Mutex<T>>",is_mut:false,line:4},
+        StaticDeclaration{name:"NFD_e\u{301}",type_text:"UnsafeCell<RefCell<T>>",is_mut:false,line:7},];
+    let f=SFile{layer:Layer::L1,statics,path:Path::new("01_core/host-é.rs")};
+    let a=mutable_state_core::check(&f);let b=mutable_state_core::check(&f);assert_eq!(a,b);assert_eq!(a.len(),4);
+    assert!(a[0].message.contains("'mut'"));assert!(a[1].message.contains("'Mutex'"));assert_eq!(a[1],a[2]);assert!(a[3].message.contains("'RefCell'"));
+    assert_eq!(a.iter().map(|x|x.location.line).collect::<Vec<_>>(),vec![9,4,4,7]);
+    assert!(a.iter().all(|x|x.rule_id=="V13"&&x.level==ViolationLevel::Error&&x.location.path.as_ref()==Path::new("01_core/host-é.rs")&&x.location.column==0));
+    println!("PASS P6 V13 precedence/order/multiplicity/evidence/determinism");
+}
