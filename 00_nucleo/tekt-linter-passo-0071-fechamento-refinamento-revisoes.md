@@ -292,3 +292,7 @@ Auto-lint terminou com exit 0 e sem drift causal. O relatório detalhado está e
 A parada obrigatória foi alcançada. Windows, macOS, SHA-256, alternates, shallow e
 partial clone continuam sem evidência neste host; merge e atualização do binário não
 foram executados.
+
+Após autorização humana para continuar, foi preparada uma matriz CI específica em
+Ubuntu, macOS e Windows. Seu resultado remoto permanece pendente; isso não equivale a
+evidência local inventada.
