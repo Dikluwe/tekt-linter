@@ -1,5 +1,5 @@
 # Prompt: TypeScript Parser (parsers/typescript)
-Hash do Código: 645bd7b3
+Hash do Código: e327c37f
 
 **Camada**: L3 (Infra)
 **Padrão**: Adapter over `tree-sitter-typescript`

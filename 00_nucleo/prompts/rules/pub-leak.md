@@ -1,5 +1,5 @@
 # Prompt: Rule V9 - Pub Leak (pub-leak)
-Hash do Código: 4feb24b1
+Hash do Código: b1969f24
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V9

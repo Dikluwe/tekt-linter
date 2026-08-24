@@ -1,5 +1,5 @@
 # Prompt: Types of Violations (violation-types)
-Hash do Código: c801f9fb
+Hash do Código: 5cdf39c4
 
 **Camada**: L1 (Core - Entities)
 **Criado em**: 2025-03-13

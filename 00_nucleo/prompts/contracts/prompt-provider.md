@@ -1,5 +1,5 @@
 # Prompt: PromptProvider (prompt-provider)
-Hash do Código: 47bdf75f
+Hash do Código: b86132db
 
 **Camada**: L1 (Core — Contracts)
 **Criado em**: 2026-03-14 (ADR-0006)
@@ -45,7 +45,7 @@ pub struct PromptEntry<'a> {
 /// Imutável durante toda a execução — seguro para acesso concorrente.
 #[derive(Debug)]
 pub struct AllPrompts<'a> {
-    pub entries: HashSet<PromptEntry<'a>>,
+    pub entries: BTreeSet<PromptEntry<'a>>,
 }
 
 impl<'a> AllPrompts<'a> {

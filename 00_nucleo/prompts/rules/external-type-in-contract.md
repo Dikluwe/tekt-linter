@@ -1,5 +1,5 @@
 # Prompt: Rule V14 — External Type In Contract (external-type-in-contract)
-Hash do Código: 6fb75aa9
+Hash do Código: f208b000
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V14

@@ -1,5 +1,5 @@
 # Prompt: Validador direcional de refinamento
-Hash do Código: dc19bcf0
+Hash do Código: ac51c390
 
 > **Estado:** VIGENTE — ADR-0019 aprovado pelo humano em 2026-08-23
 > **Camadas:** L1–L4

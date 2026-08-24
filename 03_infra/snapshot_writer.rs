@@ -1,9 +1,10 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/fix-hashes.md
-//! @prompt-hash 8b5b716b
+//! @prompt-hash 7933d862
 //! @layer L3
 //! @updated 2026-03-14
 
+use crate::infra::prompt_io::atomic_replace;
 use std::path::Path;
 
 /// Replace (or append) the `## Interface Snapshot` section in a prompt file.
@@ -13,14 +14,10 @@ pub fn write_snapshot(prompt_path: &Path, new_snapshot: &str) -> Result<(), Stri
         .map_err(|e| format!("Failed to read {}: {}", prompt_path.display(), e))?;
 
     let new_content = replace_snapshot_section(&content, new_snapshot);
-
-    let tmp_path = prompt_path.with_extension("crystalline-snap-tmp");
-    std::fs::write(&tmp_path, &new_content)
-        .map_err(|e| format!("Failed to write tmp file: {e}"))?;
-    std::fs::rename(&tmp_path, prompt_path).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp_path);
-        format!("Failed to rename tmp file: {e}")
-    })
+    let permissions = std::fs::metadata(prompt_path)
+        .map_err(|e| e.to_string())?
+        .permissions();
+    atomic_replace(prompt_path, new_content.as_bytes(), permissions)
 }
 
 /// Replace the `## Interface Snapshot` section with `new_snapshot`, or insert
@@ -29,7 +26,9 @@ fn replace_snapshot_section(content: &str, new_snapshot: &str) -> String {
     let lines: Vec<&str> = content.lines().collect();
 
     // Find existing snapshot section
-    let snapshot_start = lines.iter().position(|l| l.trim() == "## Interface Snapshot");
+    let snapshot_start = lines
+        .iter()
+        .position(|l| l.trim() == "## Interface Snapshot");
 
     if let Some(start) = snapshot_start {
         // Find the next `## ` heading after the snapshot section
@@ -107,7 +106,10 @@ mod tests {
         let result = replace_snapshot_section(content, SNAPSHOT);
         let snap_pos = result.find("## Interface Snapshot").unwrap();
         let hist_pos = result.find("## Histórico").unwrap();
-        assert!(snap_pos < hist_pos, "snapshot should appear before Histórico");
+        assert!(
+            snap_pos < hist_pos,
+            "snapshot should appear before Histórico"
+        );
     }
 
     #[test]

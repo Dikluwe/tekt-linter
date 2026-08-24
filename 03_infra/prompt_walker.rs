@@ -1,11 +1,11 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/prompt-walker.md
-//! @prompt-hash 9428f1b8
+//! @prompt-hash 1dad4edb
 //! @layer L3
 //! @updated 2026-03-20
 
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::path::PathBuf;
 
 use walkdir::WalkDir;
@@ -69,7 +69,69 @@ impl PromptProvider for FsPromptWalker {
     fn scan<'a>(&'a self) -> Result<AllPrompts<'a>, PromptScanError> {
         let prompts_dir = self.project_root.join("00_nucleo").join("prompts");
 
-        if !prompts_dir.exists() {
+        let root_metadata = std::fs::symlink_metadata(&self.project_root).map_err(|source| {
+            PromptScanError::NucleoUnreadable {
+                path: self.project_root.clone(),
+                source,
+            }
+        })?;
+        if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+            return Err(PromptScanError::NucleoUnreadable {
+                path: self.project_root.clone(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "project root must be a local non-symlink directory",
+                ),
+            });
+        }
+        let canonical_root = self.project_root.canonicalize().map_err(|source| {
+            PromptScanError::NucleoUnreadable {
+                path: self.project_root.clone(),
+                source,
+            }
+        })?;
+        let nucleo_dir = self.project_root.join("00_nucleo");
+        for ancestor in [&nucleo_dir, &prompts_dir] {
+            let metadata = std::fs::symlink_metadata(ancestor).map_err(|source| {
+                PromptScanError::NucleoUnreadable {
+                    path: ancestor.to_path_buf(),
+                    source,
+                }
+            })?;
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Err(PromptScanError::NucleoUnreadable {
+                    path: ancestor.to_path_buf(),
+                    source: std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "prompt directory must be local and must not be a symlink",
+                    ),
+                });
+            }
+        }
+        let canonical_prompts =
+            prompts_dir
+                .canonicalize()
+                .map_err(|source| PromptScanError::NucleoUnreadable {
+                    path: prompts_dir.clone(),
+                    source,
+                })?;
+        if !canonical_prompts.starts_with(&canonical_root) {
+            return Err(PromptScanError::NucleoUnreadable {
+                path: prompts_dir.clone(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "prompt directory escapes project root",
+                ),
+            });
+        }
+
+        let metadata = std::fs::symlink_metadata(&prompts_dir).map_err(|source| {
+            PromptScanError::NucleoUnreadable {
+                path: prompts_dir.clone(),
+                source,
+            }
+        })?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
             return Err(PromptScanError::NucleoUnreadable {
                 path: prompts_dir.clone(),
                 source: std::io::Error::new(
@@ -79,15 +141,13 @@ impl PromptProvider for FsPromptWalker {
             });
         }
 
-        let mut entries: HashSet<PromptEntry<'a>> = HashSet::new();
+        let mut paths = Vec::new();
 
-        for result in WalkDir::new(&prompts_dir) {
-            // Entrada inacessível individualmente — saltar, não abortar.
-            // Apenas a falha de leitura do directório raiz (tratada acima) justifica Err.
-            let entry = match result {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
+        for result in WalkDir::new(&prompts_dir).follow_links(false) {
+            let entry = result.map_err(|error| PromptScanError::NucleoUnreadable {
+                path: error.path().unwrap_or(&prompts_dir).to_path_buf(),
+                source: std::io::Error::new(std::io::ErrorKind::Other, error.to_string()),
+            })?;
 
             if !entry.file_type().is_file() {
                 continue;
@@ -122,9 +182,17 @@ impl PromptProvider for FsPromptWalker {
                 continue;
             }
 
-            let interned = self.intern(relative);
-            entries.insert(PromptEntry { relative_path: interned });
+            paths.push(relative);
         }
+
+        paths.sort();
+        paths.dedup();
+        let entries: BTreeSet<PromptEntry<'a>> = paths
+            .into_iter()
+            .map(|relative| PromptEntry {
+                relative_path: self.intern(relative),
+            })
+            .collect();
 
         Ok(AllPrompts { entries })
     }
@@ -151,11 +219,14 @@ mod tests {
     #[test]
     fn scan_three_md_files_returns_three_entries() {
         let tmp = TempDir::new().unwrap();
-        let root = setup_nucleo(&tmp, &[
-            "00_nucleo/prompts/a.md",
-            "00_nucleo/prompts/b.md",
-            "00_nucleo/prompts/c.md",
-        ]);
+        let root = setup_nucleo(
+            &tmp,
+            &[
+                "00_nucleo/prompts/a.md",
+                "00_nucleo/prompts/b.md",
+                "00_nucleo/prompts/c.md",
+            ],
+        );
         let walker = FsPromptWalker::new(root, HashSet::new());
         let all = walker.scan().unwrap();
         assert_eq!(all.len(), 3);
@@ -164,12 +235,17 @@ mod tests {
     #[test]
     fn scan_excludes_orphan_exceptions() {
         let tmp = TempDir::new().unwrap();
-        let root = setup_nucleo(&tmp, &[
-            "00_nucleo/prompts/readme.md",
-            "00_nucleo/prompts/template.md",
-            "00_nucleo/prompts/linter-core.md",
-        ]);
-        let exceptions = ["00_nucleo/prompts/readme.md".to_string()].into_iter().collect();
+        let root = setup_nucleo(
+            &tmp,
+            &[
+                "00_nucleo/prompts/readme.md",
+                "00_nucleo/prompts/template.md",
+                "00_nucleo/prompts/linter-core.md",
+            ],
+        );
+        let exceptions = ["00_nucleo/prompts/readme.md".to_string()]
+            .into_iter()
+            .collect();
         let walker = FsPromptWalker::new(root, exceptions);
         let all = walker.scan().unwrap();
         assert_eq!(all.len(), 2);
@@ -179,9 +255,7 @@ mod tests {
     #[test]
     fn scan_nested_md_gets_relative_path() {
         let tmp = TempDir::new().unwrap();
-        let root = setup_nucleo(&tmp, &[
-            "00_nucleo/prompts/rules/v3.md",
-        ]);
+        let root = setup_nucleo(&tmp, &["00_nucleo/prompts/rules/v3.md"]);
         let walker = FsPromptWalker::new(root, HashSet::new());
         let all = walker.scan().unwrap();
         assert!(all.contains("00_nucleo/prompts/rules/v3.md"));
@@ -190,10 +264,10 @@ mod tests {
     #[test]
     fn scan_ignores_non_md_files() {
         let tmp = TempDir::new().unwrap();
-        let root = setup_nucleo(&tmp, &[
-            "00_nucleo/prompts/config.toml",
-            "00_nucleo/prompts/real.md",
-        ]);
+        let root = setup_nucleo(
+            &tmp,
+            &["00_nucleo/prompts/config.toml", "00_nucleo/prompts/real.md"],
+        );
         let walker = FsPromptWalker::new(root, HashSet::new());
         let all = walker.scan().unwrap();
         assert_eq!(all.len(), 1);
@@ -206,7 +280,10 @@ mod tests {
             PathBuf::from("/tmp/nonexistent_project_xyz"),
             HashSet::new(),
         );
-        assert!(matches!(walker.scan(), Err(PromptScanError::NucleoUnreadable { .. })));
+        assert!(matches!(
+            walker.scan(),
+            Err(PromptScanError::NucleoUnreadable { .. })
+        ));
     }
 
     #[test]
@@ -219,11 +296,10 @@ mod tests {
         assert_eq!(all.len(), 1);
     }
 
-    /// Entradas inacessíveis dentro de 00_nucleo/prompts/ devem ser saltadas,
-    /// não abortar o scan. Apenas falha de leitura do directório raiz aborta.
+    /// Entradas inacessíveis impedem afirmar completude e fecham o scan.
     #[test]
     #[cfg(unix)]
-    fn scan_continues_past_inaccessible_subdir() {
+    fn scan_fails_closed_on_inaccessible_subdir() {
         use std::os::unix::fs::PermissionsExt;
 
         let tmp = TempDir::new().unwrap();
@@ -241,8 +317,41 @@ mod tests {
         // Restaurar permissões antes de qualquer panic para que TempDir possa limpar
         let _ = fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755));
 
-        // O scan deve ter sucesso — entrada inacessível é saltada, não aborta
-        let all = result.unwrap();
-        assert!(all.contains("00_nucleo/prompts/visible.md"));
+        assert!(matches!(
+            result,
+            Err(PromptScanError::NucleoUnreadable { .. })
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scan_rejects_symlinked_prompts_root() {
+        use std::os::unix::fs::symlink;
+        let root = TempDir::new().unwrap();
+        let external = TempDir::new().unwrap();
+        fs::create_dir_all(root.path().join("00_nucleo")).unwrap();
+        fs::write(external.path().join("outside.md"), "# outside").unwrap();
+        symlink(external.path(), root.path().join("00_nucleo/prompts")).unwrap();
+        let walker = FsPromptWalker::new(root.path().to_path_buf(), HashSet::new());
+        assert!(matches!(
+            walker.scan(),
+            Err(PromptScanError::NucleoUnreadable { .. })
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scan_rejects_symlinked_project_root() {
+        use std::os::unix::fs::symlink;
+        let parent = TempDir::new().unwrap();
+        let real = TempDir::new().unwrap();
+        setup_nucleo(&real, &["00_nucleo/prompts/a.md"]);
+        let linked = parent.path().join("project");
+        symlink(real.path(), &linked).unwrap();
+        let walker = FsPromptWalker::new(linked, HashSet::new());
+        assert!(matches!(
+            walker.scan(),
+            Err(PromptScanError::NucleoUnreadable { .. })
+        ));
     }
 }

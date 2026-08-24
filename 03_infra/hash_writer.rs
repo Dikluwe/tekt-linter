@@ -1,28 +1,21 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/fix-hashes.md
-//! @prompt-hash 8b5b716b
+//! @prompt-hash 7933d862
 //! @layer L3
 //! @updated 2026-03-13
 
-use std::path::Path;
-use hex::encode;
+use crate::infra::prompt_io::{atomic_replace, eight_hex, replace_meta_line, without_meta_line};
 use sha2::{Digest, Sha256};
+use std::path::Path;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /// Compute SHA256[0..8] of the source file, ignoring its own `@prompt-hash` line.
 /// Returns None if the file cannot be read.
 pub fn compute_source_hash(path: &Path) -> Option<String> {
-    let content_raw = std::fs::read_to_string(path).ok()?;
-    
-    // Strip the meta line to avoid the hash paradox
-    let cleaned: Vec<&str> = content_raw.lines()
-        .filter(|line| !line.contains("@prompt-hash"))
-        .collect();
-        
-    let cleaned_content = cleaned.join("\n");
-    let hash = Sha256::digest(cleaned_content.as_bytes());
-    Some(encode(hash)[..8].to_string())
+    let bytes = std::fs::read(path).ok()?;
+    let cleaned = without_meta_line(&bytes, b"//! @prompt-hash ", true).ok()?;
+    Some(hex::encode(Sha256::digest(cleaned))[..8].to_string())
 }
 
 /// Read the `@prompt` path and current `@prompt-hash` value from a source file header.
@@ -38,68 +31,29 @@ pub fn read_header(path: &Path) -> Option<(String, String)> {
 /// Atomic strategy: write to a sibling temp file, then `std::fs::rename`.
 /// If rename fails, the temp file is cleaned up and the original is untouched.
 pub fn write_hash(path: &Path, new_hash: &str) -> Result<(), String> {
-    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-
-    let new_content = replace_hash_line(&content, new_hash)
-        .ok_or_else(|| "No @prompt-hash line found in file".to_string())?;
-
-    let dir = path.parent().ok_or_else(|| "File has no parent directory".to_string())?;
-    let tmp_path = dir.join(format!(".crystalline-tmp-{}", std::process::id()));
-
-    std::fs::write(&tmp_path, new_content.as_bytes()).map_err(|e| e.to_string())?;
-
-    std::fs::rename(&tmp_path, path).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp_path);
-        e.to_string()
-    })?;
-    Ok(())
+    if !eight_hex(new_hash) {
+        return Err("hash must be exactly eight lowercase hex digits".to_string());
+    }
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let permissions = std::fs::metadata(path)
+        .map_err(|e| e.to_string())?
+        .permissions();
+    let replaced = replace_meta_line(&bytes, b"//! @prompt-hash ", new_hash.as_bytes(), true)?;
+    atomic_replace(path, &replaced, permissions)
 }
 
-/// Inject "Hash do Código: <hash>" into the prompt file.
-/// Atomically replaces existing line or inserts it after the title.
+/// Atomically replace the authorized "Hash do Código: <hash>" prompt metadata.
 pub fn write_prompt_meta(path: &Path, code_hash: &str) -> Result<(), String> {
-    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
-    let mut found_idx = None;
-
-    for (i, line) in lines.iter().enumerate() {
-        if line.contains("Hash do Código:") {
-            found_idx = Some(i);
-            break;
-        }
+    if !eight_hex(code_hash) {
+        return Err("hash must be exactly eight lowercase hex digits".to_string());
     }
-
-    if let Some(idx) = found_idx {
-        lines[idx] = format!("Hash do Código: {}", code_hash);
-    } else {
-        // Insert after first heading or at top
-        let mut insert_idx = 0;
-        for (i, line) in lines.iter().enumerate() {
-            if line.starts_with("# ") {
-                insert_idx = i + 1;
-                break;
-            }
-        }
-        lines.insert(insert_idx, format!("Hash do Código: {}", code_hash));
-        if insert_idx < lines.len() - 1 && !lines[insert_idx + 1].trim().is_empty() {
-             lines.insert(insert_idx + 1, String::new());
-        }
-    }
-
-    let trailing_newline = if content.ends_with('\n') { "\n" } else { "" };
-    let new_content = format!("{}{}", lines.join("\n"), trailing_newline);
-
-    let dir = path.parent().ok_or_else(|| "File has no parent directory".to_string())?;
-    let tmp_path = dir.join(format!(".crystalline-p-tmp-{}", std::process::id()));
-
-    std::fs::write(&tmp_path, new_content.as_bytes()).map_err(|e| e.to_string())?;
-
-    std::fs::rename(&tmp_path, path).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp_path);
-        e.to_string()
-    })?;
-
-    Ok(())
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let permissions = std::fs::metadata(path)
+        .map_err(|e| e.to_string())?
+        .permissions();
+    let marker = "Hash do Código: ".as_bytes();
+    let replaced = replace_meta_line(&bytes, marker, code_hash.as_bytes(), true)?;
+    atomic_replace(path, &replaced, permissions)
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -125,6 +79,7 @@ fn parse_header(source: &str) -> Option<(String, String)> {
     Some((prompt_path?, old_hash))
 }
 
+#[cfg(test)]
 fn replace_hash_line(content: &str, new_hash: &str) -> Option<String> {
     let mut found = false;
 
@@ -252,6 +207,105 @@ fn foo() {}\n";
         let updated = fs::read_to_string(&path).unwrap();
         assert!(updated.contains("//! @prompt-hash a3f8c2d1"));
         assert!(!updated.contains("00000000"));
+    }
+
+    #[test]
+    fn write_hash_preserves_bom_crlf_and_permissions() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("layer.rs");
+        let original =
+            b"\xEF\xBB\xBF//! Crystalline Lineage\r\n//! @prompt-hash 12345678\r\nfn main() {}\r\n";
+        fs::write(&path, original).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+        }
+        write_hash(&path, "abcdef12").unwrap();
+        let updated = fs::read(&path).unwrap();
+        assert_eq!(
+            updated,
+            b"\xEF\xBB\xBF//! Crystalline Lineage\r\n//! @prompt-hash abcdef12\r\nfn main() {}\r\n"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o640
+            );
+        }
+    }
+
+    #[test]
+    fn write_prompt_meta_preserves_body_decoy() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_temp(
+            &dir,
+            "prompt.md",
+            "# Prompt\nHash do Código: 12345678\n\nA frase Hash do Código: aqui é conteúdo.\n",
+        );
+        write_prompt_meta(&path, "abcdef12").unwrap();
+        let updated = fs::read_to_string(path).unwrap();
+        assert!(updated.contains("Hash do Código: abcdef12"));
+        assert!(updated.contains("A frase Hash do Código: aqui é conteúdo."));
+    }
+
+    #[test]
+    fn write_prompt_meta_rejects_absent_meta_despite_body_substring_decoy() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_temp(
+            &dir,
+            "prompt.md",
+            "# Prompt\n\nA frase Hash do Código: aqui é conteúdo.\n",
+        );
+        let original = fs::read(&path).unwrap();
+        #[cfg(unix)]
+        let original_mode = {
+            use std::os::unix::fs::PermissionsExt;
+            fs::metadata(&path).unwrap().permissions().mode()
+        };
+        assert!(write_prompt_meta(&path, "abcdef12").is_err());
+        assert_eq!(fs::read(&path).unwrap(), original);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(&path).unwrap().permissions().mode(),
+                original_mode
+            );
+        }
+    }
+
+    #[test]
+    fn write_prompt_meta_preserves_crlf_exactly() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("prompt.md");
+        fs::write(
+            &path,
+            b"# Prompt\r\nHash do C\xC3\xB3digo: 12345678\r\n\r\nBody\r\n",
+        )
+        .unwrap();
+        write_prompt_meta(&path, "abcdef12").unwrap();
+        assert_eq!(
+            fs::read(path).unwrap(),
+            b"# Prompt\r\nHash do C\xC3\xB3digo: abcdef12\r\n\r\nBody\r\n"
+        );
+    }
+
+    #[test]
+    fn write_hash_never_replaces_body_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_temp(
+            &dir,
+            "layer.rs",
+            "//! @prompt-hash 12345678\nfn main() {}\n//! @prompt-hash deadbeef\n",
+        );
+        write_hash(&path, "abcdef12").unwrap();
+        assert_eq!(
+            fs::read_to_string(path).unwrap(),
+            "//! @prompt-hash abcdef12\nfn main() {}\n//! @prompt-hash deadbeef\n"
+        );
     }
 
     #[test]

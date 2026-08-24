@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 2745d75b
+//! @prompt-hash c67d1040
 //! @layer L3
 //! @updated 2025-03-13
 
@@ -10,6 +10,7 @@ pub mod cpp_parser;
 pub mod crate_registry;
 pub mod hash_writer;
 pub mod prompt_reader;
+pub mod prompt_io;
 pub mod prompt_snapshot_reader;
 pub mod prompt_walker;
 pub mod py_parser;

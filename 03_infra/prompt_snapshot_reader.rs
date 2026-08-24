@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/prompt-snapshot-reader.md
-//! @prompt-hash 70b7e5e9
+//! @prompt-hash 7238fc56
 //! @layer L3
 //! @updated 2026-03-14
 
@@ -9,9 +9,8 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::contracts::prompt_snapshot_reader::PromptSnapshotReader;
-use crate::entities::parsed_file::{
-    FunctionSignature, PublicInterface, TypeKind, TypeSignature,
-};
+use crate::entities::parsed_file::{FunctionSignature, PublicInterface, TypeKind, TypeSignature};
+use crate::infra::prompt_io::read_confined;
 
 // ── Owned intermediates for serde ─────────────────────────────────────────────
 //
@@ -21,6 +20,7 @@ use crate::entities::parsed_file::{
 // of the process; Box::leak is the documented pattern for prompt snapshots).
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct OwnedFunctionSignature {
     name: String,
     params: Vec<String>,
@@ -41,6 +41,7 @@ enum OwnedTypeKind {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct OwnedTypeSignature {
     name: String,
     kind: OwnedTypeKind,
@@ -48,6 +49,7 @@ struct OwnedTypeSignature {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct OwnedPublicInterface {
     functions: Vec<OwnedFunctionSignature>,
     types: Vec<OwnedTypeSignature>,
@@ -75,10 +77,10 @@ fn owned_to_static(owned: OwnedPublicInterface) -> PublicInterface<'static> {
             .map(|t| TypeSignature {
                 name: leak_str(t.name),
                 kind: match t.kind {
-                    OwnedTypeKind::Struct    => TypeKind::Struct,
-                    OwnedTypeKind::Enum      => TypeKind::Enum,
-                    OwnedTypeKind::Trait     => TypeKind::Trait,
-                    OwnedTypeKind::Class     => TypeKind::Class,
+                    OwnedTypeKind::Struct => TypeKind::Struct,
+                    OwnedTypeKind::Enum => TypeKind::Enum,
+                    OwnedTypeKind::Trait => TypeKind::Trait,
+                    OwnedTypeKind::Class => TypeKind::Class,
                     OwnedTypeKind::Interface => TypeKind::Interface,
                     OwnedTypeKind::TypeAlias => TypeKind::TypeAlias,
                 },
@@ -106,10 +108,10 @@ fn interface_to_owned(iface: &PublicInterface<'_>) -> OwnedPublicInterface {
             .map(|t| OwnedTypeSignature {
                 name: t.name.to_string(),
                 kind: match t.kind {
-                    TypeKind::Struct    => OwnedTypeKind::Struct,
-                    TypeKind::Enum      => OwnedTypeKind::Enum,
-                    TypeKind::Trait     => OwnedTypeKind::Trait,
-                    TypeKind::Class     => OwnedTypeKind::Class,
+                    TypeKind::Struct => OwnedTypeKind::Struct,
+                    TypeKind::Enum => OwnedTypeKind::Enum,
+                    TypeKind::Trait => OwnedTypeKind::Trait,
+                    TypeKind::Class => OwnedTypeKind::Class,
                     TypeKind::Interface => OwnedTypeKind::Interface,
                     TypeKind::TypeAlias => OwnedTypeKind::TypeAlias,
                 },
@@ -129,8 +131,13 @@ pub struct FsPromptSnapshotReader {
 
 impl PromptSnapshotReader for FsPromptSnapshotReader {
     fn read_snapshot(&self, prompt_path: &str) -> Option<PublicInterface<'static>> {
-        let full_path = self.nucleo_root.join(prompt_path);
-        let content = std::fs::read_to_string(&full_path).ok()?;
+        let bytes = read_confined(
+            &self.nucleo_root,
+            PathBuf::from(prompt_path).as_path(),
+            10 * 1024 * 1024,
+        )
+        .ok()?;
+        let content = std::str::from_utf8(&bytes).ok()?;
         let json = extract_snapshot_json(&content)?;
         let owned: OwnedPublicInterface = serde_json::from_str(&json).ok()?;
         Some(owned_to_static(owned))
@@ -150,14 +157,60 @@ impl PromptSnapshotReader for FsPromptSnapshotReader {
 
 /// Extract the JSON payload from the `<!-- crystalline-snapshot: {...} -->` line.
 pub fn extract_snapshot_json(content: &str) -> Option<String> {
-    content
-        .lines()
-        .find(|line| line.contains("crystalline-snapshot:"))
-        .and_then(|line| {
-            let start = line.find('{')?;
-            let end = line.rfind('}')? + 1;
-            Some(line[start..end].to_string())
-        })
+    let mut fence = None;
+    let mut section_count = 0;
+    let mut in_section = false;
+    let mut found = None;
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        let delimiter = if trimmed.starts_with("```") {
+            Some('`')
+        } else if trimmed.starts_with("~~~") {
+            Some('~')
+        } else {
+            None
+        };
+        if let Some(delimiter) = delimiter {
+            if fence == Some(delimiter) {
+                fence = None;
+            } else if fence.is_none() {
+                fence = Some(delimiter);
+            }
+            continue;
+        }
+        if fence.is_some() {
+            continue;
+        }
+        if line.trim() == "## Interface Snapshot" {
+            section_count += 1;
+            if section_count > 1 {
+                return None;
+            }
+            in_section = true;
+            continue;
+        }
+        if line.trim_start().starts_with("## ") {
+            in_section = false;
+            continue;
+        }
+        if !in_section
+            || !line.starts_with("<!-- crystalline-snapshot: ")
+            || !line.ends_with(" -->")
+        {
+            continue;
+        }
+        if found.is_some() {
+            return None;
+        }
+        let json = line
+            .strip_prefix("<!-- crystalline-snapshot: ")?
+            .strip_suffix(" -->")?;
+        if !json.starts_with('{') || !json.ends_with('}') {
+            return None;
+        }
+        found = Some(json.to_string());
+    }
+    (section_count == 1).then_some(found).flatten()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -169,7 +222,9 @@ mod tests {
     use tempfile::TempDir;
 
     fn make_reader(dir: &TempDir) -> FsPromptSnapshotReader {
-        FsPromptSnapshotReader { nucleo_root: dir.path().to_path_buf() }
+        FsPromptSnapshotReader {
+            nucleo_root: dir.path().to_path_buf(),
+        }
     }
 
     #[test]
@@ -198,7 +253,11 @@ mod tests {
     #[test]
     fn returns_none_when_no_snapshot_section() {
         let dir = TempDir::new().unwrap();
-        std::fs::write(dir.path().join("foo.md"), "# Some prompt\nno snapshot here\n").unwrap();
+        std::fs::write(
+            dir.path().join("foo.md"),
+            "# Some prompt\nno snapshot here\n",
+        )
+        .unwrap();
         let reader = make_reader(&dir);
         assert!(reader.read_snapshot("foo.md").is_none());
     }
@@ -217,7 +276,11 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let reader = make_reader(&dir);
         let iface = PublicInterface {
-            functions: vec![FunctionSignature { name: "check", params: vec![], return_type: None }],
+            functions: vec![FunctionSignature {
+                name: "check",
+                params: vec![],
+                return_type: None,
+            }],
             types: vec![],
             reexports: vec![],
         };
@@ -234,5 +297,31 @@ mod tests {
         let json = extract_snapshot_json(content);
         assert!(json.is_some());
         assert!(json.unwrap().contains("functions"));
+    }
+
+    #[test]
+    fn snapshot_rejects_duplicate_fenced_and_extra_fields() {
+        let marker =
+            "<!-- crystalline-snapshot: {\"functions\":[],\"types\":[],\"reexports\":[]} -->";
+        assert!(extract_snapshot_json(&format!("{marker}\n{marker}\n")).is_none());
+        assert!(extract_snapshot_json(&format!("```html\n{marker}\n```\n")).is_none());
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("extra.md"), "<!-- crystalline-snapshot: {\"functions\":[],\"types\":[],\"reexports\":[],\"extra\":true} -->\n").unwrap();
+        assert!(make_reader(&dir).read_snapshot("extra.md").is_none());
+    }
+
+    #[test]
+    fn snapshot_requires_one_section_and_ignores_tilde_fences() {
+        let marker =
+            "<!-- crystalline-snapshot: {\"functions\":[],\"types\":[],\"reexports\":[]} -->";
+        assert!(extract_snapshot_json(marker).is_none());
+        assert!(
+            extract_snapshot_json(&format!("## Interface Snapshot\n~~~html\n{marker}\n~~~\n"))
+                .is_none()
+        );
+        assert!(extract_snapshot_json(&format!(
+            "## Interface Snapshot\n{marker}\n## Interface Snapshot\n{marker}\n"
+        ))
+        .is_none());
     }
 }

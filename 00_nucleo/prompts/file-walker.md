@@ -1,5 +1,5 @@
 # Prompt: File Walker (file-walker)
-Hash do Código: 07bb04b5
+Hash do Código: 81b12b20
 
 **Camada**: L3 (Infra)
 **Padrão**: Filesystem Crawler

@@ -1,5 +1,5 @@
 # Prompt: Rule V8 - Alien File (alien-file)
-Hash do Código: 65009e66
+Hash do Código: 159c828c
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V8
