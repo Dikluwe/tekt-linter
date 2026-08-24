@@ -1,0 +1,113 @@
+// Probe final independente do P0077. `.txt` evita auto-lint como produção.
+use crystalline_lint::entities::layer::Layer;
+use crystalline_lint::entities::parsed_file::PromptHeader;
+use crystalline_lint::entities::rule_traits::{HasPromptFilesystem, HasPromptRefs};
+use crystalline_lint::entities::violation::ViolationLevel;
+use crystalline_lint::rules::{multi_prompt_header, prompt_header};
+use std::path::Path;
+
+struct V1File { layer: Layer, header: Option<PromptHeader<'static>>, exists: bool, path: &'static Path }
+impl HasPromptFilesystem<'static> for V1File {
+    fn layer(&self) -> &Layer { &self.layer }
+    fn prompt_header(&self) -> Option<&PromptHeader<'static>> { self.header.as_ref() }
+    fn prompt_file_exists(&self) -> bool { self.exists }
+    fn path(&self) -> &'static Path { self.path }
+}
+struct ExemptPanic { layer: Layer }
+impl HasPromptFilesystem<'static> for ExemptPanic {
+    fn layer(&self) -> &Layer { &self.layer }
+    fn prompt_header(&self) -> Option<&PromptHeader<'static>> { panic!("header evaluated after exemption") }
+    fn prompt_file_exists(&self) -> bool { panic!("exists evaluated after exemption") }
+    fn path(&self) -> &'static Path { panic!("strict/path evaluated after exemption") }
+}
+struct V15File { layer: Layer, refs: Vec<&'static str> }
+impl HasPromptRefs<'static> for V15File {
+    fn layer(&self) -> &Layer { &self.layer }
+    fn prompt_refs(&self) -> &[&'static str] { &self.refs }
+    fn path(&self) -> &'static Path { Path::new("01_core/v15.rs") }
+}
+fn header(path: &'static str) -> PromptHeader<'static> {
+    PromptHeader { prompt_path: path, prompt_hash: None, current_hash: None,
+                   layer: Layer::L1, updated: None }
+}
+fn layers() -> Vec<Layer> { vec![Layer::L0,Layer::L1,Layer::L2,Layer::L3,Layer::L4,Layer::Lab,Layer::Unknown] }
+fn required(l: &Layer) -> bool { matches!(l, Layer::L1|Layer::L2|Layer::L3|Layer::L4) }
+
+fn main() {
+    // P1: tabela 7 camadas x 3 estados disjuntos.
+    for layer in layers() {
+        for state in 0..3 {
+            let (h, exists) = match state {
+                0 => (None, false),
+                1 => (Some(header("00_nucleo/prompts/missing.md")), false),
+                _ => (Some(header("00_nucleo/prompts/existing.md")), true),
+            };
+            let f = V1File { layer: layer.clone(), header: h, exists, path: Path::new("src/file.rs") };
+            let v = prompt_header::check(&f, &[]);
+            let expected = usize::from(required(&layer) && state != 2);
+            assert_eq!(v.len(), expected, "layer={layer:?} state={state}");
+        }
+    }
+    println!("PASS P1 V1 exhaustive 7 layers x 3 states");
+
+    // P2: isenção precisa ocorrer antes de header/exists/path/strict cause.
+    for layer in [Layer::L0, Layer::Lab, Layer::Unknown] {
+        assert!(prompt_header::check(&ExemptPanic { layer }, &["strict".into()]).is_empty());
+    }
+    println!("PASS P2 exemption precedes header/exists/path/strict evaluation");
+
+    // P3: causas disjuntas e prompt_path literal, inclusive Unicode/controle representável.
+    let absent = V1File { layer: Layer::L2, header: None, exists: false, path: Path::new("02_shell/x.rs") };
+    let absent_msg = prompt_header::check(&absent, &[])[0].message.clone();
+    for hostile in ["00/p/é.md", "00/p/e\u{301}.md", "00/P/É.MD", "00/p/a\nb\t\0.md"] {
+        let f = V1File { layer: Layer::L2, header: Some(header(hostile)), exists: false,
+                         path: Path::new("02_shell/x.rs") };
+        let v = prompt_header::check(&f, &[]);
+        assert_eq!(v.len(), 1); assert_ne!(v[0].message, absent_msg);
+        assert!(v[0].message.contains(hostile));
+    }
+    println!("PASS P3 distinct causes and literal hostile prompt evidence");
+
+    // P4: strict dirs com fronteira de componentes e ambas as causas.
+    let strict = vec!["01_core/contracts".to_string()];
+    for (path, expected) in [
+        ("01_core/contracts", ViolationLevel::Fatal),
+        ("01_core/contracts/x.rs", ViolationLevel::Fatal),
+        ("01_core/contracts_extra/x.rs", ViolationLevel::Error),
+        ("01_core/contract/x.rs", ViolationLevel::Error),
+    ] {
+        for h in [None, Some(header("missing"))] {
+            let f = V1File { layer: Layer::L1, header: h, exists: false, path: Path::new(path) };
+            assert_eq!(prompt_header::check(&f, &strict)[0].level, expected);
+        }
+    }
+    println!("PASS P4 strict component policy for both causes");
+
+    // P5: cardinalidade, id, location e level nos quatro estratos aplicáveis.
+    for layer in [Layer::L1,Layer::L2,Layer::L3,Layer::L4] {
+        for (path, level) in [("strict/x.rs",ViolationLevel::Fatal),("other/x.rs",ViolationLevel::Error)] {
+            let f = V1File { layer: layer.clone(), header: Some(header("missing")), exists: false,
+                             path: Path::new(path) };
+            let v = prompt_header::check(&f, &["strict".into()]);
+            assert_eq!(v.len(), 1); assert_eq!(v[0].rule_id, "V1"); assert_eq!(v[0].level, level);
+            assert_eq!(v[0].location.path.as_ref(), Path::new(path));
+            assert_eq!((v[0].location.line, v[0].location.column), (1,0));
+        }
+    }
+    println!("PASS P5 V1 cardinality/id/location/level");
+
+    // P6: regressão curta V15 — mesmo escopo/limiar e evidência de duplicatas Unicode.
+    for layer in layers() { for count in 0..=2 {
+        let refs = ["é", "e\u{301}"][..count].to_vec();
+        let f = V15File { layer: layer.clone(), refs };
+        let v = multi_prompt_header::check(&f);
+        assert_eq!(v.len(), usize::from(required(&layer) && count == 2));
+        if count == 2 && required(&layer) {
+            assert!(v[0].message.contains("é, e\u{301}")); assert_eq!(v[0].level, ViolationLevel::Error);
+        }
+    }}
+    let duplicate = V15File { layer: Layer::L4, refs: vec!["é", "é", "e\u{301}"] };
+    let v = multi_prompt_header::check(&duplicate);
+    assert_eq!(v.len(), 1); assert!(v[0].message.contains("3 headers")); assert!(v[0].message.contains("é, é, e\u{301}"));
+    println!("PASS P6 V15 scope/threshold/Unicode/duplicate regression");
+}

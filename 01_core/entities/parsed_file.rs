@@ -305,6 +305,9 @@ use crate::entities::rule_traits::{
 };
 
 impl<'a> HasPromptFilesystem<'a> for ParsedFile<'a> {
+    fn layer(&self) -> &Layer {
+        &self.layer
+    }
     fn prompt_header(&self) -> Option<&PromptHeader<'a>> {
         self.prompt_header.as_ref()
     }
