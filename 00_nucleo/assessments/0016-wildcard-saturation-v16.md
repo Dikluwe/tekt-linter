@@ -5,7 +5,7 @@
 **Alvo:** `01_core/rules/wildcard_saturation.rs`
 **Baseline:** `2b7e19f775c66f8da5fc0fb14dc1464ec55b0bbf`
 **L0 autorizado:** `00_nucleo/prompts/rules/wildcard-saturation.md`
-**SHA-256 L0:** `eb359def7e6d4589bdbc102dc3880a95804117f3994bd80d2df6be8d1fc188c5`
+**SHA-256 L0:** `19f79428f1e7c9740ae7f2466f03bc82c22a5632a2388e5b2c587a3fa2588609`
 
 ## Escopo
 
