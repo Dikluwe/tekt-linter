@@ -3120,6 +3120,7 @@ fn main() {}
             member("proj_infra", "/proj/infra", Layer::L3, &["proj_wiring"]),
             member("proj_wiring", "/proj/wiring", Layer::L4, &[]),
         ])
+        .unwrap()
     }
 
     #[test]

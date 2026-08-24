@@ -46,7 +46,6 @@ fn permutations(values: &[usize]) -> Vec<Vec<usize>> {
 }
 
 #[test]
-#[ignore = "RED congelado: ordenação não desempata coluna, regra e mensagem"]
 fn total_sort_is_independent_of_input_permutation_under_all_ties() {
     let source = vec![
         violation("V2", ViolationLevel::Error, "z", Path::new("same.rs"), 4, 2),
@@ -85,7 +84,6 @@ fn total_sort_is_independent_of_input_permutation_under_all_ties() {
 }
 
 #[test]
-#[ignore = "SPEC-GAP congelado: falta política para representar paths Unix não UTF-8"]
 fn hostile_strings_round_trip_and_unix_paths_preserve_original_bytes() {
     let hostile = "quote=\" slash=/ backslash=\\ newline=\n carriage=\r tab=\t nul=\0 esc=\u{1b} separators=\u{2028}\u{2029} emoji=🧪 combining=e\u{301} bidi=\u{202e} NFC=é NFD=e\u{301}";
     let value = violation(
@@ -120,18 +118,34 @@ fn hostile_strings_round_trip_and_unix_paths_preserve_original_bytes() {
             },
         };
         let text = format_text(std::slice::from_ref(&value));
-        let sarif = format_sarif(&[value]);
-        let text_preserves = text
-            .as_bytes()
-            .windows(original.len())
-            .any(|bytes| bytes == original);
-        let sarif_preserves = sarif
-            .as_bytes()
-            .windows(original.len())
-            .any(|bytes| bytes == original);
-        assert!(
-            text_preserves && sarif_preserves,
-            "non-UTF-8 path bytes were not preserved: text={text_preserves}, sarif={sarif_preserves}"
+        assert!(text.contains(r"a\xFFb.rs"), "text output: {text:?}");
+        let sarif: serde_json::Value = serde_json::from_str(&format_sarif(&[value])).unwrap();
+        assert_eq!(
+            sarif["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["artifactLocation"]
+                ["uri"],
+            "a%FFb.rs"
+        );
+
+        let percent = Violation {
+            location: Location {
+                path: Cow::Owned(Path::new("literal%name.rs").to_owned()),
+                line: 1,
+                column: 0,
+            },
+            ..violation(
+                "V1",
+                ViolationLevel::Error,
+                "percent",
+                Path::new("unused.rs"),
+                1,
+                0,
+            )
+        };
+        let sarif: serde_json::Value = serde_json::from_str(&format_sarif(&[percent])).unwrap();
+        assert_eq!(
+            sarif["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["artifactLocation"]
+                ["uri"],
+            "literal%25name.rs"
         );
     }
 }

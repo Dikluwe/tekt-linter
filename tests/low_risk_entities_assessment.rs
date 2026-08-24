@@ -46,7 +46,6 @@ fn projection(index: &ProjectIndex<'static>) -> Projection {
 }
 
 #[test]
-#[ignore = "RED congelado: alien_files torna merge dependente da ordem"]
 fn project_index_is_a_commutative_associative_monoid_across_all_fields() {
     let abc = reduce_locals([contribution("a"), contribution("b"), contribution("c")]);
     let cba = reduce_locals([contribution("c"), contribution("b"), contribution("a")]);

@@ -7,6 +7,7 @@ use crystalline_lint::rules::provenance_inventory::check_inventory;
 use crystalline_lint::rules::unsourced_constant::V21RuleConfig;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 fn member(name: &str, dir: &str, layer: Layer) -> MemberCrate {
     MemberCrate {
@@ -38,49 +39,22 @@ fn permutations<T: Clone>(values: &[T]) -> Vec<Vec<T>> {
 }
 
 #[test]
-#[ignore = "RED congelado: member_layer depende da ordem de nomes duplicados"]
 fn registry_lookups_are_invariant_under_permutation_and_duplicates() {
     let members = [
         member("same", "a", Layer::L1),
         member("same", "b", Layer::L3),
         member("unique", "c", Layer::L4),
     ];
-    let mut observed = BTreeLike::default();
     for permutation in permutations(&members) {
-        let registry = CrateRegistry::from_members(permutation);
-        observed.insert((
-            registry.member_layer("same"),
-            registry.member_layer("unique"),
-            registry.member_layer("absent"),
-        ));
+        assert!(CrateRegistry::from_members(permutation).is_err());
     }
-    assert_eq!(
-        observed.len(),
-        1,
-        "lookup changed with member order: {observed:?}"
-    );
 
     let identical = member("same", "a", Layer::L1);
-    let registry = CrateRegistry::from_members(vec![identical.clone(), identical]);
+    let registry = CrateRegistry::from_members(vec![identical.clone(), identical]).unwrap();
     assert_eq!(registry.member_layer("same"), Some(Layer::L1));
 }
 
-#[derive(Default, Debug)]
-struct BTreeLike(Vec<(Option<Layer>, Option<Layer>, Option<Layer>)>);
-
-impl BTreeLike {
-    fn insert(&mut self, value: (Option<Layer>, Option<Layer>, Option<Layer>)) {
-        if !self.0.contains(&value) {
-            self.0.push(value);
-        }
-    }
-    fn len(&self) -> usize {
-        self.0.len()
-    }
-}
-
 #[test]
-#[ignore = "RED congelado: empate de owner depende da ordem dos membros"]
 fn owner_is_deepest_and_ties_are_permutation_invariant() {
     let shallow = member("shallow", "ws/crates", Layer::L1);
     let deep = member("deep", "ws/crates/a", Layer::L3);
@@ -88,7 +62,7 @@ fn owner_is_deepest_and_ties_are_permutation_invariant() {
         vec![shallow.clone(), deep.clone()],
         vec![deep.clone(), shallow],
     ] {
-        let registry = CrateRegistry::from_members(order);
+        let registry = CrateRegistry::from_members(order).unwrap();
         let owner = registry
             .owner_of(Path::new("ws/crates/a/src/lib.rs"))
             .unwrap();
@@ -107,18 +81,9 @@ fn owner_is_deepest_and_ties_are_permutation_invariant() {
         member("tie-a", "ws/tied", Layer::L1),
         member("tie-b", "ws/tied", Layer::L4),
     ];
-    let owners: Vec<_> = permutations(&tied)
-        .into_iter()
-        .map(|order| {
-            let registry = CrateRegistry::from_members(order);
-            let owner = registry.owner_of(Path::new("ws/tied/src/lib.rs")).unwrap();
-            (owner.name.clone(), owner.dir.clone(), owner.layer.clone())
-        })
-        .collect();
-    assert!(
-        owners.windows(2).all(|pair| pair[0] == pair[1]),
-        "owner tie depended on input order: {owners:?}"
-    );
+    for order in permutations(&tied) {
+        assert!(CrateRegistry::from_members(order).is_err());
+    }
 }
 
 #[test]
@@ -143,17 +108,70 @@ dep-x = { package = "real-a", version = "1" }
 foo_bar = "1"
 foo-bar = "1"
 "#;
-    let a = parse_manifest(first).unwrap();
-    let b = parse_manifest(second).unwrap();
-    assert_eq!(a.name.as_deref(), Some("foo_bar"));
-    assert_eq!(a.name, b.name);
-    assert_eq!(a.deps, b.deps);
-    assert_eq!(
-        a.renames, b.renames,
-        "conflicting normalized rename changed with TOML order"
+    assert!(parse_manifest(first).is_err());
+    assert!(parse_manifest(second).is_err());
+}
+
+#[test]
+fn each_normalized_collision_class_is_rejected() {
+    assert!(CrateRegistry::from_members(vec![
+        member("foo-bar", "a", Layer::L1),
+        member("foo_bar", "b", Layer::L1),
+    ])
+    .is_err());
+
+    let dependency_collision = r#"
+[package]
+name = "owner"
+version = "0.1.0"
+[dependencies]
+foo-bar = "1"
+foo_bar = "2"
+"#;
+    assert!(parse_manifest(dependency_collision).is_err());
+
+    let rename_collision = r#"
+[package]
+name = "owner"
+version = "0.1.0"
+[dependencies]
+dep-x = { package = "real-a", version = "1" }
+dep_x = { package = "real-b", version = "1" }
+"#;
+    assert!(parse_manifest(rename_collision).is_err());
+}
+
+#[test]
+fn from_members_rejects_internal_dependency_and_rename_collisions() {
+    let mut dependency_collision = member("owner", "owner", Layer::L1);
+    dependency_collision.deps = HashSet::from(["foo-bar".to_owned(), "foo_bar".to_owned()]);
+    let dependency_rejected = CrateRegistry::from_members(vec![dependency_collision]).is_err();
+
+    let mut rename_collision = member("owner", "owner", Layer::L1);
+    rename_collision.renames = HashMap::from([
+        ("dep-x".to_owned(), "real-a".to_owned()),
+        ("dep_x".to_owned(), "real-b".to_owned()),
+    ]);
+    let rename_rejected = CrateRegistry::from_members(vec![rename_collision]).is_err();
+    assert!(
+        dependency_rejected && rename_rejected,
+        "from_members collision rejection: dependencies={dependency_rejected}, renames={rename_rejected}"
     );
-    assert!(a.deps.contains("foo_bar"));
-    assert!(a.deps.contains("dep_x"));
+}
+
+#[test]
+fn present_but_invalid_workspace_manifest_is_an_infrastructure_error() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(root.path().join("00_nucleo/prompts")).unwrap();
+    std::fs::write(root.path().join("Cargo.toml"), b"[workspace\nmembers = [\n").unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_crystalline-lint"))
+        .arg(root.path())
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
+    assert!(stderr.contains("infrastructure"));
+    assert!(stderr.contains("manifest"));
 }
 
 #[derive(Clone)]
@@ -199,7 +217,6 @@ fn constant(snippet: &'static str, cited: bool) -> SourceConstant<'static> {
 }
 
 #[test]
-#[ignore = "RED congelado: location do inventário depende da ordem dos arquivos"]
 fn inventory_is_permutation_invariant_and_applies_all_filters() {
     let eligible_z = File {
         path: Path::new("01_core/alpha/z.rs"),

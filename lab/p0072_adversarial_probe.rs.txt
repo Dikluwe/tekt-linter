@@ -1,0 +1,214 @@
+use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crystalline_lint::entities::layer::{Language, Layer};
+use crystalline_lint::entities::project_index::{LocalIndex, ProjectIndex};
+use crystalline_lint::entities::rule_traits::{ConstantKind, HasConstants, SourceConstant};
+use crystalline_lint::entities::violation::{Location, Violation, ViolationLevel};
+use crystalline_lint::infra::crate_registry::{CrateRegistry, MemberCrate};
+use crystalline_lint::infra::git_refinement::{
+    require_self_contained_object_database, resolve_commit,
+};
+use crystalline_lint::rules::provenance_inventory::check_inventory;
+use crystalline_lint::rules::unsourced_constant::V21RuleConfig;
+use crystalline_lint::shell::cli::sort_violations;
+use crystalline_lint::shell::path_encoding::{human_path, machine_path_uri};
+
+fn unique_temp(label: &str) -> PathBuf {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    std::env::temp_dir().join(format!("tekt-p0072-{label}-{}-{stamp}", std::process::id()))
+}
+
+fn local<'a>(alien: Option<&'a Path>) -> LocalIndex<'a> {
+    LocalIndex {
+        referenced_prompt: None,
+        alien_file: alien,
+        declared_traits: vec![],
+        implemented_traits: vec![],
+        blanket_impl_traits: vec![],
+    }
+}
+
+fn probe_d1() {
+    let a = Path::new("a.rs");
+    let z = Path::new("z.rs");
+    let mut direct = ProjectIndex::new();
+    direct.merge_local(local(Some(z)));
+    direct.merge_local(local(Some(a)));
+    direct.merge_local(local(Some(z)));
+    let mut left = ProjectIndex::new();
+    left.merge_local(local(Some(z)));
+    let mut right = ProjectIndex::new();
+    right.merge_local(local(Some(a)));
+    right.merge_local(local(Some(z)));
+    let partitioned = left.merge(right);
+    assert_eq!(direct.alien_files, vec![a, z]);
+    assert_eq!(direct.alien_files, partitioned.alien_files);
+    println!("PASS D1 canonical alien set");
+}
+
+fn violation(column: usize, rule: &str, message: &str) -> Violation<'static> {
+    Violation {
+        rule_id: rule.to_string(),
+        level: ViolationLevel::Warning,
+        message: message.to_string(),
+        location: Location {
+            path: Cow::Borrowed(Path::new("same.rs")),
+            line: 7,
+            column,
+        },
+    }
+}
+
+fn probe_d2() {
+    let mut values = vec![
+        violation(2, "V2", "a"),
+        violation(1, "V2", "b"),
+        violation(1, "V1", "z"),
+        violation(1, "V1", "a"),
+    ];
+    sort_violations(&mut values);
+    let keys: Vec<_> = values
+        .iter()
+        .map(|v| (v.location.column, v.rule_id.as_str(), v.message.as_str()))
+        .collect();
+    assert_eq!(
+        keys,
+        vec![(1, "V1", "a"), (1, "V1", "z"), (1, "V2", "b"), (2, "V2", "a")]
+    );
+    println!("PASS D2 total secondary tie-breakers");
+}
+
+fn probe_d3_public_constructor() {
+    let mut deps = HashSet::new();
+    deps.insert("foo-bar".to_string());
+    deps.insert("foo_bar".to_string());
+    let mut renames = HashMap::new();
+    renames.insert("dep-x".to_string(), "real-a".to_string());
+    renames.insert("dep_x".to_string(), "real-b".to_string());
+    let dir = unique_temp("member");
+    fs::create_dir_all(&dir).unwrap();
+    let member = MemberCrate {
+        name: "owner".to_string(),
+        dir: dir.clone(),
+        layer: Layer::L1,
+        deps,
+        renames,
+    };
+    match CrateRegistry::from_members(vec![member]) {
+        Err(_) => println!("PASS D3 from_members rejected normalized dep/rename collisions"),
+        Ok(registry) => {
+            let owner = registry.owner_of(&dir.join("src/lib.rs")).unwrap();
+            panic!(
+                "FAIL D3 collision survived: deps={:?}, renames={:?}",
+                owner.deps, owner.renames
+            );
+        }
+    }
+    fs::remove_dir_all(dir).unwrap();
+}
+
+struct InventoryFile {
+    path: &'static Path,
+    constants: Vec<SourceConstant<'static>>,
+}
+
+impl HasConstants<'static> for InventoryFile {
+    fn layer(&self) -> &Layer { &Layer::L1 }
+    fn constants(&self) -> &[SourceConstant<'static>] { &self.constants }
+    fn path(&self) -> &'static Path { self.path }
+    fn language(&self) -> &Language { &Language::Rust }
+}
+
+fn constant() -> SourceConstant<'static> {
+    SourceConstant {
+        kind: ConstantKind::FunctionNumberLiteral,
+        snippet: "10.5",
+        line: 1,
+        column: 0,
+        citation: None,
+        is_test_origin: false,
+        function_return_type: None,
+        is_in_binary_scaling: false,
+        context_var: None,
+        geometric_sink: None,
+        is_in_data_table: false,
+    }
+}
+
+fn probe_d4() {
+    let files = vec![
+        InventoryFile { path: Path::new("01_core/rules/z.rs"), constants: vec![constant()] },
+        InventoryFile { path: Path::new("01_core/rules/a.rs"), constants: vec![constant()] },
+    ];
+    let forward = check_inventory(&files, &V21RuleConfig::default());
+    let reversed: Vec<_> = files.into_iter().rev().collect();
+    let backward = check_inventory(&reversed, &V21RuleConfig::default());
+    assert_eq!(forward[0].location.path.as_ref(), Path::new("01_core/rules/a.rs"));
+    assert_eq!(forward[0].location.path, backward[0].location.path);
+    assert_eq!(forward[0].message, backward[0].message);
+    println!("PASS D4 canonical inventory location");
+}
+
+#[cfg(unix)]
+fn probe_d5_git_symlinks() {
+    use std::os::unix::fs::symlink;
+    let external = unique_temp("external-git");
+    let facade = unique_temp("facade-git");
+    fs::create_dir_all(&external).unwrap();
+    fs::create_dir_all(&facade).unwrap();
+    assert!(Command::new("git").args(["init", "-q"]).current_dir(&external).status().unwrap().success());
+    assert!(Command::new("git").args(["config", "user.email", "probe@example.invalid"]).current_dir(&external).status().unwrap().success());
+    assert!(Command::new("git").args(["config", "user.name", "P0072 Probe"]).current_dir(&external).status().unwrap().success());
+    fs::write(external.join("tracked"), "external object database\n").unwrap();
+    assert!(Command::new("git").args(["add", "tracked"]).current_dir(&external).status().unwrap().success());
+    assert!(Command::new("git").args(["commit", "-qm", "probe"]).current_dir(&external).status().unwrap().success());
+    symlink(external.join(".git"), facade.join(".git")).unwrap();
+
+    match require_self_contained_object_database(&facade) {
+        Err(error) => println!("PASS D5 .git symlink rejected: {error}"),
+        Ok(()) => {
+            let oid = resolve_commit(&facade, "HEAD")
+                .expect("FAIL D5 facade passed preflight but external HEAD was unreadable");
+            panic!("FAIL D5 .git symlink passed preflight and resolved external HEAD {oid}");
+        }
+    }
+    fs::remove_dir_all(facade).unwrap();
+    fs::remove_dir_all(external).unwrap();
+}
+
+#[cfg(not(unix))]
+fn probe_d5_git_symlinks() {
+    println!("SKIP D5 symlink probe: Unix-only fixture");
+}
+
+#[cfg(unix)]
+fn probe_d6() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+    let invalid = Path::new(OsStr::from_bytes(b"src/\xff%file.rs"));
+    assert_eq!(human_path(invalid), "src/\\xFF%file.rs");
+    assert_eq!(machine_path_uri(invalid), "src/%FF%25file.rs");
+    let hostile = Path::new("src/line\nbreak\u{1b}.rs");
+    let human = human_path(hostile);
+    assert!(human.contains('\n') && human.contains('\u{1b}'));
+    assert_eq!(machine_path_uri(hostile), "src/line%0Abreak%1B.rs");
+    println!("PASS D6 invalid bytes/% machine URI; NOTE human output retains newline and ESC");
+}
+
+#[cfg(not(unix))]
+fn probe_d6() {
+    println!("SKIP D6 Unix byte probe");
+}
+
+fn main() {
+    probe_d3_public_constructor();
+    probe_d5_git_symlinks();
+}

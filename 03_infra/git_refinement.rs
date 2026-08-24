@@ -47,8 +47,144 @@ fn git_command(repository: &Path) -> Command {
         .env("GIT_NO_LAZY_FETCH", "1")
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("GIT_NO_REPLACE_OBJECTS", "1")
+        .env_remove("GIT_OBJECT_DIRECTORY")
+        .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES")
+        .env_remove("GIT_COMMON_DIR")
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
         .env("GIT_PAGER", "cat");
     command
+}
+
+const SELF_CONTAINED_ERROR: &str = "refinement mode requires a self-contained object database";
+
+pub fn require_self_contained_object_database(repository: &Path) -> Result<(), String> {
+    let repository = repository.canonicalize().map_err(|error| {
+        format!("{SELF_CONTAINED_ERROR}; cannot resolve repository root: {error}")
+    })?;
+    let git_dir = repository.join(".git");
+    let git_metadata = std::fs::symlink_metadata(&git_dir).map_err(|error| {
+        format!(
+            "{SELF_CONTAINED_ERROR}; cannot inspect {}: {error}",
+            git_dir.display()
+        )
+    })?;
+    if git_metadata.file_type().is_symlink() || !git_metadata.is_dir() {
+        return Err(format!(
+            "{SELF_CONTAINED_ERROR}; linked worktrees, bare repositories and gitdir indirection are not supported"
+        ));
+    }
+    let canonical_git_dir = git_dir.canonicalize().map_err(|error| {
+        format!(
+            "{SELF_CONTAINED_ERROR}; cannot resolve {}: {error}",
+            git_dir.display()
+        )
+    })?;
+    if !canonical_git_dir.starts_with(&repository) {
+        return Err(format!(
+            "{SELF_CONTAINED_ERROR}; Git metadata escapes repository root"
+        ));
+    }
+    if git_dir.join("commondir").exists() {
+        return Err(format!(
+            "{SELF_CONTAINED_ERROR}; linked common directories are not supported"
+        ));
+    }
+    let objects = git_dir.join("objects");
+    let metadata = std::fs::symlink_metadata(&objects).map_err(|error| {
+        format!(
+            "{SELF_CONTAINED_ERROR}; cannot inspect {}: {error}",
+            objects.display()
+        )
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(format!(
+            "{SELF_CONTAINED_ERROR}; Git object metadata must be a local directory"
+        ));
+    }
+    let canonical_objects = objects.canonicalize().map_err(|error| {
+        format!(
+            "{SELF_CONTAINED_ERROR}; cannot resolve {}: {error}",
+            objects.display()
+        )
+    })?;
+    if !canonical_objects.starts_with(&canonical_git_dir) {
+        return Err(format!(
+            "{SELF_CONTAINED_ERROR}; Git object metadata escapes repository root"
+        ));
+    }
+    let info = objects.join("info");
+    match std::fs::symlink_metadata(&info) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Err(format!(
+                    "{SELF_CONTAINED_ERROR}; Git object metadata must be a local directory"
+                ));
+            }
+            let canonical = info.canonicalize().map_err(|error| {
+                format!(
+                    "{SELF_CONTAINED_ERROR}; cannot resolve {}: {error}",
+                    info.display()
+                )
+            })?;
+            if !canonical.starts_with(&canonical_objects) {
+                return Err(format!(
+                    "{SELF_CONTAINED_ERROR}; Git object metadata escapes repository root"
+                ));
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "{SELF_CONTAINED_ERROR}; cannot inspect {}: {error}",
+                info.display()
+            ))
+        }
+    }
+    for name in ["alternates", "http-alternates"] {
+        let path = git_dir.join("objects/info").join(name);
+        match std::fs::read(&path) {
+            Ok(bytes) if !bytes.is_empty() => {
+                return Err(format!(
+                    "{SELF_CONTAINED_ERROR}; {} is not empty",
+                    path.display()
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "{SELF_CONTAINED_ERROR}; cannot inspect {}: {error}",
+                    path.display()
+                ))
+            }
+        }
+    }
+    let config_path = git_dir.join("config");
+    let config = std::fs::read_to_string(&config_path).map_err(|error| {
+        format!(
+            "{SELF_CONTAINED_ERROR}; cannot inspect {}: {error}",
+            config_path.display()
+        )
+    })?;
+    for line in config.lines() {
+        let key = line
+            .split_once('=')
+            .map(|(key, _)| key)
+            .unwrap_or(line)
+            .trim();
+        let normalized: String = key
+            .chars()
+            .filter(|ch| !ch.is_whitespace() && *ch != '-' && *ch != '_')
+            .flat_map(char::to_lowercase)
+            .collect();
+        if normalized.contains("alternateobject") || normalized.contains("objectdirectory") {
+            return Err(format!(
+                "{SELF_CONTAINED_ERROR}; external object database configuration is not supported"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn checked(output: Output, operation: &str) -> Result<Vec<u8>, String> {
@@ -316,5 +452,35 @@ mod tests {
     fn option_like_ref_is_not_treated_as_an_option() {
         let error = resolve_commit(Path::new("."), "--help").unwrap_err();
         assert!(error.contains("rev-parse failed"));
+    }
+
+    #[test]
+    fn self_contained_preflight_distinguishes_empty_and_nonempty_alternates() {
+        let repository = tempfile::tempdir().unwrap();
+        let info = repository.path().join(".git/objects/info");
+        std::fs::create_dir_all(&info).unwrap();
+        std::fs::write(
+            repository.path().join(".git/config"),
+            "[core]\n\tbare = false\n",
+        )
+        .unwrap();
+        std::fs::write(info.join("alternates"), b"").unwrap();
+        require_self_contained_object_database(repository.path()).unwrap();
+        std::fs::write(info.join("alternates"), b"/external/objects\n").unwrap();
+        let error = require_self_contained_object_database(repository.path()).unwrap_err();
+        assert!(error.contains("self-contained object database"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn self_contained_preflight_rejects_git_directory_symlink() {
+        use std::os::unix::fs::symlink;
+        let repository = tempfile::tempdir().unwrap();
+        let external = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(external.path().join("objects/info")).unwrap();
+        std::fs::write(external.path().join("config"), "[core]\n\tbare = false\n").unwrap();
+        symlink(external.path(), repository.path().join(".git")).unwrap();
+        let error = require_self_contained_object_database(repository.path()).unwrap_err();
+        assert!(error.contains("self-contained object database"));
     }
 }

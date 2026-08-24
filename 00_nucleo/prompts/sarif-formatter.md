@@ -1,5 +1,5 @@
 # Prompt: SARIF & CLI Formatter (sarif-formatter)
-Hash do Código: 07653349
+Hash do Código: f5e78f95
 
 **Camada**: L2 (Shell)
 **Padrão**: CLI Controller e Presenter
