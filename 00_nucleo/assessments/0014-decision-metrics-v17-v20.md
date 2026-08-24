@@ -1,11 +1,11 @@
 # Assessment 0014 — classificadores mecânicos V17–V20
 
-**Estado:** CONGELADO PARA TRIAGEM SEGREGADA  
-**Data:** 2026-08-24  
+**Estado:** CONGELADO PARA TRIAGEM SEGREGADA
+**Data:** 2026-08-24
 **Alvos:** `compound_guard`, `range_pattern`, `or_pattern_alternatives`,
-`deep_pattern_nesting`  
-**Baseline:** `cea1e7013b8c6e6f61dbcef69a4d52a392e628de`  
-**L0 autorizado:** `00_nucleo/prompts/rules/wildcard-saturation.md`  
+`deep_pattern_nesting`
+**Baseline:** `cea1e7013b8c6e6f61dbcef69a4d52a392e628de`
+**L0 autorizado:** `00_nucleo/prompts/rules/wildcard-saturation.md`
 **SHA-256 L0:** `5941adf0c444a65e101224dacfdb1fea0cbafebf46a5a9ac6be5bed25063cc08`
 
 ## Natureza e limite

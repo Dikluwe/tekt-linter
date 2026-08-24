@@ -1,8 +1,8 @@
 # Assessment 0014 — revisão adversarial segregada V17–V20
 
-**Produtor:** `adversary/v17-v20/0014`  
-**Insumo L0 validado:** `00_nucleo/prompts/rules/wildcard-saturation.md`  
-**SHA-256:** `66c502de44ef21880a68fe798c74ef5f3a91b9fe7dd3e925c2722d99d25f6800`  
+**Produtor:** `adversary/v17-v20/0014`
+**Insumo L0 validado:** `00_nucleo/prompts/rules/wildcard-saturation.md`
+**SHA-256:** `66c502de44ef21880a68fe798c74ef5f3a91b9fe7dd3e925c2722d99d25f6800`
 **Resultado inicial:** `SPEC-GAP`
 
 ## Achados congelados
