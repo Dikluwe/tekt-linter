@@ -1,0 +1,15 @@
+id = "segregated-stable-variants"
+
+[[observable]]
+key = "stable.variants"
+language = "rust"
+file = "sample.rs"
+query = "(enum_item name: (type_identifier) @_name body: (enum_variant_list) @value (#eq? @_name \"Stable\"))"
+capture = "value"
+cardinality = "one"
+on_missing = "unknown"
+
+[[relation]]
+kind = "preserve"
+source = "stable.variants"
+target = "stable.variants"
