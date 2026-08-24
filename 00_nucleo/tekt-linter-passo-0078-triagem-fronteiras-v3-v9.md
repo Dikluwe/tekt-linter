@@ -1,7 +1,7 @@
 # Passo operacional 0078 — triagem segregada das fronteiras V3/V9
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** escrito, não executado
+> **Estado:** executado; RED congelado no assessment 0010
 > **Branch:** `codex/segregated-materialization`
 > **Contrato permanente:** assessment 0010
 
