@@ -1,11 +1,12 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/language-parser.md
-//! @prompt-hash 23466e31
+//! @prompt-hash 7d8e000a
 //! @layer L1
 //! @updated 2026-03-13
 
 use crate::contracts::file_provider::SourceFile;
 use crate::contracts::parse_error::ParseError;
+use crate::entities::layer::Language;
 use crate::entities::parsed_file::ParsedFile;
 
 /// Boundary between L3 (tree-sitter grammar) and L1 (rules).
@@ -14,6 +15,74 @@ use crate::entities::parsed_file::ParsedFile;
 /// from the source buffer — zero-copy per ADR-0004.
 pub trait LanguageParser {
     fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError>;
+}
+
+/// Pure L1 decision identifying which language port must receive a source file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParserSlot {
+    Rust,
+    TypeScript,
+    Python,
+    C,
+    Cpp,
+    Zig,
+    Go,
+    Java,
+    Elixir,
+}
+
+/// Maps the closed domain language enum to its parser port without consulting L3.
+pub fn parser_slot(language: &Language) -> Option<ParserSlot> {
+    match language {
+        Language::Rust => Some(ParserSlot::Rust),
+        Language::TypeScript => Some(ParserSlot::TypeScript),
+        Language::Python => Some(ParserSlot::Python),
+        Language::C => Some(ParserSlot::C),
+        Language::Cpp => Some(ParserSlot::Cpp),
+        Language::Zig => Some(ParserSlot::Zig),
+        Language::Go => Some(ParserSlot::Go),
+        Language::Java => Some(ParserSlot::Java),
+        Language::Elixir => Some(ParserSlot::Elixir),
+        Language::Unknown => None,
+    }
+}
+
+/// Total set of language ports assembled by L4 from concrete L3 adapters.
+pub struct ParserSet<'p> {
+    pub rust: &'p dyn LanguageParser,
+    pub typescript: &'p dyn LanguageParser,
+    pub python: &'p dyn LanguageParser,
+    pub c: &'p dyn LanguageParser,
+    pub cpp: &'p dyn LanguageParser,
+    pub zig: &'p dyn LanguageParser,
+    pub go: &'p dyn LanguageParser,
+    pub java: &'p dyn LanguageParser,
+    pub elixir: &'p dyn LanguageParser,
+}
+
+impl ParserSet<'_> {
+    /// Routes once to the selected port and propagates its result unchanged.
+    pub fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
+        let parser = match parser_slot(&file.language) {
+            Some(ParserSlot::Rust) => self.rust,
+            Some(ParserSlot::TypeScript) => self.typescript,
+            Some(ParserSlot::Python) => self.python,
+            Some(ParserSlot::C) => self.c,
+            Some(ParserSlot::Cpp) => self.cpp,
+            Some(ParserSlot::Zig) => self.zig,
+            Some(ParserSlot::Go) => self.go,
+            Some(ParserSlot::Java) => self.java,
+            Some(ParserSlot::Elixir) => self.elixir,
+            None => {
+                return Err(ParseError::UnsupportedLanguage {
+                    path: file.path.clone(),
+                    language: file.language.clone(),
+                });
+            }
+        };
+
+        parser.parse(file)
+    }
 }
 
 #[cfg(test)]

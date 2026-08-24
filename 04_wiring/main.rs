@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 4f04c0c9
+//! @prompt-hash 48ec6e1d
 //! @layer L4
 //! @updated 2026-08-24
 
@@ -16,13 +16,11 @@ use crystalline_lint::contracts::citation_freshness::{
 use crystalline_lint::contracts::file_provider::{
     collect_walker_results, FileProvider, SourceError, SourceFile,
 };
-use crystalline_lint::contracts::language_parser::LanguageParser;
-use crystalline_lint::contracts::parse_error::ParseError;
+use crystalline_lint::contracts::language_parser::{LanguageParser, ParserSet};
 use crystalline_lint::contracts::prompt_provider::PromptProvider;
 use crystalline_lint::contracts::prompt_reader::PromptReader;
 use crystalline_lint::contracts::prompt_snapshot_reader::PromptSnapshotReader;
 use crystalline_lint::entities::l1_allowed_external::{L1AllowedExternal, L1AllowedExternalSet};
-use crystalline_lint::entities::layer::Language;
 use crystalline_lint::entities::parsed_file::{ParsedFile, PublicInterface, WiringConfig};
 use crystalline_lint::entities::project_index::{LocalIndex, ProjectIndex};
 use crystalline_lint::entities::refinement::{
@@ -859,8 +857,7 @@ fn main() {
 
 // ── MultiParser — L4 composition root ────────────────────────────────────────
 
-/// Selecciona parser por `file.language`. Linguagem não suportada →
-/// `ParseError::UnsupportedLanguage`. Zero lógica de negócio — pura composição.
+/// Owns the concrete L3 adapters. Routing policy remains in the L1 `ParserSet`.
 struct MultiParser {
     rust: RustParser<
         std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>,
@@ -901,22 +898,22 @@ struct MultiParser {
 }
 
 impl LanguageParser for MultiParser {
-    fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
-        match file.language {
-            Language::Rust => self.rust.parse(file),
-            Language::TypeScript => self.ts.parse(file),
-            Language::Python => self.py.parse(file),
-            Language::C => self.c.parse(file),
-            Language::Cpp => self.cpp.parse(file),
-            Language::Zig => self.zig.parse(file),
-            Language::Go => self.go.parse(file),
-            Language::Java => self.java.parse(file),
-            Language::Elixir => self.elixir.parse(file),
-            _ => Err(ParseError::UnsupportedLanguage {
-                path: file.path.clone(),
-                language: file.language.clone(),
-            }),
+    fn parse<'a>(
+        &self,
+        file: &'a SourceFile,
+    ) -> Result<ParsedFile<'a>, crystalline_lint::contracts::parse_error::ParseError> {
+        ParserSet {
+            rust: &self.rust,
+            typescript: &self.ts,
+            python: &self.py,
+            c: &self.c,
+            cpp: &self.cpp,
+            zig: &self.zig,
+            go: &self.go,
+            java: &self.java,
+            elixir: &self.elixir,
         }
+        .parse(file)
     }
 }
 
