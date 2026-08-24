@@ -288,7 +288,14 @@ fn order_cardinality_and_isolation() {
     x.or_alternatives = u16::MAX;
     x.body_form = BodyForm::ErrorBarrier;
     x.body_snippet = "noise";
-    let m = compound_guard::check(&f("unicodé/路径.rs", vec![e(vec![x])])).remove(0);
+    let mut changed_expr = e(vec![x]);
+    changed_expr.snippet_scrutinee = "changed scrutinee";
+    changed_expr.scrutinee_form = ScrutineeForm::Tuple;
+    changed_expr.line = usize::MAX;
+    changed_expr.column = usize::MAX;
+    let mut changed_file = f("unicodé/路径.rs", vec![changed_expr]);
+    changed_file.layer = Layer::L1;
+    let m = compound_guard::check(&changed_file).remove(0);
     assert_eq!(
         (b.rule_id, b.level, b.message, b.location),
         (m.rule_id, m.level, m.message, m.location)
@@ -401,7 +408,9 @@ fn v18_systematic_irrelevant_field_mutation_preserves_entire_diagnostic() {
     changed_expr.scrutinee_form = ScrutineeForm::Tuple;
     changed_expr.line = usize::MAX;
     changed_expr.column = usize::MAX;
-    let mutated = range_pattern::check(&f("src/domain.rs", vec![changed_expr])).remove(0);
+    let mut changed_file = f("src/domain.rs", vec![changed_expr]);
+    changed_file.layer = Layer::L1;
+    let mutated = range_pattern::check(&changed_file).remove(0);
     same_diagnostic(&baseline, &mutated);
 }
 
@@ -428,7 +437,9 @@ fn v19_systematic_irrelevant_field_mutation_preserves_entire_diagnostic() {
     changed_expr.scrutinee_form = ScrutineeForm::Tuple;
     changed_expr.line = usize::MAX;
     changed_expr.column = usize::MAX;
-    let mutated = or_pattern_alternatives::check(&f("src/domain.rs", vec![changed_expr])).remove(0);
+    let mut changed_file = f("src/domain.rs", vec![changed_expr]);
+    changed_file.layer = Layer::L1;
+    let mutated = or_pattern_alternatives::check(&changed_file).remove(0);
     same_diagnostic(&baseline, &mutated);
 }
 
@@ -452,6 +463,8 @@ fn v20_systematic_irrelevant_field_mutation_preserves_entire_diagnostic() {
     changed_expr.snippet_scrutinee = "changed scrutinee";
     changed_expr.line = usize::MAX;
     changed_expr.column = usize::MAX;
-    let mutated = deep_pattern_nesting::check(&f("src/domain.rs", vec![changed_expr])).remove(0);
+    let mut changed_file = f("src/domain.rs", vec![changed_expr]);
+    changed_file.layer = Layer::L1;
+    let mutated = deep_pattern_nesting::check(&changed_file).remove(0);
     same_diagnostic(&baseline, &mutated);
 }
