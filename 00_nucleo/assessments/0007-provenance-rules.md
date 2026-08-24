@@ -1,6 +1,6 @@
 # Assessment 0007 — regras puras de proveniência V5/V6/V7
 
-**Estado:** RED CONGELADO — requer saneamento separado
+**Estado:** SANEADO PELO P0075 — gate 6/6
 **Data:** 2026-08-24
 **Alvos:** `prompt_drift.rs`, `prompt_stale.rs`, `orphan_prompt.rs`
 
@@ -64,3 +64,10 @@ ordem determinística foram congeladas explicitamente nas alegações 4 e 6.
 
 A parada foi cumprida: a produção L1 não foi alterada. O próximo ato é um contrato de
 saneamento que defina diferença de multiconjuntos e uma ordem total para assinaturas.
+
+## Fechamento P0075
+
+O saneamento posterior implementou cancelamento ocorrência a ocorrência nas três
+famílias e ordenação canônica dos seis grupos. O gate endurecido passou 6/6 e o
+adversário independente encerrou com **NÃO REABRIR**. A evidência RED acima permanece
+como histórico causal; não descreve mais o comportamento do branch após P0075.

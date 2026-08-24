@@ -1,7 +1,7 @@
 # Passo operacional 0075 — saneamento determinístico do delta V6
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** escrito, não executado
+> **Estado:** executado; gate local concluído
 > **Branch:** `codex/segregated-materialization`
 > **Base:** assessment 0007, commits `9dcad86` e `7301a71`
 
