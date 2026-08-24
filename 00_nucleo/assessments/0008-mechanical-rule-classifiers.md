@@ -1,6 +1,6 @@
 # Assessment 0008 — classificadores mecânicos V2/V8/V10/V11
 
-**Estado:** CONGELADO PARA TRIAGEM
+**Estado:** RED CONGELADO — requer saneamento separado
 **Data:** 2026-08-24
 **Alvos:** `test_file.rs`, `alien_file.rs`, `quarantine_leak.rs`,
 `dangling_contract.rs`
@@ -44,3 +44,15 @@ L3 não devem ser reimplementadas no teste. Resultado por alegação: `PASS`, `R
 
 Se houver RED, registrar evidência e parar antes de alterar L1. Se tudo passar, emitir
 laudo de triagem e avançar. Não fazer merge, instalação ou release.
+
+## Resultado da triagem
+
+O gate B terminou em 5 PASS / 1 RED / 0 ignored. V2, V8 e V10 passaram integralmente;
+V11 calcula corretamente `declared - (implemented ∪ blanket)`, preserva nível e
+representações textuais, mas emite diretamente na ordem de um `HashSet`.
+
+O adversário C, sem ler o gate, construiu 128 índices semanticamente idênticos e observou
+128 sequências públicas distintas. O achado viola a alegação 5 sem `SPEC-GAP`.
+
+A produção permaneceu intacta. O saneamento seguinte deve ordenar textualmente as traits
+pendentes antes de materializar violações, preservando distinções byte-sensitive.
