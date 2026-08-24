@@ -352,6 +352,58 @@ V25 cobre owner duplicado, proxy e canonicalizador após marco resolvido. A prim
 versão é intraprocedural e Rust-only. Configuração incompleta, destino não suportado ou
 IDs duplicados falham como erro de configuração.
 
+### Comparar snapshots por refinamento
+
+```bash
+crystalline-lint refine \
+  --before before.refinement.json \
+  --after after.refinement.json \
+  --contract refinement.toml \
+  --format text
+```
+
+Snapshot JSON, com ausência conhecida diferente de evidência desconhecida:
+
+```json
+{
+  "format_version": 1,
+  "artifact_id": "before",
+  "extractor_version": "manual-1",
+  "observables": {
+    "style.variations": { "state": "known", "value": "wght=650" },
+    "decision.proxy": { "state": "absent" },
+    "macro.value": { "state": "unknown", "reason": "opaque-construction" }
+  }
+}
+```
+
+Contrato TOML:
+
+```toml
+id = "font-identity"
+
+[[relation]]
+kind = "preserve"
+source = "style.variations"
+target = "identity.variations"
+
+[[relation]]
+kind = "may-normalize"
+source = "style.weight"
+target = "identity.weight"
+accepted_targets = ["700"]
+
+[[relation]]
+kind = "must-not-invent"
+target = "decision.proxy"
+```
+
+Razões `unknown` aceitas: `missing-observable`, `ambiguous-identity`,
+`unsupported-parser`, `opaque-construction`, `partial-contract` e
+`budget-exhausted`. Exit codes: 0 preservado, 1 violado, 2 inconclusivo ou entrada
+inválida. O formato `sarif` usa `REFINEMENT` e `REFINEMENT_UNKNOWN` sem reservar um
+número `V*`.
+
 **Combinações inválidas (exit 1 imediato):**
 - `--dry-run` sem `--fix-hashes` ou `--update-snapshot`
 - `--fix-hashes` e `--update-snapshot` simultaneamente

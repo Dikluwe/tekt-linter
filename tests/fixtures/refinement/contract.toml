@@ -1,0 +1,6 @@
+id = "font-identity"
+
+[[relation]]
+kind = "preserve"
+source = "style.variations"
+target = "identity.variations"

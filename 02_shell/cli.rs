@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/sarif-formatter.md
-//! @prompt-hash 45623d9f
+//! @prompt-hash aa51b72f
 //! @layer L2
 //! @updated 2026-03-22
 
@@ -19,6 +19,9 @@ use crate::entities::violation::{Violation, ViolationLevel};
 #[derive(Parser, Debug)]
 #[command(name = "crystalline-lint", about = "Crystalline Architecture Linter")]
 pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<crate::shell::refinement::Command>,
+
     /// Project root to analyse
     #[arg(default_value = ".")]
     pub path: PathBuf,
@@ -643,6 +646,7 @@ mod tests {
 
     fn base_cli() -> Cli {
         Cli {
+            command: None,
             path: PathBuf::from("."),
             format: OutputFormat::Text,
             fail_on: FailLevel::Error,

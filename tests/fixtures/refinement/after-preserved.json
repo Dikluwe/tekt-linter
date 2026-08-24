@@ -1,0 +1,8 @@
+{
+  "format_version": 1,
+  "artifact_id": "after-preserved",
+  "extractor_version": "fixture-1",
+  "observables": {
+    "identity.variations": { "state": "known", "value": "wght=650" }
+  }
+}

@@ -1,5 +1,5 @@
 # Prompt: Crystalline Linter (crystalline-lint)
-Hash do Código: 95675242
+Hash do Código: 54c7ce55
 
 **Camada**: L1 → L4 (sistema completo)
 **Criado em**: 2025-03-13
@@ -687,6 +687,13 @@ sob contratos `[[semantic.context]]`, `[[semantic.projection]]` e
 `[[semantic.decision]]`. Entram na seleção `all`, mas configuração vazia produz zero
 diagnósticos. O parser extrai observações AST genéricas e L1 decide a violação; nomes do
 Typst e inferência nominal de tipos são proibidos no núcleo. Nível padrão: Warning.
+
+## Validação direcional de refinamento (ADR-0019)
+
+O subcomando `refine` compara dois snapshots explícitos sob contrato finito e produz
+`Preserved`, `Violated(Witness)` ou `Unknown(reason)`. L1 contém o comparador puro; L3
+lê JSON/TOML; L2 apresenta texto/SARIF; L4 apenas compõe. Exit codes 0/1/2,
+respectivamente. A Etapa A não lê Git, não executa comandos e não usa SMT.
 
 ## Histórico de Revisões
 

@@ -1,5 +1,5 @@
 # Prompt: SARIF & CLI Formatter (sarif-formatter)
-Hash do Código: 9cc62545
+Hash do Código: 07653349
 
 **Camada**: L2 (Shell)
 **Padrão**: CLI Controller e Presenter
@@ -22,6 +22,10 @@ reescrevem arquivos do projeto. Atualmente: `--fix-hashes` e
 ---
 
 ## Responsabilidades CLI
+
+O comando principal pode delegar o subcomando `refine` aos tipos e formatadores
+definidos pelo prompt `refinement-validator.md`. `cli.rs` apenas expõe o enum delegado;
+o formato e a política 0/1/2 do refinamento não pertencem ao catálogo V0–V25.
 
 A camada Shell define e consome o framework de argumento `clap`
 para capturar as intenções do usuário. Traduz interações impuras
