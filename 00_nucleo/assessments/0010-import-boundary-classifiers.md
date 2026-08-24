@@ -1,6 +1,6 @@
 # Assessment 0010 — classificadores de fronteira V3/V9
 
-**Estado:** RED CONGELADO — requer saneamento separado
+**Estado:** SANEADO PELO P0079 — gate 6/6
 **Data:** 2026-08-24
 **Alvos:** `forbidden_import.rs`, `pub_leak.rs`
 
@@ -54,3 +54,9 @@ Assim, consumidores e agentes não conseguem recuperar qual fronteira foi rejeit
 Não há `SPEC-GAP`: a alegação 6 exige evidência completa da decisão. A produção ficou
 intacta. O saneamento seguinte deve incluir literalmente `target_subdir` na mensagem,
 sem alterar pertinência, cardinalidade ou política de portas.
+
+## Fechamento P0079
+
+V9 passou a transportar literalmente o `target_subdir` rejeitado na mensagem. O gate
+endurecido passou 6/6 e o adversário encerrou com **NÃO REABRIR**. A matriz e a
+evidência de V3 permaneceram verdes. O RED acima fica preservado como histórico causal.

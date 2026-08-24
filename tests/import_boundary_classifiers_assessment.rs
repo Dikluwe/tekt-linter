@@ -248,7 +248,7 @@ fn v9_guard_kinds_multiplicity_order_and_evidence_match_v3_guarantees() {
     let source = Path::new("03_infra/á/源.rs");
     let imports = vec![
         import(
-            "crate::α",
+            "crate::same",
             7,
             ImportKind::Direct,
             Layer::L1,
@@ -256,23 +256,47 @@ fn v9_guard_kinds_multiplicity_order_and_evidence_match_v3_guarantees() {
             false,
         ),
         import(
-            "crate::α",
+            "crate::same",
             7,
             ImportKind::Glob,
             Layer::L1,
-            Some("内部"),
+            Some("Á"),
             false,
         ),
         import(
-            "crate::β",
-            2,
+            "crate::same",
+            7,
             ImportKind::Alias,
+            Layer::L1,
+            Some("A\u{301}"),
+            false,
+        ),
+        import(
+            "crate::same",
+            7,
+            ImportKind::Named,
+            Layer::L1,
+            Some(""),
+            false,
+        ),
+        import(
+            "crate::test",
+            2,
+            ImportKind::Direct,
             Layer::L1,
             Some("internal"),
             true,
         ),
         import(
-            "crate::γ",
+            "crate::none",
+            13,
+            ImportKind::Direct,
+            Layer::L1,
+            None,
+            false,
+        ),
+        import(
+            "crate::safe",
             11,
             ImportKind::Named,
             Layer::L1,
@@ -287,19 +311,19 @@ fn v9_guard_kinds_multiplicity_order_and_evidence_match_v3_guarantees() {
         path: source,
     };
     let production = pub_leak::check(&fixture, &configured, false);
-    assert_eq!(production.len(), 2);
+    assert_eq!(production.len(), 4);
     assert_eq!(
         production
             .iter()
             .map(|v| v.location.line)
             .collect::<Vec<_>>(),
-        vec![7, 7]
+        vec![7, 7, 7, 7]
     );
     let all = pub_leak::check(&fixture, &configured, true);
-    assert_eq!(all.len(), 3);
+    assert_eq!(all.len(), 5);
     assert_eq!(
         all.iter().map(|v| v.location.line).collect::<Vec<_>>(),
-        vec![7, 7, 2]
+        vec![7, 7, 7, 7, 2]
     );
     for violation in &all {
         assert_eq!(violation.rule_id, "V9");
@@ -307,9 +331,11 @@ fn v9_guard_kinds_multiplicity_order_and_evidence_match_v3_guarantees() {
         assert_eq!(violation.location.path.as_ref(), source);
     }
     let expected_evidence = [
-        ("crate::α", "内部"),
-        ("crate::α", "内部"),
-        ("crate::β", "internal"),
+        ("crate::same", "内部"),
+        ("crate::same", "Á"),
+        ("crate::same", "A\u{301}"),
+        ("crate::same", ""),
+        ("crate::test", "internal"),
     ];
     let missing_evidence: Vec<_> = all
         .iter()
@@ -319,9 +345,14 @@ fn v9_guard_kinds_multiplicity_order_and_evidence_match_v3_guarantees() {
                 .then(|| (import_path, subdir, violation.message.clone()))
         })
         .collect();
+    let same_identity_messages: HashSet<_> = all[..4]
+        .iter()
+        .map(|violation| violation.message.as_str())
+        .collect();
     assert!(
-        missing_evidence.is_empty(),
-        "V9 messages lost classified evidence: {missing_evidence:?}"
+        missing_evidence.is_empty() && same_identity_messages.len() == 4,
+        "V9 evidence failures: missing={missing_evidence:?}, distinct_messages={}/4",
+        same_identity_messages.len()
     );
 
     let mut reversed = imports;
