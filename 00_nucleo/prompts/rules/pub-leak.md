@@ -1,5 +1,5 @@
 # Prompt: Rule V9 - Pub Leak (pub-leak)
-Hash do Código: 4feb24b1
+Hash do Código: eff86053
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V9
@@ -49,22 +49,21 @@ pub fn check<'a>(file: &ParsedFile<'a>, ports: &L1Ports) -> Vec<Violation<'a>> {
 
     file.imports.iter()
         .filter(|import| import.target_layer == Layer::L1)
-        .filter(|import| {
-            // Se subdir é None, é crate externa — não é V9
-            // Se subdir é Some mas não está nas portas — é V9
+        .filter_map(|import| {
             import.target_subdir
-                .map(|subdir| !ports.contains(subdir))
-                .unwrap_or(false)
+                .filter(|subdir| !ports.contains(subdir))
+                .map(|subdir| (import, subdir))
         })
-        .map(|import| Violation {
+        .map(|(import, target_subdir)| Violation {
             rule_id: "V9".to_string(),
             level: ViolationLevel::Error,
             message: format!(
                 "Vazamento de encapsulamento: '{}' importa '{}' \
-                 de subdiretório interno de L1. \
+                 de subdiretório interno de L1 '{}'. \
                  Use apenas as portas declaradas em [l1_ports].",
                 file.path.display(),
-                import.path
+                import.path,
+                target_subdir
             ),
             location: Location {
                 path: Cow::Borrowed(file.path),
@@ -75,6 +74,11 @@ pub fn check<'a>(file: &ParsedFile<'a>, ports: &L1Ports) -> Vec<Violation<'a>> {
         .collect()
 }
 ```
+
+A mensagem preserva literalmente tanto `import.path` quanto o `target_subdir`
+rejeitado que participou da decisão. Nenhum dos dois é inferido ou normalizado:
+caixa, Unicode, NFC/NFD, prefixos e string vazia permanecem identidades distintas.
+`target_subdir = None` continua isento e não recebe placeholder nem diagnóstico.
 
 `L1Ports` é injetado via L4 — lido de `crystalline.toml` por L3
 e passado como parâmetro. V9 nunca lê o toml diretamente.
@@ -107,6 +111,8 @@ Resolvido por L3 (RustParser) via mapeamento de `[layers]` e
 - Não inspeciona visibilidade Rust (`pub`/`pub(crate)`) —
   inspeciona apenas o path do import
 - Aplica-se apenas a L2 e L3 importando L1
+- A evidência V9 inclui literalmente o import path e o `target_subdir` rejeitado
+- Rule id, nível, localização, cardinalidade e ordem seguem inalterados
 
 ---
 
@@ -158,3 +164,4 @@ Então retorna vec![] — crate externa, target_subdir = None
 |------|--------|-------------------|
 | 2026-03-14 | Criação inicial (ADR-0006) | pub_leak.rs |
 | 2026-06-09 | 0061: param `check_test_imports` (default false) — guard pula imports test-origin (`#[cfg(test)]`) antes do filtro de subdir | pub_leak.rs |
+| 2026-08-24 | Mensagem V9 passa a preservar literalmente o target_subdir rejeitado junto ao import path | pub_leak.rs |

@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/sarif-formatter.md
-//! @prompt-hash c3c77a4b
+//! @prompt-hash cd9ff6ab
 //! @layer L2
 //! @updated 2026-03-22
 
@@ -13,6 +13,7 @@ use serde_json::json;
 use crate::entities::layer::Layer;
 use crate::entities::parsed_file::{ImportKind, ParsedFile};
 use crate::entities::violation::{Violation, ViolationLevel};
+use crate::shell::path_encoding::{human_path, machine_path_uri};
 
 // ── CLI args ──────────────────────────────────────────────────────────────────
 
@@ -195,7 +196,7 @@ pub fn format_text(violations: &[Violation<'_>]) -> String {
             level_str,
             v.message,
             v.rule_id.cyan(),
-            v.location.path.display(),
+            human_path(&v.location.path),
             v.location.line,
         ));
     }
@@ -215,7 +216,7 @@ pub fn format_sarif(violations: &[Violation<'_>]) -> String {
                 "locations": [{
                     "physicalLocation": {
                         "artifactLocation": {
-                            "uri": v.location.path.to_string_lossy()
+                            "uri": machine_path_uri(&v.location.path)
                         },
                         "region": {
                             "startLine": v.location.line,
@@ -263,7 +264,7 @@ pub fn format_resolution(
 ) -> String {
     let mut out = String::new();
     for file in parsed {
-        let source = file.path.to_string_lossy();
+        let source = machine_path_uri(file.path);
         let source_layer = layer_str(&file.layer);
         for import in &file.imports {
             let surface = first_segment(import.path);
@@ -514,6 +515,9 @@ pub fn sort_violations(violations: &mut Vec<Violation<'_>>) {
             .reverse()
             .then_with(|| a.location.path.cmp(&b.location.path))
             .then_with(|| a.location.line.cmp(&b.location.line))
+            .then_with(|| a.location.column.cmp(&b.location.column))
+            .then_with(|| a.rule_id.cmp(&b.rule_id))
+            .then_with(|| a.message.cmp(&b.message))
     });
 }
 
@@ -585,6 +589,39 @@ mod tests {
         assert_eq!(v[2].level, ViolationLevel::Warning);
         assert_eq!(v[2].location.line, 1); // a.rs:1 antes de b.rs:1
         assert_eq!(v[3].location.path.as_ref(), Path::new("b.rs"));
+    }
+
+    #[test]
+    fn violations_have_total_deterministic_tie_breakers() {
+        let make = |column, rule: &str, message: &str| Violation {
+            rule_id: rule.to_string(),
+            level: ViolationLevel::Warning,
+            message: message.to_string(),
+            location: Location {
+                path: Cow::Borrowed(Path::new("same.rs")),
+                line: 1,
+                column,
+            },
+        };
+        let mut violations = vec![
+            make(2, "V2", "a"),
+            make(1, "V2", "b"),
+            make(1, "V1", "z"),
+            make(1, "V1", "a"),
+        ];
+        sort_violations(&mut violations);
+        assert_eq!(
+            violations
+                .iter()
+                .map(|v| (v.location.column, v.rule_id.as_str(), v.message.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                (1, "V1", "a"),
+                (1, "V1", "z"),
+                (1, "V2", "b"),
+                (2, "V2", "a")
+            ]
+        );
     }
 
     #[test]

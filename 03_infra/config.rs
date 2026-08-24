@@ -1,11 +1,11 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 2745d75b
+//! @prompt-hash c67d1040
 //! @layer L3
 //! @updated 2026-06-09
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Component, Path};
 
 use serde::Deserialize;
 
@@ -298,8 +298,41 @@ impl CrystallineConfig {
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("Cannot read {}: {}", path.display(), e))?;
         let config: Self = toml::from_str(&content).map_err(|e| format!("Invalid TOML: {e}"))?;
+        config.validate_layers()?;
         config.validate_semantic_contracts()?;
         Ok(config)
+    }
+
+    fn validate_layers(&self) -> Result<(), String> {
+        const ALLOWED: &[&str] = &["L0", "L1", "L2", "L3", "L4", "lab", "Lab"];
+        if self.layers.contains_key("lab") && self.layers.contains_key("Lab") {
+            return Err("Invalid [layers]: `lab` and `Lab` aliases cannot coexist".to_string());
+        }
+        let mut directories = HashSet::new();
+        for (layer, directory) in &self.layers {
+            if !ALLOWED.contains(&layer.as_str()) {
+                return Err(format!("Invalid [layers] key `{layer}`"));
+            }
+            let path = Path::new(directory);
+            let valid_component = path.components().count() == 1
+                && matches!(path.components().next(), Some(Component::Normal(_)));
+            if directory.is_empty()
+                || path.is_absolute()
+                || directory.contains('/')
+                || directory.contains('\\')
+                || !valid_component
+            {
+                return Err(format!(
+                    "Invalid [layers] directory `{directory}` for `{layer}`"
+                ));
+            }
+            if !directories.insert(directory.as_str()) {
+                return Err(format!(
+                    "Invalid [layers]: directory `{directory}` is assigned more than once"
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn validate_semantic_contracts(&self) -> Result<(), String> {
@@ -771,5 +804,32 @@ sinks = ["draw"]
             .validate_semantic_contracts()
             .unwrap_err()
             .contains("Duplicate"));
+    }
+
+    #[test]
+    fn layers_reject_unknown_alias_collision_invalid_paths_and_duplicates() {
+        let invalid = [
+            vec![("L5", "five")],
+            vec![("lab", "lab"), ("Lab", "Lab")],
+            vec![("L1", "")],
+            vec![("L1", "/absolute")],
+            vec![("L1", ".")],
+            vec![("L1", "..")],
+            vec![("L1", "nested/path")],
+            vec![("L1", "nested\\path")],
+            vec![("L1", "same"), ("L2", "same")],
+        ];
+        for entries in invalid {
+            let mut config = CrystallineConfig::default();
+            config.layers = entries
+                .into_iter()
+                .map(|(key, value)| (key.to_string(), value.to_string()))
+                .collect();
+            assert!(config.validate_layers().is_err());
+        }
+        let mut alias = CrystallineConfig::default();
+        alias.layers.remove("lab");
+        alias.layers.insert("Lab".to_string(), "lab".to_string());
+        assert!(alias.validate_layers().is_ok());
     }
 }

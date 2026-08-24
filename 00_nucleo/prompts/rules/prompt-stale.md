@@ -1,5 +1,5 @@
 # Prompt: Rule V6 - Prompt Stale (prompt-stale)
-Hash do Código: faa2925d
+Hash do Código: 2cf86141
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V6
@@ -107,35 +107,23 @@ pub fn check(file: &ParsedFile) -> Vec<Violation> {
 ## compute_delta — função pura em L1
 ```rust
 /// Computa diferença entre interface atual e snapshot do prompt.
-/// Usa PartialEq completo sobre FunctionSignature e TypeSignature —
-/// name + params + return_type devem ser todos iguais.
-/// Mudança de assinatura aparece como remoção + adição.
+/// Interpreta cada família como multiconjunto: cada ocorrência estruturalmente
+/// igual cancela no máximo uma ocorrência do outro lado. Depois, ordena os seis
+/// vetores do delta por uma chave total estável.
 pub fn compute_delta(
     current: &PublicInterface,
     snapshot: &PublicInterface,
 ) -> InterfaceDelta {
-    InterfaceDelta {
-        added_functions: current.functions.iter()
-            .filter(|f| !snapshot.functions.contains(f))
-            .cloned().collect(),
-        removed_functions: snapshot.functions.iter()
-            .filter(|f| !current.functions.contains(f))
-            .cloned().collect(),
-        added_types: current.types.iter()
-            .filter(|t| !snapshot.types.contains(t))
-            .cloned().collect(),
-        removed_types: snapshot.types.iter()
-            .filter(|t| !current.types.contains(t))
-            .cloned().collect(),
-        added_reexports: current.reexports.iter()
-            .filter(|r| !snapshot.reexports.contains(r))
-            .cloned().collect(),
-        removed_reexports: snapshot.reexports.iter()
-            .filter(|r| !current.reexports.contains(r))
-            .cloned().collect(),
-    }
+    // cancelamento por ocorrência + ordenação canônica de cada grupo
 }
 ```
+
+As funções ordenam lexicograficamente por `(name, params, return_type)`.
+Os tipos ordenam por `(name, kind_rank, members)`, usando o rank explícito e
+estável `Struct, Enum, Trait, Class, Interface, TypeAlias`. Reexports ordenam
+por texto. `params` e `members` não são reordenados nem normalizados: sua ordem
+integra a assinatura. Assim, mera permutação com as mesmas multiplicidades gera
+delta vazio; uma duplicata acrescentada ou removida gera exatamente uma entrada.
 
 `InterfaceDelta.describe()` produz string legível para a mensagem
 de violação. Ordem: adições antes de remoções, funções antes de
@@ -201,6 +189,8 @@ Violation {
 - Zero I/O — `public_interface` e `prompt_snapshot` chegam
   prontos via `ParsedFile`
 - `compute_delta` é função pura sobre dois `PublicInterface`
+- Cada família é comparada como multiconjunto, cancelando ocorrências uma a uma
+- Os seis vetores do delta saem em ordem total canônica e independente do parser
 - Comparação usa `PartialEq` derivado — inclui todos os campos
   de `FunctionSignature` e `TypeSignature`, nunca apenas `name`
 - V6 nunca lê o prompt diretamente — L3 faz isso
@@ -281,3 +271,4 @@ permitindo detecção de contradição inter-agente
 |------|--------|-------------------|
 | 2025-03-13 | Criação inicial | prompt_stale.rs |
 | 2025-03-13 | Critério de igualdade explicitado: assinatura completa via PartialEq, não apenas nome. Casos de teste de mudança de assinatura adicionados. compute_delta completo com implementação correta | prompt_stale.rs |
+| 2026-08-24 | Delta de multiconjuntos e ordenação canônica dos seis grupos, preservando a ordem interna de assinaturas | prompt_stale.rs |

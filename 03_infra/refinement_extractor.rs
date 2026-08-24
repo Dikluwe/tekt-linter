@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/refinement-validator.md
-//! @prompt-hash cc8920e0
+//! @prompt-hash 993e71ec
 //! @layer L3
 //! @updated 2026-08-24
 
@@ -76,12 +76,21 @@ pub fn load_observable_specs(path: &Path) -> Result<Vec<ObservableSpec>, String>
             path.display()
         )
     })?;
-    let dto: ExtractionContractDto = toml::from_str(&content)
-        .map_err(|error| format!("invalid refinement contract {}: {error}", path.display()))?;
+    load_observable_specs_from_bytes(content.as_bytes(), &path.display().to_string())
+}
+
+pub fn load_observable_specs_from_bytes(
+    content: &[u8],
+    source: &str,
+) -> Result<Vec<ObservableSpec>, String> {
+    let content = std::str::from_utf8(content)
+        .map_err(|_| format!("refinement contract {source} is not UTF-8"))?;
+    let dto: ExtractionContractDto = toml::from_str(content)
+        .map_err(|error| format!("invalid refinement contract {source}: {error}"))?;
     if dto.observable.is_empty() {
         return Err(format!(
             "refinement contract {} requires at least one [[observable]] for snapshot",
-            path.display()
+            source
         ));
     }
     let mut keys = HashSet::new();

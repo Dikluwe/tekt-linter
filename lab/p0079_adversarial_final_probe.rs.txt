@@ -1,0 +1,95 @@
+// Probe final independente do P0079. `.txt` evita auto-lint como produção.
+use crystalline_lint::entities::layer::Layer;
+use crystalline_lint::entities::parsed_file::{Import, ImportKind};
+use crystalline_lint::entities::rule_traits::{HasImports, HasPubLeak};
+use crystalline_lint::entities::violation::ViolationLevel;
+use crystalline_lint::rules::{forbidden_import, pub_leak};
+use std::collections::HashSet;
+use std::path::Path;
+
+struct File { layer: Layer, imports: Vec<Import<'static>>, path: &'static Path }
+impl HasImports<'static> for File {
+    fn layer(&self)->&Layer{&self.layer} fn imports(&self)->&[Import<'static>]{&self.imports}
+    fn path(&self)->&'static Path{self.path}
+}
+impl HasPubLeak<'static> for File {
+    fn layer(&self)->&Layer{&self.layer} fn imports(&self)->&[Import<'static>]{&self.imports}
+    fn path(&self)->&'static Path{self.path}
+}
+fn layers()->Vec<Layer>{vec![Layer::L0,Layer::L1,Layer::L2,Layer::L3,Layer::L4,Layer::Lab,Layer::Unknown]}
+fn imp(path:&'static str,line:usize,kind:ImportKind,target:Layer,subdir:Option<&'static str>,test:bool)->Import<'static>{
+    Import{path,line,kind,target_layer:target,target_subdir:subdir,is_test_origin:test}
+}
+fn v3_forbidden(source:&Layer,target:&Layer)->bool{match source{
+    Layer::L1=>matches!(target,Layer::L2|Layer::L3|Layer::L4|Layer::Lab),
+    Layer::L2=>matches!(target,Layer::L3|Layer::L4|Layer::Lab),
+    Layer::L3=>matches!(target,Layer::L2|Layer::L4|Layer::Lab),
+    Layer::L4=>matches!(target,Layer::Lab), _=>false}}
+
+fn main(){
+    // P1: pertinência integral 7 origens x 7 destinos x None/porta/rejeitado.
+    let ports=pub_leak::L1Ports::new(HashSet::from(["port".to_string()]));
+    for source in layers(){for target in layers(){for subdir in [None,Some("port"),Some("internal")]{
+        let f=File{layer:source.clone(),path:Path::new("src/x.rs"),imports:vec![imp("crate::x",1,ImportKind::Direct,target.clone(),subdir,false)]};
+        let expected=matches!(source,Layer::L2|Layer::L3)&&target==Layer::L1&&subdir==Some("internal");
+        assert_eq!(pub_leak::check(&f,&ports,false).len(),usize::from(expected),"{source:?}->{target:?}/{subdir:?}");
+    }}}
+    println!("PASS P1 V9 exhaustive pertinence matrix");
+
+    // P2: mesmo import path/linha, subdirs distintos, violações distinguíveis.
+    let ports=pub_leak::L1Ports::new(HashSet::new());
+    let f=File{layer:Layer::L2,path:Path::new("02/host.rs"),imports:vec![
+        imp("crate::same",7,ImportKind::Direct,Layer::L1,Some("internal_a"),false),
+        imp("crate::same",7,ImportKind::Direct,Layer::L1,Some("internal_b"),false)]};
+    let v=pub_leak::check(&f,&ports,false);
+    assert_eq!(v.len(),2);assert_ne!(v[0],v[1]);
+    assert!(v[0].message.contains("internal_a"));assert!(v[1].message.contains("internal_b"));
+    println!("PASS P2 same path/line retains distinct target_subdir evidence");
+
+    // P3: subdirs hostis são copiados literalmente, sem colisão de representação.
+    let hostile=["é","e\u{301}","É","","a\nb\t\0'c"];
+    let f=File{layer:Layer::L3,path:Path::new("03/host.rs"),imports:hostile.iter().enumerate()
+        .map(|(n,s)|imp("crate::hostile",20+n,ImportKind::Alias,Layer::L1,Some(*s),false)).collect()};
+    let v=pub_leak::check(&f,&ports,false);assert_eq!(v.len(),hostile.len());
+    for (diag,subdir) in v.iter().zip(hostile){
+        assert!(diag.message.contains(subdir));
+        assert_eq!(diag.location.line,20+v.iter().position(|x|std::ptr::eq(x,diag)).unwrap());
+    }
+    assert_ne!(v[0].message,v[1].message);assert_ne!(v[0].message,v[2].message);
+    assert!(v[3].message.contains("L1 ''"));
+    println!("PASS P3 literal Unicode/NFC-NFD/case/empty/control subdirs");
+
+    // P4: None nunca diagnostica; string vazia é identidade normal configurável.
+    let no_ports=pub_leak::L1Ports::new(HashSet::new());
+    let empty_port=pub_leak::L1Ports::new(HashSet::from(["".to_string()]));
+    let none=File{layer:Layer::L2,path:Path::new("02/x.rs"),imports:vec![imp("external",1,ImportKind::Glob,Layer::L1,None,false)]};
+    let empty=File{layer:Layer::L2,path:Path::new("02/x.rs"),imports:vec![imp("empty",2,ImportKind::Glob,Layer::L1,Some(""),false)]};
+    assert!(pub_leak::check(&none,&no_ports,true).is_empty());
+    assert_eq!(pub_leak::check(&empty,&no_ports,true).len(),1);
+    assert!(pub_leak::check(&empty,&empty_port,true).is_empty());
+    println!("PASS P4 None exemption and empty-string identity");
+
+    // P5: guard, quatro kinds, duplicata, ordem, location e level.
+    let imports=vec![
+        imp("d",9,ImportKind::Direct,Layer::L1,Some("z"),false),
+        imp("g",4,ImportKind::Glob,Layer::L1,Some("y"),true),
+        imp("a",7,ImportKind::Alias,Layer::L1,Some("x"),false),
+        imp("d",9,ImportKind::Named,Layer::L1,Some("z"),true)];
+    let f=File{layer:Layer::L3,imports,path:Path::new("03/host-é.rs")};
+    let off=pub_leak::check(&f,&ports,false);let on=pub_leak::check(&f,&ports,true);
+    assert_eq!(off.iter().map(|x|x.location.line).collect::<Vec<_>>(),vec![9,7]);
+    assert_eq!(on.iter().map(|x|x.location.line).collect::<Vec<_>>(),vec![9,4,7,9]);
+    assert!(on.iter().all(|x|x.rule_id=="V9"&&x.level==ViolationLevel::Error
+        &&x.location.path.as_ref()==Path::new("03/host-é.rs")&&x.location.column==0));
+    assert_eq!(on[0].message,on[3].message); // duplicata sem perda, kind transparente
+    println!("PASS P5 guard/kinds/multiplicity/order/location/level");
+
+    // P6: regressão V3 pela API pública, matriz 7x7.
+    for source in layers(){for target in layers(){
+        let f=File{layer:source.clone(),path:Path::new("src/v3.rs"),imports:vec![imp("target",5,ImportKind::Named,target.clone(),Some("x"),false)]};
+        let v=forbidden_import::check(&f,false);
+        assert_eq!(v.len(),usize::from(v3_forbidden(&source,&target)));
+        if let Some(v)=v.first(){assert_eq!(v.rule_id,"V3");assert_eq!(v.level,ViolationLevel::Error);assert_eq!(v.location.line,5);}
+    }}
+    println!("PASS P6 public V3 7x7 regression");
+}

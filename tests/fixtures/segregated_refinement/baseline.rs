@@ -1,0 +1,1 @@
+enum Stable { Alpha, Beta }

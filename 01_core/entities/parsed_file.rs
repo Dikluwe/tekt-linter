@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/violation-types.md
-//! @prompt-hash 8b26dc56
+//! @prompt-hash 9e1e91d1
 //! @layer L1
 //! @updated 2026-06-09
 
@@ -305,6 +305,9 @@ use crate::entities::rule_traits::{
 };
 
 impl<'a> HasPromptFilesystem<'a> for ParsedFile<'a> {
+    fn layer(&self) -> &Layer {
+        &self.layer
+    }
     fn prompt_header(&self) -> Option<&PromptHeader<'a>> {
         self.prompt_header.as_ref()
     }

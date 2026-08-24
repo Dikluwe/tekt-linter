@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 2745d75b
+//! @prompt-hash c67d1040
 //! @layer L4
 //! @updated 2026-06-09
 
@@ -21,14 +21,19 @@ use crystalline_lint::entities::l1_allowed_external::{L1AllowedExternal, L1Allow
 use crystalline_lint::entities::layer::Language;
 use crystalline_lint::entities::parsed_file::{ParsedFile, PublicInterface, WiringConfig};
 use crystalline_lint::entities::project_index::{LocalIndex, ProjectIndex};
-use crystalline_lint::entities::refinement::compare_refinement;
+use crystalline_lint::entities::refinement::{
+    compare_refinement, ArtifactFacts, ObservableValue, UnknownReason,
+};
+use crystalline_lint::entities::refinement_seal::{accepts, OracleKind, VerdictName};
 use crystalline_lint::entities::violation::{Location, Violation, ViolationLevel};
 use crystalline_lint::infra::c_parser::CParser;
 use crystalline_lint::infra::config::CrystallineConfig;
 use crystalline_lint::infra::cpp_parser::CppParser;
 use crystalline_lint::infra::crate_registry::CrateRegistry;
 use crystalline_lint::infra::elixir_parser::ElixirParser;
-use crystalline_lint::infra::git_refinement::{extract_revision_snapshot, resolve_commit};
+use crystalline_lint::infra::git_refinement::{
+    extract_revision_snapshot, require_self_contained_object_database, resolve_commit,
+};
 use crystalline_lint::infra::go_parser::GoParser;
 use crystalline_lint::infra::hash_writer;
 use crystalline_lint::infra::java_parser::JavaParser;
@@ -37,9 +42,16 @@ use crystalline_lint::infra::prompt_snapshot_reader::FsPromptSnapshotReader;
 use crystalline_lint::infra::prompt_walker::FsPromptWalker;
 use crystalline_lint::infra::py_parser::PyParser;
 use crystalline_lint::infra::refinement_extractor::{
-    extract_snapshot, load_observable_specs, serialize_snapshot, write_snapshot_atomic,
+    extract_snapshot, load_observable_specs, load_observable_specs_from_bytes, serialize_snapshot,
+    write_snapshot_atomic,
 };
-use crystalline_lint::infra::refinement_snapshot::{load_contract, load_snapshot};
+use crystalline_lint::infra::refinement_seal::{
+    confined_read, load_manifest, read_manifest, receipt, semantic_manifest_sha256, serialize_seal,
+    sha256, write_atomic, Seal, SealCounts,
+};
+use crystalline_lint::infra::refinement_snapshot::{
+    load_contract, load_contract_from_bytes, load_snapshot,
+};
 use crystalline_lint::infra::rs_parser::RustParser;
 use crystalline_lint::infra::snapshot_writer;
 use crystalline_lint::infra::ts_parser::TsParser;
@@ -63,6 +75,174 @@ use std::collections::HashMap;
 
 fn main() {
     let cli = Cli::parse();
+
+    if let Some(RefinementCommand::SealRefinement(args)) = &cli.command {
+        let manifest_bytes = read_manifest(&args.manifest).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: refinement seal manifest error: {error}");
+            process::exit(2)
+        });
+        let manifest = load_manifest(&manifest_bytes).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: refinement seal manifest error: {error}");
+            process::exit(2)
+        });
+        let manifest_hash = semantic_manifest_sha256(&manifest).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: refinement seal manifest error: {error}");
+            process::exit(2)
+        });
+        require_self_contained_object_database(&args.repository).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: refinement seal repository error: {error}");
+            process::exit(2)
+        });
+        let prompt_bytes =
+            confined_read(&args.repository, &manifest.prompt).unwrap_or_else(|error| {
+                eprintln!("crystalline-lint: refinement seal prompt error: {error}");
+                process::exit(2)
+            });
+        if sha256(&prompt_bytes) != manifest.prompt_sha256 {
+            eprintln!("crystalline-lint: refinement seal prompt hash mismatch");
+            process::exit(2);
+        }
+        let contract_bytes =
+            confined_read(&args.repository, &manifest.contract).unwrap_or_else(|error| {
+                eprintln!("crystalline-lint: refinement seal contract error: {error}");
+                process::exit(2)
+            });
+        if sha256(&contract_bytes) != manifest.contract_sha256 {
+            eprintln!("crystalline-lint: refinement seal contract hash mismatch");
+            process::exit(2);
+        }
+        let baseline_oid =
+            resolve_commit(&args.repository, &manifest.baseline_oid).unwrap_or_else(|error| {
+                eprintln!("crystalline-lint: refinement seal baseline error: {error}");
+                process::exit(2)
+            });
+        if manifest.baseline_oid != baseline_oid {
+            eprintln!("crystalline-lint: baseline_oid must be the complete canonical commit OID");
+            process::exit(2);
+        }
+        let contract_source = manifest.contract.display().to_string();
+        let specs = load_observable_specs_from_bytes(&contract_bytes, &contract_source)
+            .unwrap_or_else(|error| {
+                eprintln!("crystalline-lint: refinement seal contract error: {error}");
+                process::exit(2)
+            });
+        let contract =
+            load_contract_from_bytes(&contract_bytes, &contract_source).unwrap_or_else(|error| {
+                eprintln!("crystalline-lint: refinement seal contract error: {error}");
+                process::exit(2)
+            });
+        let mut receipts = Vec::with_capacity(manifest.oracles.len());
+        for oracle in &manifest.oracles {
+            let before_oid =
+                resolve_commit(&args.repository, &oracle.before_ref).unwrap_or_else(|error| {
+                    eprintln!(
+                        "crystalline-lint: oracle `{}` before ref error: {error}",
+                        oracle.id
+                    );
+                    process::exit(2)
+                });
+            let after_oid =
+                resolve_commit(&args.repository, &oracle.after_ref).unwrap_or_else(|error| {
+                    eprintln!(
+                        "crystalline-lint: oracle `{}` after ref error: {error}",
+                        oracle.id
+                    );
+                    process::exit(2)
+                });
+            let before = extract_revision_snapshot(&args.repository, &before_oid, &specs)
+                .unwrap_or_else(|error| {
+                    eprintln!(
+                        "crystalline-lint: oracle `{}` before extraction error: {error}",
+                        oracle.id
+                    );
+                    process::exit(2)
+                });
+            let after = extract_revision_snapshot(&args.repository, &after_oid, &specs)
+                .unwrap_or_else(|error| {
+                    eprintln!(
+                        "crystalline-lint: oracle `{}` after extraction error: {error}",
+                        oracle.id
+                    );
+                    process::exit(2)
+                });
+            let exhausted = |facts: &ArtifactFacts| {
+                facts.observables.values().any(|value| {
+                    matches!(
+                        value,
+                        ObservableValue::Unknown(UnknownReason::BudgetExhausted)
+                    )
+                })
+            };
+            if exhausted(&before) || exhausted(&after) {
+                eprintln!(
+                    "crystalline-lint: oracle `{}` exhausted the Git input budget",
+                    oracle.id
+                );
+                process::exit(2);
+            }
+            let verdict = compare_refinement(&contract, &before, &after);
+            let verdict_name = VerdictName::from(&verdict);
+            if !accepts(oracle.kind, &verdict) {
+                eprintln!(
+                    "crystalline-lint: oracle `{}` expected {} but returned {}",
+                    oracle.id,
+                    oracle.kind.as_str(),
+                    verdict_name.as_str()
+                );
+                process::exit(2);
+            }
+            receipts.push(receipt(
+                oracle.id.clone(),
+                oracle.kind,
+                before_oid,
+                after_oid,
+                verdict_name,
+            ));
+        }
+        receipts.sort_by(|a, b| a.id.cmp(&b.id));
+        let positive_count = manifest
+            .oracles
+            .iter()
+            .filter(|o| o.kind == OracleKind::Positive)
+            .count();
+        let negative_count = manifest
+            .oracles
+            .iter()
+            .filter(|o| o.kind == OracleKind::Negative)
+            .count();
+        let unknown_count = manifest
+            .oracles
+            .iter()
+            .filter(|o| o.kind == OracleKind::Unknown)
+            .count();
+        let seal = Seal {
+            protocol_version: manifest.protocol_version,
+            manifest_sha256: &manifest_hash,
+            prompt_sha256: &manifest.prompt_sha256,
+            contract_sha256: &manifest.contract_sha256,
+            baseline_oid: &baseline_oid,
+            contract_producer: &manifest.contract_producer,
+            implementation_producer: &manifest.implementation_producer,
+            verifier_producer: &manifest.verifier_producer,
+            receipts: &receipts,
+            counts: SealCounts {
+                positive: positive_count,
+                negative: negative_count,
+                unknown: unknown_count,
+            },
+            mutation_score: "1.0",
+            sealed: true,
+        };
+        let bytes = serialize_seal(&seal).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: {error}");
+            process::exit(2)
+        });
+        write_atomic(&args.output, &bytes).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: {error}");
+            process::exit(2)
+        });
+        process::exit(0);
+    }
 
     if let Some(RefinementCommand::Refine(args)) = &cli.command {
         let source = load_snapshot(&args.before).unwrap_or_else(|error| {
@@ -111,6 +291,10 @@ fn main() {
     }
 
     if let Some(RefinementCommand::RefineRevisions(args)) = &cli.command {
+        require_self_contained_object_database(&args.repository).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: refinement repository error: {error}");
+            process::exit(2)
+        });
         let specs = load_observable_specs(&args.contract).unwrap_or_else(|error| {
             eprintln!("crystalline-lint: refinement contract error: {error}");
             process::exit(2);
@@ -229,7 +413,10 @@ fn main() {
 
     // ── Crate registry (membro→camada + deps) para classificação ciente (0052) ─
     // Construído uma vez do workspace-alvo; vazio se não for projeto cargo (legado).
-    let crate_registry = CrateRegistry::from_root(&cli.path, &config);
+    let crate_registry = CrateRegistry::from_root(&cli.path, &config).unwrap_or_else(|error| {
+        eprintln!("crystalline-lint: crate registry infrastructure error: {error}");
+        process::exit(1)
+    });
 
     // ── Instantiate L3 components ─────────────────────────────────────────────
     let shared_prompt_reader = std::sync::Arc::new(

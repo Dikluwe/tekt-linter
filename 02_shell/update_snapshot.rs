@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/fix-hashes.md
-//! @prompt-hash 8b5b716b
+//! @prompt-hash 7933d862
 //! @layer L2
 //! @updated 2026-03-20
 
@@ -10,6 +10,7 @@ use colored::Colorize;
 
 use crate::entities::parsed_file::{ParsedFile, PublicInterface};
 use crate::entities::violation::Violation;
+use crate::shell::path_encoding::human_path;
 
 // ── Outbound port (implemented by L4 adapter wrapping L3) ────────────────────
 
@@ -138,7 +139,7 @@ pub fn format_plan(entries: &[SnapshotEntry]) -> String {
         for entry in &actionable {
             out.push_str(&format!(
                 "  {:<45} → {}\n",
-                entry.source_path.display(),
+                human_path(&entry.source_path),
                 entry.prompt_path
             ));
         }
@@ -154,7 +155,7 @@ pub fn format_plan(entries: &[SnapshotEntry]) -> String {
         for entry in unreadable {
             out.push_str(&format!(
                 "  {} — {}\n",
-                entry.source_path.display(),
+                human_path(&entry.source_path),
                 entry.unreadable_reason.as_deref().unwrap_or("unknown"),
             ));
         }
@@ -182,7 +183,7 @@ pub fn format_results(results: &[SnapshotResult], remaining_v6: usize) -> String
         for r in &succeeded {
             out.push_str(&format!(
                 "  {:<45} → {}\n",
-                r.source_path.display(),
+                human_path(&r.source_path),
                 r.prompt_path
             ));
         }
@@ -194,7 +195,7 @@ pub fn format_results(results: &[SnapshotResult], remaining_v6: usize) -> String
         for r in &failed {
             out.push_str(&format!(
                 "  {} — {}\n",
-                r.source_path.display(),
+                human_path(&r.source_path),
                 r.error.as_deref().unwrap_or("unknown error"),
             ));
         }

@@ -1,0 +1,69 @@
+# Assessment 0005 — configuração e descoberta de arquivos
+
+**Estado:** SANEADO PELO P0073 — gate 6/6
+**Data:** 2026-08-24
+**Alvos:** `03_infra/config.rs` e `03_infra/walker.rs`
+
+## Hipótese
+
+Configuração e walker executam tradução mecânica de TOML e filesystem. Esperamos poucos
+achados após o saneamento P0072. Um RED reclassifica toda entrada que pode omitir arquivo
+ou atribuir camada antes das regras puras.
+
+## Alegações sob teste
+
+1. Configuração presente e inválida bloqueia; configuração ausente só usa defaults onde
+   a interface explicitamente autoriza isso. Campos e contratos ambíguos são rejeitados.
+2. Duas chaves de layer não podem possuir o mesmo diretório, e uma chave desconhecida
+   não pode disputar precedência com L0–L4/Lab. Resolução independe da ordem TOML/HashMap.
+3. Walker nunca silencia erro de travessia ou leitura de arquivo elegível; excluídos são
+   a única fonte de silêncio deliberado.
+4. Permutar criação/diretório não altera o conjunto nem a ordem canônica dos SourceFiles.
+5. Symlink de arquivo ou diretório não escapa da raiz; path não UTF-8 não é confundido
+   com outro path nem excluído por conversão lossy.
+6. Exclusões de diretório atuam por componente e `excluded_files` por path relativo
+   exato; prefixos, sufixos e separadores não produzem exclusão acidental.
+7. Layer desconhecida permanece observável como `Layer::Unknown`; extensão não suportada
+   é a única filtragem por linguagem aceita sem erro.
+8. Detecção de teste adjacente é consistente entre linguagens e nunca usa diretório,
+   symlink ou arquivo não regular como prova de cobertura.
+
+## Gate curto
+
+Até seis propriedades black-box/API. Produção não muda durante a triagem. Casos que
+dependam de permissões Unix devem restaurá-las no fixture. Diferença entre documentação
+e schema sem política executável é `SPEC-GAP`, não assertion inventada.
+
+## Continuidade
+
+Este é o primeiro lote após P0072. Os resultados permanecem no branch
+`codex/segregated-materialization`; nenhum merge será considerado até o inventário de
+assessments cobrir todos os módulos do linter e os REDs legítimos estiverem fechados.
+
+## Resultado da triagem
+
+O gate independente terminou com duas propriedades verdes e quatro REDs:
+
+- `[layers]` aceita duas layers para o mesmo diretório e aceita chave desconhecida
+  disputando o mesmo diretório; a ordem TOML não torna a ambiguidade válida;
+- a enumeração de arquivos segue a ordem de criação do fixture, não uma ordem canônica;
+- um symlink externo com nome de teste adjacente marca o source como coberto;
+- um diretório com nome de teste adjacente também marca o source como coberto;
+- arquivo elegível com UTF-8 inválido gera `SourceError` sem ocultar o arquivo válido;
+- exclusões, paths Unix não UTF-8 distintos e `Layer::Unknown` permaneceram corretos.
+
+Erro de travessia provocado apenas por permissões ficou `SPEC-GAP` operacional: o UID
+do ambiente consegue atravessar o fixture e `SourceError` hoje só representa arquivo
+ilegível. Um gate futuro precisa injetar a fonte de caminhada ou executar sob usuário
+restrito para provar que erros de `WalkDir` não são descartados.
+
+Os REDs ficam congelados sem correção neste lote. Eles reclassificam config/walker como
+fronteira de integridade, pois podem esconder arquivo, variar análise ou fabricar prova
+de cobertura.
+
+## Fechamento P0073
+
+Layers ambíguas passaram a ser rejeitadas, a enumeração tornou-se canônica, erros de
+travessia permaneceram observáveis e somente arquivo regular local prova teste adjacente.
+O gate final passou 6/6 no commit `61cf043`; EACCES real permanece limite de matriz, não
+RED do delta.

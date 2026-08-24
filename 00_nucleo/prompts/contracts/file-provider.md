@@ -1,5 +1,5 @@
 # Prompt: Contract - File Provider (file-provider)
-Hash do Código: eec1b31f
+Hash do Código: db4e4d98
 
 **Camada**: L1 (Core — Contracts)
 **Criado em**: 2025-03-13

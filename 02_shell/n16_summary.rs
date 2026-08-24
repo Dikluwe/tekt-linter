@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 2745d75b
+//! @prompt-hash c67d1040
 //! @layer L2
 //! @updated 2026-08-18
 
@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
 use crate::contracts::file_provider::SourceFile;
+use crate::shell::path_encoding::human_path;
 
 /// Tag de classificação da taxonomia N16 (ADR-0017 / Passo 0068 / Passo 0069).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,7 +84,7 @@ pub fn extract_n16_tag(text: &str) -> Option<N16Tag> {
 
 /// Normaliza o caminho do arquivo para uma chave canônica relativa à camada.
 pub fn normalize_loc_path(path: &Path) -> String {
-    let p_str = path.to_string_lossy().replace('\\', "/");
+    let p_str = human_path(path).replace('\\', "/");
     let all_comps: Vec<String> = p_str
         .split('/')
         .map(|s| s.to_string())
@@ -101,7 +102,7 @@ pub fn normalize_loc_path(path: &Path) -> String {
 
 /// Extrai o nome canônico do módulo para fins de agrupamento N16.
 pub fn extract_n16_module_name(path: &Path) -> String {
-    let p_str = path.to_string_lossy().replace('\\', "/");
+    let p_str = human_path(path).replace('\\', "/");
 
     if p_str.contains("math/layout/") || p_str.ends_with("math/layout.rs") || p_str.ends_with("math/layout") {
         return "math/layout/".to_string();

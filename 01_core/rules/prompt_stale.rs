@@ -1,15 +1,15 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/prompt-stale.md
-//! @prompt-hash 06a25fbb
+//! @prompt-hash 4f4edb28
 //! @layer L1
 //! @updated 2026-03-14
 
 use std::borrow::Cow;
 
-use crate::entities::rule_traits::HasPublicInterface;
 use crate::entities::parsed_file::{
     FunctionSignature, InterfaceDelta, PublicInterface, TypeSignature,
 };
+use crate::entities::rule_traits::HasPublicInterface;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 
 /// V6 — PromptStale
@@ -50,7 +50,11 @@ pub fn check<'a, T: HasPublicInterface<'a>>(file: &T) -> Vec<Violation<'a>> {
             header.prompt_path,
             delta.describe()
         ),
-        location: Location { path: Cow::Borrowed(file.path()), line: 1, column: 0 },
+        location: Location {
+            path: Cow::Borrowed(file.path()),
+            line: 1,
+            column: 0,
+        },
     }]
 }
 
@@ -62,32 +66,77 @@ pub fn compute_delta<'a>(
     current: &PublicInterface<'a>,
     snapshot: &PublicInterface<'a>,
 ) -> InterfaceDelta<'a> {
+    let mut added_functions = unmatched(&current.functions, &snapshot.functions);
+    let mut removed_functions = unmatched(&snapshot.functions, &current.functions);
+    let mut added_types = unmatched(&current.types, &snapshot.types);
+    let mut removed_types = unmatched(&snapshot.types, &current.types);
+    let mut added_reexports = unmatched(&current.reexports, &snapshot.reexports);
+    let mut removed_reexports = unmatched(&snapshot.reexports, &current.reexports);
+
+    added_functions.sort_by(function_order);
+    removed_functions.sort_by(function_order);
+    added_types.sort_by(type_order);
+    removed_types.sort_by(type_order);
+    added_reexports.sort_unstable();
+    removed_reexports.sort_unstable();
+
     InterfaceDelta {
-        added_functions: added_fns(&current.functions, &snapshot.functions),
-        removed_functions: added_fns(&snapshot.functions, &current.functions),
-        added_types: added_types(&current.types, &snapshot.types),
-        removed_types: added_types(&snapshot.types, &current.types),
-        added_reexports: added_strs(&current.reexports, &snapshot.reexports),
-        removed_reexports: added_strs(&snapshot.reexports, &current.reexports),
+        added_functions,
+        removed_functions,
+        added_types,
+        removed_types,
+        added_reexports,
+        removed_reexports,
     }
 }
 
-fn added_fns<'a>(
-    a: &[FunctionSignature<'a>],
-    b: &[FunctionSignature<'a>],
-) -> Vec<FunctionSignature<'a>> {
-    a.iter().filter(|f| !b.contains(f)).cloned().collect()
+fn unmatched<T: Clone + PartialEq>(left: &[T], right: &[T]) -> Vec<T> {
+    let mut consumed = vec![false; right.len()];
+    left.iter()
+        .filter_map(|item| {
+            if let Some(index) = right
+                .iter()
+                .enumerate()
+                .position(|(index, candidate)| !consumed[index] && candidate == item)
+            {
+                consumed[index] = true;
+                None
+            } else {
+                Some(item.clone())
+            }
+        })
+        .collect()
 }
 
-fn added_types<'a>(
-    a: &[TypeSignature<'a>],
-    b: &[TypeSignature<'a>],
-) -> Vec<TypeSignature<'a>> {
-    a.iter().filter(|t| !b.contains(t)).cloned().collect()
+fn function_order(
+    left: &FunctionSignature<'_>,
+    right: &FunctionSignature<'_>,
+) -> std::cmp::Ordering {
+    (&left.name, &left.params, &left.return_type).cmp(&(
+        &right.name,
+        &right.params,
+        &right.return_type,
+    ))
 }
 
-fn added_strs<'a>(a: &[&'a str], b: &[&'a str]) -> Vec<&'a str> {
-    a.iter().filter(|s| !b.contains(s)).copied().collect()
+fn type_order(left: &TypeSignature<'_>, right: &TypeSignature<'_>) -> std::cmp::Ordering {
+    (&left.name, type_kind_rank(&left.kind), &left.members).cmp(&(
+        &right.name,
+        type_kind_rank(&right.kind),
+        &right.members,
+    ))
+}
+
+fn type_kind_rank(kind: &crate::entities::parsed_file::TypeKind) -> u8 {
+    use crate::entities::parsed_file::TypeKind;
+    match kind {
+        TypeKind::Struct => 0,
+        TypeKind::Enum => 1,
+        TypeKind::Trait => 2,
+        TypeKind::Class => 3,
+        TypeKind::Interface => 4,
+        TypeKind::TypeAlias => 5,
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -133,11 +182,19 @@ mod tests {
     }
 
     fn fn_sig(name: &'static str) -> FunctionSignature<'static> {
-        FunctionSignature { name, params: vec![], return_type: None }
+        FunctionSignature {
+            name,
+            params: vec![],
+            return_type: None,
+        }
     }
 
     fn type_sig(name: &'static str) -> TypeSignature<'static> {
-        TypeSignature { name, kind: TypeKind::Struct, members: vec![] }
+        TypeSignature {
+            name,
+            kind: TypeKind::Struct,
+            members: vec![],
+        }
     }
 
     #[test]
@@ -234,16 +291,28 @@ mod tests {
             return_type: Some("bool"),
         };
         let mut file = base_file();
-        file.public_interface =
-            PublicInterface { functions: vec![new_sig], types: vec![], reexports: vec![] };
-        file.prompt_snapshot =
-            Some(PublicInterface { functions: vec![old_sig], types: vec![], reexports: vec![] });
+        file.public_interface = PublicInterface {
+            functions: vec![new_sig],
+            types: vec![],
+            reexports: vec![],
+        };
+        file.prompt_snapshot = Some(PublicInterface {
+            functions: vec![old_sig],
+            types: vec![],
+            reexports: vec![],
+        });
         let violations = check(&file);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "V6");
         let msg = &violations[0].message;
-        assert!(msg.contains("+fn foo"), "delta deve conter +fn foo, got: {msg}");
-        assert!(msg.contains("-fn foo"), "delta deve conter -fn foo, got: {msg}");
+        assert!(
+            msg.contains("+fn foo"),
+            "delta deve conter +fn foo, got: {msg}"
+        );
+        assert!(
+            msg.contains("-fn foo"),
+            "delta deve conter -fn foo, got: {msg}"
+        );
     }
 
     #[test]
@@ -272,5 +341,101 @@ mod tests {
             removed_reexports: vec![],
         };
         assert!(delta.is_empty());
+    }
+
+    #[test]
+    fn permutation_with_duplicate_multiplicity_has_empty_delta() {
+        let current = PublicInterface {
+            functions: vec![fn_sig("b"), fn_sig("a"), fn_sig("a")],
+            types: vec![type_sig("B"), type_sig("A"), type_sig("A")],
+            reexports: vec!["b", "a", "a"],
+        };
+        let snapshot = PublicInterface {
+            functions: vec![fn_sig("a"), fn_sig("b"), fn_sig("a")],
+            types: vec![type_sig("A"), type_sig("A"), type_sig("B")],
+            reexports: vec!["a", "a", "b"],
+        };
+        assert!(compute_delta(&current, &snapshot).is_empty());
+    }
+
+    #[test]
+    fn one_extra_duplicate_produces_one_entry_per_family() {
+        let current = PublicInterface {
+            functions: vec![fn_sig("a"), fn_sig("a")],
+            types: vec![type_sig("A"), type_sig("A")],
+            reexports: vec!["a", "a"],
+        };
+        let snapshot = PublicInterface {
+            functions: vec![fn_sig("a")],
+            types: vec![type_sig("A")],
+            reexports: vec!["a"],
+        };
+        let delta = compute_delta(&current, &snapshot);
+        assert_eq!(delta.added_functions, vec![fn_sig("a")]);
+        assert_eq!(delta.added_types, vec![type_sig("A")]);
+        assert_eq!(delta.added_reexports, vec!["a"]);
+    }
+
+    #[test]
+    fn one_removed_duplicate_produces_one_entry_per_family() {
+        let current = PublicInterface {
+            functions: vec![fn_sig("a")],
+            types: vec![type_sig("A")],
+            reexports: vec!["a"],
+        };
+        let snapshot = PublicInterface {
+            functions: vec![fn_sig("a"), fn_sig("a")],
+            types: vec![type_sig("A"), type_sig("A")],
+            reexports: vec!["a", "a"],
+        };
+        let delta = compute_delta(&current, &snapshot);
+        assert_eq!(delta.removed_functions, vec![fn_sig("a")]);
+        assert_eq!(delta.removed_types, vec![type_sig("A")]);
+        assert_eq!(delta.removed_reexports, vec!["a"]);
+    }
+
+    #[test]
+    fn delta_groups_are_sorted_by_all_signature_fields() {
+        let function = |params, return_type| FunctionSignature {
+            name: "same",
+            params,
+            return_type,
+        };
+        let typed = |kind, members| TypeSignature {
+            name: "Same",
+            kind,
+            members,
+        };
+        let current = PublicInterface {
+            functions: vec![
+                function(vec!["z"], None),
+                function(vec!["a"], Some("z")),
+                function(vec!["a"], None),
+            ],
+            types: vec![
+                typed(TypeKind::Trait, vec!["a"]),
+                typed(TypeKind::Struct, vec!["z"]),
+                typed(TypeKind::Struct, vec!["a"]),
+            ],
+            reexports: vec!["z", "a"],
+        };
+        let delta = compute_delta(&current, &PublicInterface::empty());
+        assert_eq!(
+            delta.added_functions,
+            vec![
+                function(vec!["a"], None),
+                function(vec!["a"], Some("z")),
+                function(vec!["z"], None),
+            ]
+        );
+        assert_eq!(
+            delta.added_types,
+            vec![
+                typed(TypeKind::Struct, vec!["a"]),
+                typed(TypeKind::Struct, vec!["z"]),
+                typed(TypeKind::Trait, vec!["a"]),
+            ]
+        );
+        assert_eq!(delta.added_reexports, vec!["a", "z"]);
     }
 }

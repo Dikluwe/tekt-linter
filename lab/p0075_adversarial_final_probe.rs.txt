@@ -1,0 +1,116 @@
+// Probe final independente do P0075. Extensão .txt evita auto-lint como produção.
+use crystalline_lint::entities::layer::Layer;
+use crystalline_lint::entities::parsed_file::{
+    FunctionSignature as F, PromptHeader, PublicInterface as I, TypeKind as K,
+    TypeSignature as T,
+};
+use crystalline_lint::entities::rule_traits::HasPublicInterface;
+use crystalline_lint::rules::prompt_stale::{check, compute_delta};
+use std::path::Path;
+
+fn f(name: &'static str, params: &[&'static str], ret: Option<&'static str>) -> F<'static> {
+    F { name, params: params.to_vec(), return_type: ret }
+}
+fn t(name: &'static str, kind: K, members: &[&'static str]) -> T<'static> {
+    T { name, kind, members: members.to_vec() }
+}
+fn pi(fs: Vec<F<'static>>, ts: Vec<T<'static>>, rs: Vec<&'static str>) -> I<'static> {
+    I { functions: fs, types: ts, reexports: rs }
+}
+
+struct File { current: I<'static>, snapshot: I<'static>, header: PromptHeader<'static> }
+impl HasPublicInterface<'static> for File {
+    fn prompt_header(&self) -> Option<&PromptHeader<'static>> { Some(&self.header) }
+    fn public_interface(&self) -> &I<'static> { &self.current }
+    fn prompt_snapshot(&self) -> Option<&I<'static>> { Some(&self.snapshot) }
+    fn path(&self) -> &'static Path { Path::new("01_core/probe.rs") }
+}
+fn message(current: I<'static>, snapshot: I<'static>) -> String {
+    let file = File { current, snapshot, header: PromptHeader {
+        prompt_path: "00_nucleo/prompts/rules/probe.md", prompt_hash: None,
+        current_hash: None, layer: Layer::L1, updated: None,
+    }};
+    let violations = check(&file);
+    assert_eq!(violations.len(), 1);
+    violations[0].message.clone()
+}
+
+fn main() {
+    let fx = f("f", &["u8"], Some("u8"));
+    let tx = t("T", K::Struct, &["x:u8"]);
+
+    // P1: multiconjunto, uma duplicata adicionada e removida, nas três famílias.
+    for (current, snapshot, expected) in [
+        (pi(vec![fx.clone(), fx.clone()], vec![], vec![]), pi(vec![fx.clone()], vec![], vec![]), (1,0,0,0,0,0)),
+        (pi(vec![fx.clone()], vec![], vec![]), pi(vec![fx.clone(), fx.clone()], vec![], vec![]), (0,1,0,0,0,0)),
+        (pi(vec![], vec![tx.clone(), tx.clone()], vec![]), pi(vec![], vec![tx.clone()], vec![]), (0,0,1,0,0,0)),
+        (pi(vec![], vec![tx.clone()], vec![]), pi(vec![], vec![tx.clone(), tx.clone()], vec![]), (0,0,0,1,0,0)),
+        (pi(vec![], vec![], vec!["a", "a"]), pi(vec![], vec![], vec!["a"]), (0,0,0,0,1,0)),
+        (pi(vec![], vec![], vec!["a"]), pi(vec![], vec![], vec!["a", "a"]), (0,0,0,0,0,1)),
+    ] {
+        let d = compute_delta(&current, &snapshot);
+        assert_eq!((d.added_functions.len(), d.removed_functions.len(), d.added_types.len(),
+                    d.removed_types.len(), d.added_reexports.len(), d.removed_reexports.len()), expected);
+    }
+    println!("PASS P1 multiset +/- one occurrence in all three families");
+
+    // P2: permutações, inclusive duplicatas, cancelam integralmente.
+    let a = pi(vec![f("b", &[], None), fx.clone(), fx.clone()],
+               vec![t("U", K::Enum, &[]), tx.clone(), tx.clone()], vec!["z", "a", "a"]);
+    let b = pi(vec![fx.clone(), f("b", &[], None), fx.clone()],
+               vec![tx.clone(), tx.clone(), t("U", K::Enum, &[])], vec!["a", "a", "z"]);
+    assert!(compute_delta(&a, &b).is_empty());
+    assert!(compute_delta(&b, &a).is_empty());
+    println!("PASS P2 permutation with duplicates is empty in both directions");
+
+    // P3: ordem total de funções usa nome, params completos e return_type.
+    let funcs = vec![
+        f("x", &["b"], None), f("x", &["a"], Some("z")), f("a", &["z"], Some("a")),
+        f("x", &["a"], None), f("x", &["a", "b"], None), f("x", &["a"], Some("a")),
+    ];
+    let mut reversed = funcs.clone(); reversed.reverse();
+    let da = compute_delta(&pi(funcs, vec![], vec![]), &I::empty());
+    let db = compute_delta(&pi(reversed, vec![], vec![]), &I::empty());
+    assert_eq!(da, db);
+    assert_eq!(da.added_functions, vec![
+        f("a", &["z"], Some("a")), f("x", &["a"], None), f("x", &["a"], Some("a")),
+        f("x", &["a"], Some("z")), f("x", &["a", "b"], None), f("x", &["b"], None),
+    ]);
+    println!("PASS P3 function total order covers all fields/ties");
+
+    // P4: rank explícito das seis kinds precede members; members desempata sem ser reordenado.
+    let types = vec![
+        t("T", K::TypeAlias, &[]), t("T", K::Interface, &[]), t("T", K::Class, &[]),
+        t("T", K::Trait, &[]), t("T", K::Enum, &[]), t("T", K::Struct, &["b"]),
+        t("T", K::Struct, &["a", "b"]), t("T", K::Struct, &["a"]),
+    ];
+    let mut reversed = types.clone(); reversed.reverse();
+    let da = compute_delta(&pi(vec![], types, vec![]), &I::empty());
+    let db = compute_delta(&pi(vec![], reversed, vec![]), &I::empty());
+    assert_eq!(da, db);
+    assert_eq!(da.added_types, vec![
+        t("T", K::Struct, &["a"]), t("T", K::Struct, &["a", "b"]), t("T", K::Struct, &["b"]),
+        t("T", K::Enum, &[]), t("T", K::Trait, &[]), t("T", K::Class, &[]),
+        t("T", K::Interface, &[]), t("T", K::TypeAlias, &[]),
+    ]);
+    println!("PASS P4 explicit kind rank and full members tie-break");
+
+    // P5: params/members são semânticos, não conjuntos internos.
+    let d = compute_delta(
+        &pi(vec![f("f", &["a", "b"], None)], vec![t("T", K::Struct, &["a", "b"])], vec![]),
+        &pi(vec![f("f", &["b", "a"], None)], vec![t("T", K::Struct, &["b", "a"])], vec![]));
+    assert_eq!((d.added_functions.len(), d.removed_functions.len(), d.added_types.len(), d.removed_types.len()), (1,1,1,1));
+    println!("PASS P5 params/members order remains semantic");
+
+    // P6: seis grupos canônicos tornam a mensagem idêntica sob permutação hostil.
+    let current_a = pi(vec![f("z", &[], None), f("a", &[], None)],
+                       vec![t("Z", K::TypeAlias, &[]), t("A", K::Struct, &[])], vec!["z", "a"]);
+    let current_b = pi(vec![f("a", &[], None), f("z", &[], None)],
+                       vec![t("A", K::Struct, &[]), t("Z", K::TypeAlias, &[])], vec!["a", "z"]);
+    let snap_a = pi(vec![f("y", &[], None), f("b", &[], None)],
+                    vec![t("Y", K::Interface, &[]), t("B", K::Enum, &[])], vec!["y", "b"]);
+    let snap_b = pi(vec![f("b", &[], None), f("y", &[], None)],
+                    vec![t("B", K::Enum, &[]), t("Y", K::Interface, &[])], vec!["b", "y"]);
+    assert_eq!(message(current_a, snap_a), message(current_b, snap_b));
+    println!("PASS P6 stable V6 message across all six permuted groups");
+}

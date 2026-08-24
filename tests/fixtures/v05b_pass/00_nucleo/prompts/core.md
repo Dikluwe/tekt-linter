@@ -1,2 +1,2 @@
 # core
-Hash do Código: ec1047c0
+Hash do Código: 31766a4b
