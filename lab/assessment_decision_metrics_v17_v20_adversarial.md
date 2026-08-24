@@ -53,3 +53,17 @@ Nenhum `RED` de produção foi alegado nesta fase, porque o contrato ainda não 
 oráculo executável completo. Converter qualquer um dos gaps acima em PASS seria defeito
 do gate. O saneamento deve começar em L0/assessment, ser resselado por hash e então
 entregue a um verificador novo.
+
+## Reteste e fechamento final
+
+Após o saneamento L0, o gate cego congelado em `2990819` encontrou dois REDs: substring
+em V18 (`alexer.rs`) e catch-all intermediário em V20. A correção `fbf234a` fechou ambos.
+Revisões posteriores classificaram lacunas na matriz como GATE-DEFECT; elas foram
+fechadas sem tocar produção em `4588997` e `50f1af4`.
+
+No estado final, o gate SHA-256
+`40472d68e557cea37819898298f5b578da7f7bbb6b672bc0271c2d46ab830849` passou 10/10,
+incluindo todas as linguagens não-Rust, ordem/cardinalidade nas quatro regras e isolamento
+de todos os campos irrelevantes de braço, expressão, arquivo e layer. V16 passou 5/5,
+hashes ficaram limpos e o adversário declarou **NÃO REABRIR**: nenhum RED, SPEC-GAP ou
+GATE-DEFECT residual no escopo.

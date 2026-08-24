@@ -1,6 +1,6 @@
 # Assessment 0014 — classificadores mecânicos V17–V20
 
-**Estado:** CONGELADO PARA TRIAGEM SEGREGADA
+**Estado:** READY WITH RESIDUAL AUDIT
 **Data:** 2026-08-24
 **Alvos:** `compound_guard`, `range_pattern`, `or_pattern_alternatives`,
 `deep_pattern_nesting`
@@ -64,3 +64,29 @@ Antes de qualquer merge: gate congelado, revisão adversarial independente, corr
 autorizadas somente por achados congelados, reexecução do gate e suíte global, hashes em
 modo seco, auto-lint, `rustfmt --check`, `git diff --check`, relatório e assessment em
 estado `READY WITH RESIDUAL AUDIT` ou `BLOCKED`. Este branch não executa merge.
+
+## Resultado e fechamento
+
+A primeira rodada bloqueou por `SPEC-GAP`: o pacote não publicava a API black-box, V18
+não definia identidade de módulo e V20 exigia igualdade de tipos ausente do IR. Os gaps
+foram congelados em `b169d16` e resolvidos primeiro no L0 em `3cd77dd`.
+
+O novo gate, escrito sem leitura de produção, expôs dois REDs em `2990819`:
+
+- V18 isentava `alexer.rs` por substring;
+- V20 aceitava catch-all intermediário como tabela regular.
+
+Ambos foram corrigidos em `fbf234a`. Duas revisões adversariais posteriores encontraram
+somente `GATE-DEFECT` de cobertura; a matriz foi ampliada em `4588997` e `50f1af4`, sem
+nova mudança de produção. O gate final, SHA-256
+`40472d68e557cea37819898298f5b578da7f7bbb6b672bc0271c2d46ab830849`, passou 10/10.
+
+O adversário final declarou `NÃO REABRIR`: nenhum RED, SPEC-GAP ou GATE-DEFECT residual
+nas alegações congeladas. A suíte global passou (628 unitários, 83 fixtures e gates de
+integração), V16 direcionado passou 5/5, hashes em modo seco retornaram `Nothing to fix`
+e `git diff --check` passou. O drift rustfmt global legado permanece fora do delta, já
+registrado pelo assessment 0013.
+
+Veredito: `READY WITH RESIDUAL AUDIT`. O lote V17–V20 está fechado; regras e componentes
+posteriores não auditados continuam como residual para branches futuros. Nenhum merge,
+instalação ou release foi executado.

@@ -1,7 +1,7 @@
 # Passo operacional 0085 — triagem segregada V17–V20
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** contrato congelado; triagem em execução
+> **Estado:** executado; READY WITH RESIDUAL AUDIT
 > **Branch:** `codex/audit-low-risk-v17-v20`
 > **Base:** `master@cea1e70`
 > **Assessment:** 0014
@@ -38,3 +38,14 @@ Qualquer outro L0 necessário deve ser autorizado por adendo congelado antes do 
 O lote deve produzir gate de integração independente, relatório adversarial, matriz de
 resultados e atualização do assessment 0014. O estado final será `BLOCKED` ou
 `READY WITH RESIDUAL AUDIT`; não haverá merge, instalação nem release neste passo.
+
+## Resultado
+
+O protocolo segregado congelou três SPEC-GAPs antes do saneamento L0 e, no reteste cego,
+dois REDs funcionais antes da correção. V18 passou a casar somente componentes/stems
+allowlistados; V20 passou a aplicar o algoritmo sintático normativo para tabelas. O gate
+final passou 10/10 e o adversário declarou `NÃO REABRIR` após duas ampliações de cobertura
+classificadas como GATE-DEFECT, sem alteração adicional de produção.
+
+O fechamento completo está no assessment 0014 e no relatório P0085. Estado final:
+`READY WITH RESIDUAL AUDIT`. Nenhum merge foi executado.
