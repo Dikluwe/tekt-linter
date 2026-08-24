@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/wildcard-saturation.md
-//! @prompt-hash 60c277e6
+//! @prompt-hash a5de3b49
 //! @layer L1
 //! @updated 2026-08-14
 
@@ -51,8 +51,12 @@ pub fn check<'a, T: HasDecisionArms<'a>>(file: &T) -> Vec<Violation<'a>> {
 }
 
 fn is_exempt_module(path: &str) -> bool {
-    let p = path.to_lowercase();
-    p.contains("lexer") || p.contains("numbering") || p.contains("syntax")
+    path.split(['/', '\\']).any(|component| {
+        let stem = component
+            .rsplit_once('.')
+            .map_or(component, |(stem, _)| stem);
+        matches!(stem, "lexer" | "numbering" | "syntax")
+    })
 }
 
 #[cfg(test)]
@@ -69,10 +73,18 @@ mod tests {
     }
 
     impl HasDecisionArms<'static> for MockFile {
-        fn layer(&self) -> &Layer { &Layer::L1 }
-        fn decision_exprs(&self) -> &[DecisionExpr<'static>] { &self.exprs }
-        fn path(&self) -> &'static Path { self.path }
-        fn language(&self) -> &Language { &self.language }
+        fn layer(&self) -> &Layer {
+            &Layer::L1
+        }
+        fn decision_exprs(&self) -> &[DecisionExpr<'static>] {
+            &self.exprs
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
+        fn language(&self) -> &Language {
+            &self.language
+        }
     }
 
     #[test]
