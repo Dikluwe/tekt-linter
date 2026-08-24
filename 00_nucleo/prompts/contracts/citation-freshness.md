@@ -69,6 +69,13 @@ não vazio. Absoluto, prefix/root, `..` ou vazio são `Unknown(OutsideRoot)`; `.
 lexicalmente. Root symlink ou qualquer componente symlink é `Unknown(Symlink)`, mesmo
 quando aponta para dentro. Root ausente/não diretório é `Unknown(InvalidRoot)`.
 
+Confinamento não pode ser apenas check-then-open por path. Em plataformas com suporte,
+o adapter atravessa a raiz e cada componente por handles de diretório com semântica
+`NOFOLLOW`, abrindo o arquivo final relativamente ao handle validado; a leitura ocorre
+somente do handle final. Plataforma sem primitiva equivalente retorna fail-closed
+`Unknown(Io)`. Troca concorrente nunca autoriza leitura por um symlink e pode resultar
+em `Unknown(Symlink)`, `Unknown(Io)` ou `Unknown(ConcurrentMutation)`.
+
 - ausente: `Stale(MissingFile)`;
 - linha zero/além de EOF: `Stale(InvalidLine)`;
 - linha com `trim()` vazio: `Stale(EmptyLine)`;

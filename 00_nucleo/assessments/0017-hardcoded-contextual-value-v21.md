@@ -12,7 +12,7 @@
 |---|---|---|
 | V21 | `00_nucleo/prompts/unsourced-constant.md` | `6fe0f1ed9b59b206be628b292bc507f8eb50227d2ececb01236181b4bc7dba91` |
 | IR | `00_nucleo/prompts/contracts/rule-traits.md` | `cdba18365badfb56288480f683451914d88b0df07201acc43ee8334d22289ba3` |
-| porta de frescura | `00_nucleo/prompts/contracts/citation-freshness.md` | `5a68af8d6b2d5a679c56d03bcc266b6bf442c36f1fe97007ea7ee69f6e8743f0` |
+| porta de frescura | `00_nucleo/prompts/contracts/citation-freshness.md` | `459a7c29e8ad2f842ba4ef2d6cece4d50b5fd76a6da72067f212d99f8c155402` |
 | arquitetura/wiring | `00_nucleo/prompts/linter-core.md` | `ed44ffdda0a323df26a25cef40c0acb46bd692db6fdaef861a20a509adeb7029` |
 | diagnóstico | `00_nucleo/prompts/violation-types.md` | `b50d90505e311a1aa99d3c80988f3f7996fe7974d71579543f86c0553a4dc314` |
 | distinção V16/V21 | `00_nucleo/adr/0017-v16-v21-diferenca-categorica.md` | `79f406654aacf3693616232a4fdbb911e359486d089ffde841af5375625104dd` |
