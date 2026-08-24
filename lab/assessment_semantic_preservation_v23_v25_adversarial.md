@@ -38,3 +38,18 @@ teste, histórico ou relatório foi consultado nesta rodada.
 Nenhum RED de produção é alegado nesta fase. Converter esses casos em asserts antes do
 saneamento seria GATE-DEFECT. Os L0 devem publicar semântica e API completas, ser
 resselados por hash e entregues a um verificador novo.
+
+## Fechamento final
+
+O saneamento separou os fatos decididos por L3 do classificador L1 e publicou a API no L0
+causal de `rule_traits.rs` antes da materialização. A quarta modalidade V25 recebeu kind
+próprio, sem colapsar reimplementação direta em proxy ou canonicalizer.
+
+O gate final SHA-256
+`9d7bbda9cd97f164785e7e8f1dea406a4d9190148396452afea36839029dd1e6` passou 5/5. Ele
+cobre a matriz completa sete kinds × três regras, quatro níveis, ordem/multiplicidade,
+language irrelevante, Unicode/vazio/extremos e evidência integral por ocorrência. Após
+um GATE-DEFECT intermediário ser fechado, o adversário declarou **NÃO REABRIR** para L1.
+
+Os SG2–SG11 não foram apagados: foram corretamente roteados para o futuro assessment de
+extração L3/integração. Não são RED residual destes três classificadores puros.

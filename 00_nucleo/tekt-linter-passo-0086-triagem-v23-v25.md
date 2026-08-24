@@ -1,7 +1,7 @@
 # Passo operacional 0086 — triagem segregada V23–V25
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** contrato congelado; triagem em execução
+> **Estado:** executado; READY WITH RESIDUAL AUDIT
 > **Branch:** `codex/audit-semantic-preservation-v23-v25`
 > **Base:** `master@ce15824`
 > **Assessment:** 0015
@@ -37,3 +37,13 @@ fazer merge. Um achado que exija essas superfícies vira residual ou novo passo.
 - relatório adversarial em `lab/`;
 - `00_nucleo/relatorio-p0086-triagem-v23-v25.md`;
 - veredito `READY WITH RESIDUAL AUDIT` ou `BLOCKED`.
+
+## Resultado
+
+O P0086 fechou a taxonomia e o mapeamento puro V23–V25 sob quatro L0 hash-pinned. O
+protocolo encontrou SPEC-GAP antes de produção, exigiu o L0 causal de `rule_traits.rs`
+antes da variante nova e corrigiu um GATE-DEFECT de evidência antes do fechamento. O gate
+final passou 5/5 e o adversário declarou `NÃO REABRIR` para L1.
+
+A extração L3 e a integração permanecem residuais obrigatórias; este passo não as declara
+auditadas. Estado final: `READY WITH RESIDUAL AUDIT`. Nenhum merge foi executado.
