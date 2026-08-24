@@ -1,7 +1,7 @@
 # Passo operacional 0090 — auditoria segregada da partição de resultados do walker
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** planejado; não executado
+> **Estado:** fechado — `READY WITH RESIDUAL AUDIT`
 > **Branch prevista:** `codex/audit-walker-result-partition`
 > **Pré-condição:** P0089 integrado em `master`, worktree limpo e branch nova criada a
 > partir do merge
@@ -136,3 +136,9 @@ Fechar somente como `READY WITH RESIDUAL AUDIT` ou `BLOCKED`.
 
 P0090 não autoriza merge, push, instalação ou release. Sem integração prévia do P0089,
 a execução deve parar antes de criar branch concorrente.
+
+## Fechamento
+
+Executado em 2026-08-24 após integração de P0089 em `master@40c374d`. O SPEC-GAP de
+camada/API e o RED de seam ausente foram fechados; evidência e residual constam em
+`relatorio-p0090-auditoria-particao-walker.md`.

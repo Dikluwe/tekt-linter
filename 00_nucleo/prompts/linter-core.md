@@ -1,5 +1,5 @@
 # Prompt: Crystalline Linter (crystalline-lint)
-Hash do Código: 8ff31271
+Hash do Código: 189991f6
 
 **Camada**: L1 → L4 (sistema completo)
 **Criado em**: 2025-03-13
@@ -429,6 +429,8 @@ all_violations.sort_by(|a, b| {
 - `WiringConfig` é imutável após construção em L4
 - Ordenação final é determinística e independente da ordem
   de execução do rayon
+- A partição sequencial inicial de `Result<SourceFile, SourceError>` é a função pura L1
+  `contracts::file_provider::collect_walker_results`; L4 apenas a chama.
 
 ---
 
