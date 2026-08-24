@@ -11,6 +11,27 @@ permissions:
   security-events: write
 
 jobs:
+  refinement-portability:
+    name: Refinement portability (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Verify Git refinement CLI
+        run: cargo test --test refinement_cli
+
   ci-build-test-lint:
     name: Build, Test & Self-Lint
     runs-on: ubuntu-latest

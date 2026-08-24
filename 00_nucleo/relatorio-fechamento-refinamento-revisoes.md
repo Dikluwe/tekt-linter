@@ -69,6 +69,10 @@ Não foram testados neste host:
 - ausência de rede observada por sandbox/servidor sentinela dedicado;
 - path realmente não UTF-8.
 
+Foi adicionada ao CI uma matriz `ubuntu-latest`, `macos-latest` e `windows-latest` que
+executa `cargo test --test refinement_cli`. Ela prepara a coleta da evidência de
+portabilidade, mas só conta como prova depois de executada pelo provedor remoto.
+
 LFS foi coberto indiretamente pela leitura de blobs crus e pela não execução de
 filtros, mas ainda não por instalação real de `git-lfs`. Portanto não se declara essa
 integração como provada.
