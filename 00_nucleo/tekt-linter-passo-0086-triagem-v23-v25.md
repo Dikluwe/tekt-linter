@@ -13,7 +13,8 @@ ampla de contratos, parsers e wiring. O lote não reabre assessments 0001–0014
 
 ## Segregação
 
-1. Orquestrador congela alegações, baseline e três L0 por SHA-256.
+1. Orquestrador congela alegações, baseline, três L0 de regra e o L0 causal da IR por
+   SHA-256.
 2. Adversário deriva ataques lendo somente o pacote autorizado e não edita arquivos.
 3. Verificador diferente materializa gate black-box sem ler produção/testes existentes.
 4. Gate e achados são congelados antes de qualquer correção.

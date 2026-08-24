@@ -12,6 +12,7 @@
 | V23 | `00_nucleo/prompts/rules/context-erasure.md` | `a1352aaa397b1e849da5a6d9db006eace0aea127643bda53f8bfb7844e2ec65c` |
 | V24 | `00_nucleo/prompts/rules/semantic-field-loss.md` | `ffcb08aa01c6f5fafaab8ba40830929670399e94dae2a8edc7df4bb957ade518` |
 | V25 | `00_nucleo/prompts/rules/decision-ownership.md` | `c6ebd9250b865f655c96b5bbdd125dc4b9b84101eb6d46be34247a605199f136` |
+| IR compartilhada | `00_nucleo/prompts/contracts/rule-traits.md` | `01f72010e0f5ee43ca7933cd0e8e5aba982853d25787b09c5a62c6370b81b05d` |
 
 ## Natureza e fronteira
 
