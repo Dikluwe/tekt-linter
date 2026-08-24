@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/rule-traits.md
-//! @prompt-hash 4c753698
+//! @prompt-hash 36ff378d
 //! @layer L1
 //! @updated 2026-03-22
 
@@ -269,6 +269,7 @@ pub enum SemanticObservationKind {
     DuplicateDecisionOwner,
     DecisionProxyReentry,
     CanonicalizerReentry,
+    DirectDecisionReimplementation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/context-erasure.md
-//! @prompt-hash 21dd9c56
+//! @prompt-hash aa106066
 //! @layer L1
 //! @updated 2026-08-23
 
