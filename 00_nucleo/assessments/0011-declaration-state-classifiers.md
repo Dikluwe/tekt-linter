@@ -30,6 +30,16 @@ lote; aqui validamos somente a transformação pura da evidência recebida.
 Até seis propriedades independentes com tabelas de camadas, kinds, tokens e permutações.
 Produção não é alterada. Resultado por alegação: `PASS`, `RED` ou `SPEC-GAP`.
 
+### Insumo normativo autorizado para o verificador
+
+- caminho: `00_nucleo/prompts/rules/mutable-state-core.md`;
+- SHA-256 exato dos bytes autorizados nesta execução:
+  `eb2ca06d26e0978c08e64aec0ed23c7848cf1b56f2b82547aa055e2a45e03c01`;
+- seção normativa: `Tokens proibidos em posição static`.
+
+O papel B pode e deve ler esse L0, após validar o hash, mas continua proibido de ler
+`mutable_state_core.rs`. Suas expectativas devem ser independentes de constantes L1.
+
 ## Segregação
 
 - B escreve e executa o gate sem ler os dois alvos.
