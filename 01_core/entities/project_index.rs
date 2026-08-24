@@ -62,11 +62,13 @@ impl<'a> LocalIndex<'a> {
     /// from_parsed não os deriva — apenas os transporta.
     pub fn from_parsed(file: &ParsedFile<'a>) -> Self {
         Self {
-            referenced_prompt: file.prompt_header
-                .as_ref()
-                .map(|h| h.prompt_path),
+            referenced_prompt: file.prompt_header.as_ref().map(|h| h.prompt_path),
             // Layer::Unknown em arquivo parseado → alien (ADR-0006)
-            alien_file: if file.layer == Layer::Unknown { Some(file.path) } else { None },
+            alien_file: if file.layer == Layer::Unknown {
+                Some(file.path)
+            } else {
+                None
+            },
             declared_traits: file.declared_traits.clone(),
             implemented_traits: file.implemented_traits.clone(),
             blanket_impl_traits: file.blanket_impl_traits.clone(),
@@ -131,20 +133,28 @@ impl<'a> ProjectIndex<'a> {
             self.referenced_prompts.insert(prompt);
         }
         if let Some(path) = local.alien_file {
-            self.alien_files.push(path);
+            match self.alien_files.binary_search(&path) {
+                Ok(_) => {}
+                Err(index) => self.alien_files.insert(index, path),
+            }
         }
         self.all_declared_traits.extend(local.declared_traits);
         self.all_implemented_traits.extend(local.implemented_traits);
-        self.all_blanket_impl_traits.extend(local.blanket_impl_traits);
+        self.all_blanket_impl_traits
+            .extend(local.blanket_impl_traits);
     }
 
     /// Funde dois ProjectIndex — para rayon::reduce.
     pub fn merge(mut self, other: ProjectIndex<'a>) -> ProjectIndex<'a> {
         self.referenced_prompts.extend(other.referenced_prompts);
         self.alien_files.extend(other.alien_files);
+        self.alien_files.sort_unstable();
+        self.alien_files.dedup();
         self.all_declared_traits.extend(other.all_declared_traits);
-        self.all_implemented_traits.extend(other.all_implemented_traits);
-        self.all_blanket_impl_traits.extend(other.all_blanket_impl_traits);
+        self.all_implemented_traits
+            .extend(other.all_implemented_traits);
+        self.all_blanket_impl_traits
+            .extend(other.all_blanket_impl_traits);
         self
     }
 }
@@ -213,7 +223,13 @@ mod tests {
     fn unknown_layer_adds_alien_to_index() {
         let mut index = ProjectIndex::new();
         let path = Path::new("src/utils/helper.rs");
-        index.merge_local(LocalIndex { referenced_prompt: None, alien_file: Some(path), declared_traits: vec![], implemented_traits: vec![], blanket_impl_traits: vec![] });
+        index.merge_local(LocalIndex {
+            referenced_prompt: None,
+            alien_file: Some(path),
+            declared_traits: vec![],
+            implemented_traits: vec![],
+            blanket_impl_traits: vec![],
+        });
         assert_eq!(index.alien_files, vec![path]);
     }
 
@@ -225,7 +241,9 @@ mod tests {
             "00_nucleo/prompts/rules/auth.md",
         );
         index.merge_local(LocalIndex::from_parsed(&parsed));
-        assert!(index.referenced_prompts.contains("00_nucleo/prompts/rules/auth.md"));
+        assert!(index
+            .referenced_prompts
+            .contains("00_nucleo/prompts/rules/auth.md"));
     }
 
     #[test]
@@ -258,6 +276,26 @@ mod tests {
     }
 
     #[test]
+    fn alien_files_are_a_canonical_set_across_partitions() {
+        let a = Path::new("a.rs");
+        let b = Path::new("b.rs");
+        let mut left = ProjectIndex::new();
+        left.merge_local(local(None, Some(b)));
+        left.merge_local(local(None, Some(a)));
+        left.merge_local(local(None, Some(a)));
+
+        let mut first = ProjectIndex::new();
+        first.merge_local(local(None, Some(a)));
+        let mut second = ProjectIndex::new();
+        second.merge_local(local(None, Some(b)));
+        second.merge_local(local(None, Some(a)));
+        let partitioned = second.merge(first);
+
+        assert_eq!(left.alien_files, vec![a, b]);
+        assert_eq!(left.alien_files, partitioned.alien_files);
+    }
+
+    #[test]
     fn from_source_error_does_not_contribute() {
         let mut index = ProjectIndex::new();
         index.merge_local(LocalIndex::from_source_error());
@@ -277,7 +315,10 @@ mod tests {
         );
         parsed.declared_traits = vec!["FileProvider", "LanguageParser"];
         let local = LocalIndex::from_parsed(&parsed);
-        assert_eq!(local.declared_traits, vec!["FileProvider", "LanguageParser"]);
+        assert_eq!(
+            local.declared_traits,
+            vec!["FileProvider", "LanguageParser"]
+        );
         assert!(local.implemented_traits.is_empty());
     }
 

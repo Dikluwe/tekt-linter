@@ -133,7 +133,6 @@ fn pathspec_magic_in_contract_file_is_rejected_as_input() {
 }
 
 #[test]
-#[ignore = "RED congelado: política de Git alternates aguarda decisão arquitetural"]
 fn repository_cannot_read_commits_from_external_alternate() {
     let external = tempfile::tempdir().unwrap();
     init(external.path());
@@ -166,7 +165,108 @@ fn repository_cannot_read_commits_from_external_alternate() {
     .success());
     let contract = contract(repository.path(), "sample.rs", "unknown");
 
-    assert_input_blocked(refine(repository.path(), &before, &after, &contract));
+    let output = refine(repository.path(), &before, &after, &contract);
+    let diagnostic = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    )
+    .to_lowercase();
+    assert_input_blocked(output);
+    assert!(diagnostic.contains("self-contained") || diagnostic.contains("autocontid"));
+    assert!(!diagnostic.contains("invalid git repository"));
+}
+
+#[test]
+fn empty_alternates_is_allowed_but_external_git_environment_is_ignored() {
+    let repository = tempfile::tempdir().unwrap();
+    init(repository.path());
+    fs::write(
+        repository.path().join("sample.rs"),
+        "enum Stable { Alpha, Beta }\n",
+    )
+    .unwrap();
+    let before = commit(repository.path(), "before");
+    fs::write(
+        repository.path().join("sample.rs"),
+        "// rewrite\nenum Stable { Alpha, Beta }\n",
+    )
+    .unwrap();
+    let after = commit(repository.path(), "after");
+    fs::create_dir_all(repository.path().join(".git/objects/info")).unwrap();
+    fs::write(repository.path().join(".git/objects/info/alternates"), b"").unwrap();
+    let contract = contract(repository.path(), "sample.rs", "unknown");
+    assert_eq!(
+        refine(repository.path(), &before, &after, &contract)
+            .status
+            .code(),
+        Some(0)
+    );
+
+    let external = tempfile::tempdir().unwrap();
+    init(external.path());
+    let output = Command::new(env!("CARGO_BIN_EXE_crystalline-lint"))
+        .args([
+            "refine-revisions",
+            repository.path().to_str().unwrap(),
+            "--before-ref",
+            &before,
+            "--after-ref",
+            &after,
+            "--contract",
+            contract.to_str().unwrap(),
+        ])
+        .env("GIT_OBJECT_DIRECTORY", external.path().join(".git/objects"))
+        .env(
+            "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+            external.path().join(".git/objects"),
+        )
+        .env("GIT_DIR", external.path().join(".git"))
+        .env("GIT_WORK_TREE", external.path())
+        .env("GIT_COMMON_DIR", external.path().join(".git"))
+        .output()
+        .unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "PRESERVED\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn git_directory_symlink_to_external_repository_is_rejected() {
+    use std::os::unix::fs::symlink;
+
+    let external = tempfile::tempdir().unwrap();
+    init(external.path());
+    fs::write(
+        external.path().join("sample.rs"),
+        "enum Stable { Alpha, Beta }\n",
+    )
+    .unwrap();
+    let before = commit(external.path(), "external before");
+    fs::write(
+        external.path().join("sample.rs"),
+        "// rewrite\nenum Stable { Alpha, Beta }\n",
+    )
+    .unwrap();
+    let after = commit(external.path(), "external after");
+
+    let nominal = tempfile::tempdir().unwrap();
+    symlink(external.path().join(".git"), nominal.path().join(".git")).unwrap();
+    let contract = contract(nominal.path(), "sample.rs", "unknown");
+    let output = refine(nominal.path(), &before, &after, &contract);
+    let diagnostic = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    )
+    .to_lowercase();
+    assert_input_blocked(output);
+    assert!(diagnostic.contains("self-contained") || diagnostic.contains("autocontid"));
 }
 
 #[test]

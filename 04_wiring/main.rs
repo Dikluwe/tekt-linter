@@ -31,7 +31,9 @@ use crystalline_lint::infra::config::CrystallineConfig;
 use crystalline_lint::infra::cpp_parser::CppParser;
 use crystalline_lint::infra::crate_registry::CrateRegistry;
 use crystalline_lint::infra::elixir_parser::ElixirParser;
-use crystalline_lint::infra::git_refinement::{extract_revision_snapshot, resolve_commit};
+use crystalline_lint::infra::git_refinement::{
+    extract_revision_snapshot, require_self_contained_object_database, resolve_commit,
+};
 use crystalline_lint::infra::go_parser::GoParser;
 use crystalline_lint::infra::hash_writer;
 use crystalline_lint::infra::java_parser::JavaParser;
@@ -85,6 +87,10 @@ fn main() {
         });
         let manifest_hash = semantic_manifest_sha256(&manifest).unwrap_or_else(|error| {
             eprintln!("crystalline-lint: refinement seal manifest error: {error}");
+            process::exit(2)
+        });
+        require_self_contained_object_database(&args.repository).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: refinement seal repository error: {error}");
             process::exit(2)
         });
         let prompt_bytes =
@@ -285,6 +291,10 @@ fn main() {
     }
 
     if let Some(RefinementCommand::RefineRevisions(args)) = &cli.command {
+        require_self_contained_object_database(&args.repository).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: refinement repository error: {error}");
+            process::exit(2)
+        });
         let specs = load_observable_specs(&args.contract).unwrap_or_else(|error| {
             eprintln!("crystalline-lint: refinement contract error: {error}");
             process::exit(2);
@@ -403,7 +413,10 @@ fn main() {
 
     // ── Crate registry (membro→camada + deps) para classificação ciente (0052) ─
     // Construído uma vez do workspace-alvo; vazio se não for projeto cargo (legado).
-    let crate_registry = CrateRegistry::from_root(&cli.path, &config);
+    let crate_registry = CrateRegistry::from_root(&cli.path, &config).unwrap_or_else(|error| {
+        eprintln!("crystalline-lint: crate registry infrastructure error: {error}");
+        process::exit(1)
+    });
 
     // ── Instantiate L3 components ─────────────────────────────────────────────
     let shared_prompt_reader = std::sync::Arc::new(

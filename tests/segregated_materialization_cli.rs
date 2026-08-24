@@ -159,6 +159,46 @@ fn assert_blocked(result: Output, output: &Path) {
 }
 
 #[test]
+fn failed_seal_preserves_existing_destination_byte_for_byte() {
+    let repo = Repository::new();
+    let manifest = repo.valid_manifest();
+    let mut text = fs::read_to_string(&manifest).unwrap();
+    text = text.replace("prompt_sha256 = '", "prompt_sha256 = '0");
+    fs::write(&manifest, text).unwrap();
+    let output = repo.root().join("seal.json");
+    let previous = b"preexisting seal bytes\0must survive\n";
+    fs::write(&output, previous).unwrap();
+    let result = repo.seal(&manifest, &output);
+    assert_eq!(result.status.code(), Some(2));
+    assert_eq!(fs::read(output).unwrap(), previous);
+}
+
+#[test]
+fn seal_language_never_claims_proven_isolation_or_independence() {
+    let repo = Repository::new();
+    let manifest = repo.valid_manifest();
+    let output = repo.root().join("seal.json");
+    let result = repo.seal(&manifest, &output);
+    assert_eq!(result.status.code(), Some(0));
+    let mut public_text = String::from_utf8_lossy(&result.stdout).to_lowercase();
+    public_text.push_str(&String::from_utf8_lossy(&result.stderr).to_lowercase());
+    public_text.push_str(&String::from_utf8_lossy(&fs::read(output).unwrap()).to_lowercase());
+    for forbidden in [
+        "isolation verified",
+        "proven isolation",
+        "independence certified",
+        "isolamento verificado",
+        "isolamento provado",
+        "independência certificada",
+    ] {
+        assert!(
+            !public_text.contains(forbidden),
+            "false assurance in public receipt: {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn missing_any_oracle_category_blocks() {
     let repo = Repository::new();
     let cases: &[(&str, &[(&str, &str, &str, &str)])] = &[
