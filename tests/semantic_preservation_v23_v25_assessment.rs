@@ -76,6 +76,24 @@ fn evidence(v: &Violation<'_>) -> (String, ViolationLevel, String, String, usize
     )
 }
 
+fn assert_diagnostic_evidence(
+    violation: &Violation<'_>,
+    rule_id: &str,
+    contract_id: &str,
+    detail: &str,
+    line: usize,
+    column: usize,
+) {
+    assert_eq!(violation.rule_id, rule_id);
+    assert!(violation.message.contains(contract_id));
+    assert!(violation.message.contains(detail));
+    assert_eq!(violation.location.path, Path::new("unicode/λ-gate.rs"));
+    assert_eq!(
+        (violation.location.line, violation.location.column),
+        (line, column)
+    );
+}
+
 #[test]
 fn complete_seven_by_three_matrix_and_v25_modalities() {
     let f = file(Language::Rust, complete_input());
@@ -85,12 +103,13 @@ fn complete_seven_by_three_matrix_and_v25_modalities() {
     assert_eq!(v23.len(), 2);
     assert_eq!(v24.len(), 1);
     assert_eq!(v25.len(), 4);
-    assert_eq!(
-        v23.iter().map(|v| v.rule_id.as_str()).collect::<Vec<_>>(),
-        ["V23", "V23"]
-    );
-    assert_eq!(v24[0].rule_id, "V24");
-    assert!(v25.iter().all(|v| v.rule_id == "V25"));
+    for (v, contract, detail, line, column) in [
+        (&v23[0], "c23-a", "neutral λ", 1, 2),
+        (&v23[1], "c23-b", "erase 🙂", 3, 4),
+    ] {
+        assert_diagnostic_evidence(v, "V23", contract, detail, line, column);
+    }
+    assert_diagnostic_evidence(&v24[0], "V24", "c24", "field loss", 5, 6);
     for (v, contract, detail, mode) in [
         (&v25[0], "c25-a", "owners", "duplicate-owner"),
         (&v25[1], "c25-b", "proxy", "proxy-reentry"),
@@ -101,15 +120,14 @@ fn complete_seven_by_three_matrix_and_v25_modalities() {
         assert!(v.message.contains(detail));
         assert!(v.message.contains(mode));
     }
-    assert_eq!((v23[0].location.line, v23[0].location.column), (1, 2));
-    assert_eq!((v23[1].location.line, v23[1].location.column), (3, 4));
-    assert_eq!((v24[0].location.line, v24[0].location.column), (5, 6));
-    assert_eq!(
-        v25.iter()
-            .map(|v| (v.location.line, v.location.column))
-            .collect::<Vec<_>>(),
-        [(7, 8), (9, 10), (11, 12), (13, 14)]
-    );
+    for (v, contract, detail, line, column) in [
+        (&v25[0], "c25-a", "owners", 7, 8),
+        (&v25[1], "c25-b", "proxy", 9, 10),
+        (&v25[2], "c25-c", "canon", 11, 12),
+        (&v25[3], "c25-d", "direct", 13, 14),
+    ] {
+        assert_diagnostic_evidence(v, "V25", contract, detail, line, column);
+    }
 }
 
 #[test]
