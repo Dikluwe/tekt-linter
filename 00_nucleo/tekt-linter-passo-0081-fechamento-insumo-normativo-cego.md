@@ -1,7 +1,7 @@
 # Passo operacional 0081 — fechamento do insumo normativo cego
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** escrito, não executado
+> **Estado:** executado; gap fechado por reteste cego limpo
 > **Branch:** `codex/segregated-materialization`
 > **Base:** SPEC-GAP documental do P0080
 
@@ -29,3 +29,19 @@ histórico da triagem anterior e sem acesso à produção.
 - V12/V13 e produção sem alteração;
 - nenhum `SPEC-GAP` residual na cobertura nominal;
 - nenhum merge, instalação ou release.
+
+## Resultado
+
+O contrato passou a autorizar insumos L0 por caminho, seção e SHA-256, sem liberar a
+leitura do alvo L1. Um primeiro ensaio foi descartado porque uma formatação global poderia
+ter lido mecanicamente arquivos proibidos. Ele não integra a evidência de fechamento.
+
+Um segundo agente, criado sem contexto herdado, validou antes da leitura o SHA-256
+`eb2ca06d26e0978c08e64aec0ed23c7848cf1b56f2b82547aa055e2a45e03c01`, extraiu os
+18 tokens do L0 autorizado e produziu um gate independente. O resultado foi 18/18 tokens
+nominais cobertos e 5/5 propriedades aprovadas, sem leitura dos alvos, testes anteriores,
+lab ou histórico Git.
+
+V12/V13 e o restante da produção não foram alterados. A suíte global, a verificação de
+hashes, o auto-lint, o `rustfmt` dirigido ao gate e `git diff --check` passaram. Portanto,
+não resta `SPEC-GAP` nominal neste lote.

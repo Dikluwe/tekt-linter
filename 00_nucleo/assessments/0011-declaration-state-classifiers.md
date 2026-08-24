@@ -1,6 +1,6 @@
 # Assessment 0011 — classificadores de declaração V12/V13
 
-**Estado:** PASS FUNCIONAL — 6/6; SPEC-GAP documental esclarecido
+**Estado:** PASS — SPEC-GAP fechado pelo P0081
 **Data:** 2026-08-24
 **Alvos:** `wiring_logic_leak.rs`, `mutable_state_core.rs`
 
@@ -71,3 +71,19 @@ Para execuções cegas futuras, a lista referenciada pela alegação 5 é:
 
 Esta enumeração esclarece o gate futuro; não é usada retroativamente para alegar que B
 a conhecia durante a primeira execução.
+
+## Fechamento P0081
+
+O protocolo agora reconhece como insumo legítimo do verificador uma referência L0
+autorizada por caminho, seção e SHA-256. Isso preserva a cegueira sobre L1 e evita que o
+agente precise inventar valores normativos ausentes da alegação.
+
+O primeiro reteste posterior à mudança foi deliberadamente descartado: apesar de o gate
+já ter sido construído, uma chamada global de formatação poderia ter lido mecanicamente
+fontes fora da autorização. Nenhum resultado desse ensaio é usado como evidência.
+
+No reteste limpo, outro agente sem contexto herdado validou o hash antes de ler o L0,
+enumerou independentemente os 18 tokens autorizados e criou
+`tests/normative_v13_tokens_retest_clean.rs`, sem ler produção, gates anteriores, lab ou
+histórico Git. O gate cobriu 18/18 tokens e aprovou 5/5 propriedades. A suíte global também
+passou sem qualquer alteração em V12/V13. O `SPEC-GAP` nominal está encerrado.
