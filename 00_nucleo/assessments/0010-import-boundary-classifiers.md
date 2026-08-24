@@ -1,6 +1,6 @@
 # Assessment 0010 — classificadores de fronteira V3/V9
 
-**Estado:** CONGELADO PARA TRIAGEM
+**Estado:** RED CONGELADO — requer saneamento separado
 **Data:** 2026-08-24
 **Alvos:** `forbidden_import.rs`, `pub_leak.rs`
 
@@ -40,3 +40,17 @@ Produção não é alterada. Resultado por alegação: `PASS`, `RED` ou `SPEC-GA
 
 Se houver RED, registrar evidência e parar antes de modificar L1. Se tudo passar, emitir
 laudo e avançar. Não fazer merge, instalação ou release.
+
+## Resultado da triagem
+
+O gate B terminou em 5 PASS / 1 RED / 0 ignored. V3 passou integralmente. A pertinência,
+matriz, guard, portas e igualdade textual de V9 também passaram.
+
+O RED está na evidência de V9: `target_subdir` decide a violação, mas não aparece no
+diagnóstico. O adversário C reproduziu um caso mais forte: dois imports com os mesmos
+path e linha, porém subdirs internos distintos, geram `Violation` completamente iguais.
+Assim, consumidores e agentes não conseguem recuperar qual fronteira foi rejeitada.
+
+Não há `SPEC-GAP`: a alegação 6 exige evidência completa da decisão. A produção ficou
+intacta. O saneamento seguinte deve incluir literalmente `target_subdir` na mensagem,
+sem alterar pertinência, cardinalidade ou política de portas.

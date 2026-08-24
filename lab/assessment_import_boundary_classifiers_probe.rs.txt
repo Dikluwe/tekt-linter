@@ -1,0 +1,112 @@
+// Probe independente do Assessment 0010/P0078. `.txt` evita auto-lint como produção.
+use crystalline_lint::entities::layer::Layer;
+use crystalline_lint::entities::parsed_file::{Import, ImportKind};
+use crystalline_lint::entities::rule_traits::{HasImports, HasPubLeak};
+use crystalline_lint::entities::violation::ViolationLevel;
+use crystalline_lint::rules::{forbidden_import, pub_leak};
+use std::collections::HashSet;
+use std::path::Path;
+
+struct File { layer: Layer, imports: Vec<Import<'static>>, path: &'static Path }
+impl HasImports<'static> for File {
+    fn layer(&self) -> &Layer { &self.layer }
+    fn imports(&self) -> &[Import<'static>] { &self.imports }
+    fn path(&self) -> &'static Path { self.path }
+}
+impl HasPubLeak<'static> for File {
+    fn layer(&self) -> &Layer { &self.layer }
+    fn imports(&self) -> &[Import<'static>] { &self.imports }
+    fn path(&self) -> &'static Path { self.path }
+}
+fn layers() -> Vec<Layer> { vec![Layer::L0,Layer::L1,Layer::L2,Layer::L3,Layer::L4,Layer::Lab,Layer::Unknown] }
+fn kinds() -> Vec<ImportKind> { vec![ImportKind::Direct,ImportKind::Glob,ImportKind::Alias,ImportKind::Named] }
+fn imp(path: &'static str, line: usize, kind: ImportKind, target: Layer,
+       subdir: Option<&'static str>, test: bool) -> Import<'static> {
+    Import { path, line, kind, target_layer: target, target_subdir: subdir, is_test_origin: test }
+}
+fn v3_forbidden(source: &Layer, target: &Layer) -> bool {
+    match source {
+        Layer::L1 => matches!(target, Layer::L2|Layer::L3|Layer::L4|Layer::Lab),
+        Layer::L2 => matches!(target, Layer::L3|Layer::L4|Layer::Lab),
+        Layer::L3 => matches!(target, Layer::L2|Layer::L4|Layer::Lab),
+        Layer::L4 => matches!(target, Layer::Lab),
+        _ => false,
+    }
+}
+
+fn main() {
+    // P1: matriz V3 completa 7x7.
+    for source in layers() { for target in layers() {
+        let f = File { layer: source.clone(), path: Path::new("src/host.rs"), imports: vec![
+            imp("crate::Δ", 17, ImportKind::Direct, target.clone(), Some("x"), false)] };
+        let v = forbidden_import::check(&f, false);
+        assert_eq!(v.len(), usize::from(v3_forbidden(&source, &target)), "{source:?}->{target:?}");
+    }}
+    println!("PASS P1 V3 exhaustive 7x7 matrix");
+
+    // P2: guard remove só test-origin; quatro kinds são transparentes.
+    let mut imports = vec![];
+    for (n, kind) in kinds().into_iter().enumerate() {
+        imports.push(imp("lab/é", 10+n, kind.clone(), Layer::Lab, Some("lab"), false));
+        imports.push(imp("lab/é", 20+n, kind, Layer::Lab, Some("lab"), true));
+    }
+    let f = File { layer: Layer::L1, imports, path: Path::new("01_core/x.rs") };
+    assert_eq!(forbidden_import::check(&f, false).len(), 4);
+    assert_eq!(forbidden_import::check(&f, true).len(), 8);
+    println!("PASS P2 V3 guard and all ImportKind variants");
+
+    // P3: V3 preserva ordem, duplicata e evidência completa relevante.
+    let imports = vec![
+        imp("03/é", 9, ImportKind::Direct, Layer::L3, None, false),
+        imp("03/e\u{301}", 4, ImportKind::Glob, Layer::L3, None, false),
+        imp("03/é", 9, ImportKind::Direct, Layer::L3, None, false),
+    ];
+    let f = File { layer: Layer::L1, imports, path: Path::new("01_core/host-é.rs") };
+    let v = forbidden_import::check(&f, false);
+    assert_eq!(v.len(), 3); assert_eq!(v.iter().map(|x| x.location.line).collect::<Vec<_>>(), vec![9,4,9]);
+    for (x, path) in v.iter().zip(["03/é","03/e\u{301}","03/é"]) {
+        assert_eq!(x.rule_id,"V3"); assert_eq!(x.level,ViolationLevel::Error);
+        assert_eq!(x.location.path.as_ref(),Path::new("01_core/host-é.rs"));
+        assert!(x.message.contains("L1") && x.message.contains("L3") && x.message.contains(path));
+    }
+    println!("PASS P3 V3 multiplicity/order/Unicode/evidence");
+
+    // P4: matriz V9 completa: 7 origens x 7 destinos x None/porta/interno.
+    let ports = pub_leak::L1Ports::new(HashSet::from(["entities".to_string()]));
+    for source in layers() { for target in layers() { for subdir in [None,Some("entities"),Some("internal")] {
+        let f = File { layer: source.clone(), path: Path::new("src/host.rs"), imports: vec![
+            imp("crate::x", 3, ImportKind::Named, target.clone(), subdir, false)] };
+        let expected = matches!(source,Layer::L2|Layer::L3) && target==Layer::L1 && subdir==Some("internal");
+        assert_eq!(pub_leak::check(&f,&ports,false).len(),usize::from(expected),
+                   "source={source:?} target={target:?} subdir={subdir:?}");
+    }}}
+    println!("PASS P4 V9 exhaustive origin/target/subdir matrix");
+
+    // P5: igualdade textual exata; caixa, prefixos e NFC/NFD não colidem; None fica None.
+    let ports = pub_leak::L1Ports::new(HashSet::from(["entities".into(),"é".into(),"e\u{301}".into()]));
+    for (subdir, expected) in [
+        (None,0),(Some("entities"),0),(Some("Entities"),1),(Some("entities_extra"),1),
+        (Some("é"),0),(Some("e\u{301}"),0),(Some("É"),1),
+    ] {
+        let f=File{layer:Layer::L2,path:Path::new("02/x.rs"),imports:vec![imp("crate::x",1,ImportKind::Alias,Layer::L1,subdir,false)]};
+        assert_eq!(pub_leak::check(&f,&ports,false).len(),expected,"subdir={subdir:?}");
+    }
+    println!("PASS P5 V9 exact textual ports/None/Unicode/prefix");
+
+    // P6: kinds, guard e multiplicidade passam, mas target_subdir decisivo some da evidência.
+    let ports = pub_leak::L1Ports::new(HashSet::new());
+    let imports = vec![
+        imp("crate::same",7,ImportKind::Direct,Layer::L1,Some("internal_a"),false),
+        imp("crate::same",7,ImportKind::Glob,Layer::L1,Some("internal_b"),false),
+        imp("crate::same",7,ImportKind::Alias,Layer::L1,Some("internal_a"),true),
+        imp("crate::same",7,ImportKind::Named,Layer::L1,Some("internal_b"),true),
+    ];
+    let f=File{layer:Layer::L3,imports,path:Path::new("03/host.rs")};
+    let off=pub_leak::check(&f,&ports,false); let on=pub_leak::check(&f,&ports,true);
+    assert_eq!(off.len(),2); assert_eq!(on.len(),4);
+    assert_eq!(off[0],off[1]); // ocorrências semanticamente diferentes viram evidência idêntica
+    assert!(!off[0].message.contains("internal_a") && !off[1].message.contains("internal_b"));
+    assert!(on.iter().all(|x|x.rule_id=="V9"&&x.level==ViolationLevel::Error
+        &&x.location.path.as_ref()==Path::new("03/host.rs")&&(x.location.line,x.location.column)==(7,0)));
+    println!("RED P6 V9 omits decisive target_subdir; internal_a/internal_b diagnostics are identical");
+}
