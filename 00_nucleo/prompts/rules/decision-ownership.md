@@ -1,5 +1,5 @@
 # Prompt — V25 `DecisionOwnership`
-Hash do Código: 7468ae77
+Hash do Código: 181d2563
 
 **Status:** VIGENTE; ADR-0018 aceito em 2026-08-23
 **Camada futura:** L1 local e agregação global, com fatos AST produzidos por L3

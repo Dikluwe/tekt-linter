@@ -1,5 +1,5 @@
 # Prompt: Rule Traits (rule-traits)
-Hash do Código: 5b6a9b53
+Hash do Código: e9d12481
 
 **Camada**: L1 (Core — Contracts)
 **Criado em**: 2026-03-15 (ADR-0006 refactor)
