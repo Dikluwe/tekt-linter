@@ -1,5 +1,5 @@
 # Prompt: Contract - Language Parser (language-parser)
-Hash do Código: 0cce0964
+Hash do Código: cbe2c3dc
 
 **Camada**: L1 (Core — Contracts)
 **Criado em**: 2025-03-13
