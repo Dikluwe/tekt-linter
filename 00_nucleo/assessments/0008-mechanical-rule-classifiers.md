@@ -1,6 +1,6 @@
 # Assessment 0008 — classificadores mecânicos V2/V8/V10/V11
 
-**Estado:** RED CONGELADO — requer saneamento separado
+**Estado:** SANEADO PELO P0076 — gate 6/6
 **Data:** 2026-08-24
 **Alvos:** `test_file.rs`, `alien_file.rs`, `quarantine_leak.rs`,
 `dangling_contract.rs`
@@ -56,3 +56,9 @@ O adversário C, sem ler o gate, construiu 128 índices semanticamente idêntico
 
 A produção permaneceu intacta. O saneamento seguinte deve ordenar textualmente as traits
 pendentes antes de materializar violações, preservando distinções byte-sensitive.
+
+## Fechamento P0076
+
+V11 passou a ordenar as traits pendentes pelo `Ord` nativo de `str` antes de construir
+violações. O gate endurecido passou 6/6 e o adversário, após 512 reconstruções do mesmo
+conjunto, encerrou com **NÃO REABRIR**. O RED acima permanece como evidência histórica.

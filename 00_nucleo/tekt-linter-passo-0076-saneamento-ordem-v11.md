@@ -1,7 +1,7 @@
 # Passo operacional 0076 — saneamento da ordem pública de V11
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** escrito, não executado
+> **Estado:** executado; gate local concluído
 > **Branch:** `codex/segregated-materialization`
 > **Base:** assessment 0008, commits `86a7a15` e `04d3017`
 
