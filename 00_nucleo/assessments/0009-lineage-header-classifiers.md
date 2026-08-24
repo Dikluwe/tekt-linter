@@ -1,6 +1,6 @@
 # Assessment 0009 — classificadores de cabeçalho V1/V15
 
-**Estado:** CONGELADO PARA TRIAGEM
+**Estado:** RED CONGELADO — requer saneamento separado
 **Data:** 2026-08-24
 **Alvos:** `prompt_header.rs`, `multi_prompt_header.rs`
 
@@ -41,3 +41,19 @@ próprios. Resultado por alegação: `PASS`, `RED` ou `SPEC-GAP`; produção nã
 
 Se houver RED, registrar evidência e parar antes de modificar L1. Se tudo passar, emitir
 laudo e avançar. Não fazer merge, instalação ou release.
+
+## Resultado da triagem
+
+O gate B terminou em 4 PASS / 2 RED / 0 ignored. V15 passou integralmente, assim como a
+tabela header/exists e os limites por componentes de diretórios estritos em V1.
+
+Dois REDs convergiram com o adversário C:
+
+1. V1 também emite em L0, Lab e Unknown. `HasPromptFilesystem` não expõe `Layer`, logo a
+   regra não consegue representar seu próprio escopo L1–L4 sem ampliar o contrato puro.
+2. Quando o header existe mas o prompt falta, V1 reutiliza a mensagem de header ausente
+   e omite o `prompt_path` já disponível, perdendo a identidade causal do erro.
+
+A limitação da trait é causa do primeiro RED, não `SPEC-GAP`: o escopo está decidido no
+prompt e neste assessment. A produção permaneceu intacta. O próximo saneamento deve
+expor a camada sem inferi-la do path e distinguir as duas causas na evidência.
