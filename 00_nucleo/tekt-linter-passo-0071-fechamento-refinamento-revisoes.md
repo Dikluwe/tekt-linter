@@ -296,3 +296,7 @@ foram executados.
 Após autorização humana para continuar, foi preparada uma matriz CI específica em
 Ubuntu, macOS e Windows. Seu resultado remoto permanece pendente; isso não equivale a
 evidência local inventada.
+
+O mesmo consentimento autorizou a integração local: `master` avançou por fast-forward
+até `9d5b8ef`. Suíte, auto-lint, build release e smoke test passaram novamente. O
+binário instalado não foi substituído e o repositório remoto não foi atualizado.
