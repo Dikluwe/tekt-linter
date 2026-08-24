@@ -38,3 +38,19 @@ ausência de erro.
 
 Nenhum merge antes da cobertura integral do linter. REDs desta fronteira devem ser
 saneados antes de assessments que dependam de V5/V6/V7.
+
+## Resultado da triagem
+
+O gate independente terminou com um PASS e cinco REDs:
+
+- readers e snapshot aceitam vazio, `.`, absoluto, `..`, diretório e symlink externo;
+- hash oculta newline final, CRLF e linha-isca no body, embora preserve BOM/espaço;
+- limite de 10 MiB passou nos dois lados da fronteira;
+- walker passou ordem/exceções/symlinks, mas aceitou `prompts` como arquivo e devolveu
+  scan vazio em vez de erro;
+- snapshot aceitou marcador em parágrafo/fence, duplicata e campo JSON desconhecido;
+- writers aceitaram digest inválido, normalizaram bytes e perderam permissões.
+
+Frescura do cache, TOCTOU de metadata/read e concorrência de writers permanecem
+`SPEC-GAP`: não existe seam/barreira pública para prova determinística. Os cinco REDs
+ficam congelados e devem ser saneados antes de retomar a triagem dependente de V5/V6/V7.
