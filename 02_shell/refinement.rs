@@ -21,6 +21,20 @@ pub enum Command {
     Snapshot(SnapshotArgs),
     /// Compare two immutable Git revisions without checkout
     RefineRevisions(RefineRevisionsArgs),
+    /// Validate frozen refinement oracles and publish a deterministic receipt
+    SealRefinement(SealRefinementArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct SealRefinementArgs {
+    /// Git repository and root of all frozen inputs
+    pub repository: PathBuf,
+    /// Repository-relative segregated refinement manifest
+    #[arg(long)]
+    pub manifest: PathBuf,
+    /// Destination JSON receipt
+    #[arg(long)]
+    pub output: PathBuf,
 }
 
 #[derive(Debug, Args)]
