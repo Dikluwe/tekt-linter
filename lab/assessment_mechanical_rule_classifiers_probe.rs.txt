@@ -1,0 +1,124 @@
+// Probe independente do Assessment 0008. `.txt` evita tratamento como produção.
+use crystalline_lint::entities::layer::Layer;
+use crystalline_lint::entities::parsed_file::{Import, ImportKind};
+use crystalline_lint::entities::project_index::ProjectIndex;
+use crystalline_lint::entities::rule_traits::{HasCoverage, HasImports};
+use crystalline_lint::entities::violation::ViolationLevel;
+use crystalline_lint::rules::{alien_file, dangling_contract, quarantine_leak, test_file};
+use std::collections::HashSet;
+use std::path::Path;
+
+struct Coverage { layer: Layer, covered: bool, path: &'static Path }
+impl HasCoverage<'static> for Coverage {
+    fn layer(&self) -> &Layer { &self.layer }
+    fn has_test_coverage(&self) -> bool { self.covered }
+    fn path(&self) -> &'static Path { self.path }
+}
+
+struct Imports { layer: Layer, imports: Vec<Import<'static>>, path: &'static Path }
+impl HasImports<'static> for Imports {
+    fn layer(&self) -> &Layer { &self.layer }
+    fn imports(&self) -> &[Import<'static>] { &self.imports }
+    fn path(&self) -> &'static Path { self.path }
+}
+
+fn imp(path: &'static str, line: usize, target: Layer) -> Import<'static> {
+    Import { path, line, kind: ImportKind::Alias, target_layer: target,
+             target_subdir: None, is_test_origin: false }
+}
+fn layers() -> Vec<Layer> {
+    vec![Layer::L0, Layer::L1, Layer::L2, Layer::L3, Layer::L4, Layer::Lab, Layer::Unknown]
+}
+
+fn main() {
+    // P1: tabela completa 7 camadas x cobertura; identidade pública Unicode.
+    for layer in layers() {
+        for covered in [false, true] {
+            let expected = usize::from(layer == Layer::L1 && !covered);
+            let v = test_file::check(&Coverage { layer: layer.clone(), covered, path: Path::new("01_core/é\u{301}.rs") });
+            assert_eq!(v.len(), expected);
+            if let Some(v) = v.first() {
+                assert_eq!(v.rule_id, "V2"); assert_eq!(v.level, ViolationLevel::Error);
+                assert_eq!(v.location.path.as_ref(), Path::new("01_core/é\u{301}.rs"));
+                assert_eq!((v.location.line, v.location.column), (1, 0));
+            }
+        }
+    }
+    println!("PASS P1 V2 exhaustive layers x coverage");
+
+    // P2: V8 vazio e bijeção ordenada entre aliens canônicos e diagnósticos.
+    assert!(alien_file::check_aliens(&ProjectIndex::new()).is_empty());
+    let mut aliens = ProjectIndex::new();
+    aliens.alien_files = vec![Path::new("x/e\u{301}.rs"), Path::new("x/é.rs"), Path::new("x/z.rs")];
+    let av = alien_file::check_aliens(&aliens);
+    assert_eq!(av.len(), 3);
+    for (v, p) in av.iter().zip(aliens.alien_files.iter()) {
+        assert_eq!(v.rule_id, "V8"); assert_eq!(v.level, ViolationLevel::Fatal);
+        assert_eq!(v.location.path.as_ref(), *p); assert!(v.message.contains(&p.display().to_string()));
+        assert_eq!((v.location.line, v.location.column), (0, 0));
+    }
+    println!("PASS P2 V8 empty identity/order/Unicode evidence");
+
+    // P3: tabela completa origem x alvo para V10.
+    for origin in layers() {
+        for target in layers() {
+            let expected = usize::from(matches!(origin, Layer::L1|Layer::L2|Layer::L3|Layer::L4)
+                                       && target == Layer::Lab);
+            let file = Imports { layer: origin.clone(), imports: vec![imp("lab/Δ::x", 37, target)],
+                                 path: Path::new("src/é.rs") };
+            let v = quarantine_leak::check(&file);
+            assert_eq!(v.len(), expected, "origin={origin:?}");
+            if let Some(v) = v.first() {
+                assert_eq!(v.rule_id, "V10"); assert_eq!(v.level, ViolationLevel::Fatal);
+                assert_eq!(v.location.path.as_ref(), Path::new("src/é.rs"));
+                assert_eq!((v.location.line, v.location.column), (37, 0));
+                assert!(v.message.contains("lab/Δ::x"));
+            }
+        }
+    }
+    println!("PASS P3 V10 exhaustive origin x target");
+
+    // P4: V10 preserva duplicatas e a permutação apenas permuta o multiconjunto.
+    let imports_a = vec![imp("lab/é", 9, Layer::Lab), imp("lab/e\u{301}", 4, Layer::Lab),
+                         imp("lab/é", 9, Layer::Lab), imp("core/x", 2, Layer::L1)];
+    let imports_b = vec![imports_a[2].clone(), imports_a[3].clone(), imports_a[1].clone(), imports_a[0].clone()];
+    let diagnostics = |imports| {
+        let f = Imports { layer: Layer::L4, imports, path: Path::new("04_wiring/host.rs") };
+        quarantine_leak::check(&f).into_iter()
+            .map(|v| (v.location.line, v.message)).collect::<Vec<_>>()
+    };
+    let mut va = diagnostics(imports_a); let mut vb = diagnostics(imports_b);
+    assert_eq!(va.len(), 3); assert_eq!(vb.len(), 3); va.sort(); vb.sort(); assert_eq!(va, vb);
+    println!("PASS P4 V10 multiplicity/permutation/representation");
+
+    // P5: V11 = declared - (implemented U blanket), exatidão Unicode e nível injetado.
+    let mut index = ProjectIndex::new();
+    index.all_declared_traits.extend(["A", "B", "C", "é", "e\u{301}"]);
+    index.all_implemented_traits.extend(["A", "é"]);
+    index.all_blanket_impl_traits.extend(["B", "A"]); // sobreposição e duplicação sem efeito
+    let v = dangling_contract::check_dangling_contracts(&index, ViolationLevel::Info);
+    assert_eq!(v.len(), 2);
+    assert!(v.iter().all(|x| x.rule_id == "V11" && x.level == ViolationLevel::Info
+        && x.location.path.as_ref() == Path::new("01_core/contracts")
+        && (x.location.line, x.location.column) == (0, 0)));
+    let evidence: HashSet<_> = v.iter().map(|x| {
+        if x.message.contains("'C'") { "C" } else if x.message.contains("'e\u{301}'") { "e\u{301}" } else { "?" }
+    }).collect();
+    assert_eq!(evidence, HashSet::from(["C", "e\u{301}"]));
+    println!("PASS P5 V11 exact set difference/level/Unicode");
+
+    // P6: índices semanticamente iguais devem produzir a mesma ordem pública.
+    let names = ["Alpha", "Beta", "Gamma", "Delta", "Épsilon", "E\u{301}psilon", "Zeta"];
+    let mut observed = HashSet::new();
+    for round in 0..128 {
+        let mut i = ProjectIndex::new();
+        for offset in 0..names.len() {
+            i.all_declared_traits.insert(names[(offset + round) % names.len()]);
+        }
+        let seq = dangling_contract::check_dangling_contracts(&i, ViolationLevel::Error)
+            .into_iter().map(|v| v.message).collect::<Vec<_>>();
+        observed.insert(seq);
+    }
+    assert!(observed.len() > 1, "expected insertion/hash-order instability");
+    println!("RED P6 V11 produced {} distinct orders for one semantic set", observed.len());
+}
