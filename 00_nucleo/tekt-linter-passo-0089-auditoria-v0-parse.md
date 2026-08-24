@@ -1,7 +1,7 @@
 # Passo operacional 0089 — auditoria segregada das projeções V0/PARSE
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** planejado; não executado
+> **Estado:** fechado — `READY WITH RESIDUAL AUDIT`
 > **Branch prevista:** `codex/audit-v0-parse-projections`
 > **Pré-condição:** P0088 integrado em `master`, worktree limpo e branch nova criada a
 > partir do merge
@@ -130,3 +130,9 @@ dos assessments 0001–0017.
 
 P0089 não autoriza merge, push, instalação ou release. Se a pré-condição de integração
 do P0088 não estiver satisfeita, a execução deve parar sem criar branch concorrente.
+
+## Fechamento
+
+Executado em 2026-08-24 após integração de P0088 em `master@cc1924b`. Os SPEC-GAPs de
+camada/API, os REDs de produção e o gate documental final foram fechados. Evidência e
+residuais constam em `relatorio-p0089-auditoria-v0-parse.md`.

@@ -1,5 +1,5 @@
 # Prompt: Contract - File Provider (file-provider)
-Hash do Código: db4e4d98
+Hash do Código: 62737ad2
 
 **Camada**: L1 (Core — Contracts)
 **Criado em**: 2025-03-13
@@ -52,7 +52,8 @@ pub struct SourceFile {
 ### `SourceError` (ADR-0004)
 ```rust
 /// Falha crítica ao tentar carregar um arquivo.
-/// Convertida em Violation { rule_id: "V0", level: Fatal } pelo wiring.
+/// Convertida em Violation { rule_id: "V0", level: Fatal } pelo projetor puro L1;
+/// o wiring apenas encaminha o erro.
 /// Não pode ser suprimida — ausência de V0 garante que todos os
 /// arquivos foram lidos com sucesso.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,8 +66,7 @@ pub enum SourceError {
 
 impl SourceError {
     /// Accessor para o path do arquivo que falhou.
-    /// Usado pelo wiring em L4 para construir LocalIndex::from_alien()
-    /// e source_error_to_violation() com Cow::Owned(path).
+    /// Usado pelo pipeline e pelo projetor puro com Cow::Owned(path).
     pub fn path(&self) -> &Path {
         match self {
             SourceError::Unreadable { path, .. } => path,
