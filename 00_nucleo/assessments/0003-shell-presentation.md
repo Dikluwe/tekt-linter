@@ -1,6 +1,6 @@
 # Assessment 0003 — apresentação textual e SARIF
 
-**Estado:** CONGELADO PARA TRIAGEM
+**Estado:** SANEADO PELO P0072 — gate 4/4
 **Data:** 2026-08-24
 **Alvo:** API pública de apresentação em `02_shell/cli.rs`
 
@@ -47,3 +47,8 @@ essa decisão apenas substituiria uma conversão implícita por outra.
 Também foi confirmada uma divergência histórica sem falha atual: o prompt ainda fala
 em V0–V12, enquanto a API publica catálogo coerente V0–V25. A atualização documental
 deve acompanhar a futura correção, mas não invalida o gate atual.
+
+## Fechamento P0072
+
+A ordenação passou a desempatar coluna, regra e mensagem. Paths não UTF-8 ganharam escape
+humano e URI ASCII percent-encoded. O gate final passou 4/4 no commit `0bfda5f`.

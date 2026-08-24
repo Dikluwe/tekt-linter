@@ -1,8 +1,8 @@
 # Relatório P0081 — fechamento do insumo normativo cego
 
-**Data:** 2026-08-24  
-**Branch:** `codex/segregated-materialization`  
-**Contrato-base:** commit `79b9265`  
+**Data:** 2026-08-24
+**Branch:** `codex/segregated-materialization`
+**Contrato-base:** commit `79b9265`
 **Resultado:** PASS; `SPEC-GAP` encerrado
 
 ## Mudança de protocolo

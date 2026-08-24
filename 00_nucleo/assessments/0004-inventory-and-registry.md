@@ -1,6 +1,6 @@
 # Assessment 0004 — inventário e registro de crates
 
-**Estado:** CONGELADO PARA TRIAGEM
+**Estado:** SANEADO PELO P0072 — gate 7/7
 **Data:** 2026-08-24
 **Alvos:** `crate_registry` e `provenance_inventory`
 
@@ -43,3 +43,9 @@ O gate independente encontrou três REDs e um `SPEC-GAP`:
 Os três REDs pertencem à mesma família: ordem de input usada como desempate implícito
 em estruturas logicamente não ordenadas. A colisão normalizada permanece `SPEC-GAP` e
 exige decidir entre rejeição explícita ou regra canônica antes de qualquer correção.
+
+## Fechamento P0072
+
+O registry passou a rejeitar conflitos após normalização e a escolher owners de modo
+canônico; o inventário escolhe o menor path do módulo. O gate final passou 7/7 no commit
+`0bfda5f`, incluindo as reaberturas adversariais.

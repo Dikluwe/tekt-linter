@@ -1,6 +1,6 @@
 # Assessment 0006 — I/O de prompts, snapshots e hashes
 
-**Estado:** CONGELADO PARA TRIAGEM
+**Estado:** SANEADO PELO P0074 — gate 6/6
 **Data:** 2026-08-24
 **Alvos:** `prompt_reader`, `prompt_walker`, `hash_writer` e `prompt_snapshot_reader`
 
@@ -54,3 +54,10 @@ O gate independente terminou com um PASS e cinco REDs:
 Frescura do cache, TOCTOU de metadata/read e concorrência de writers permanecem
 `SPEC-GAP`: não existe seam/barreira pública para prova determinística. Os cinco REDs
 ficam congelados e devem ser saneados antes de retomar a triagem dependente de V5/V6/V7.
+
+## Fechamento P0074
+
+Paths, readers, walker e snapshot passaram a falhar fechados; o hash tornou-se byte-exato
+fora da meta canônica e writers passaram a validar digest, preservar bytes/permissões e
+usar temporário exclusivo. A migração atualizou 73 headers. O gate final passou 6/6 no
+commit `69e923b`; TOCTOU externo continua limite sem seam determinístico, não RED do delta.

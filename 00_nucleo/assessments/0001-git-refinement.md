@@ -1,6 +1,6 @@
 # Assessment 0001 — leitura imutável de revisões Git
 
-**Estado:** CONGELADO PARA INVESTIGAÇÃO
+**Estado:** SANEADO PELO P0072 — gate 6/6
 **Data:** 2026-08-24
 **Alvo:** `03_infra/git_refinement.rs`
 **Prompt histórico:** `00_nucleo/prompts/refinement-validator.md`, etapa B2
@@ -59,3 +59,9 @@ Antes de tornar este gate obrigatório, o Tekt deve escolher entre duas polític
 2. exigir autocontenção e bloquear alternates/configurações de ambiente equivalentes.
 
 Para selos reproduzíveis e portáveis, este assessment recomenda a segunda política.
+
+## Fechamento P0072
+
+A política de autocontenção foi materializada: ambiente Git limpo, preflight de
+gitdir/object database e bloqueio de alternates, symlink de `.git`, worktree vinculada,
+bare repository e object pool externo. O gate final passou 6/6 no commit `0bfda5f`.

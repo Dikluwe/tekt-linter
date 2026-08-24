@@ -1,7 +1,7 @@
 # Passo operacional 0084 — fechamento pré-merge da materialização segregada
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** escrito, não executado
+> **Estado:** executado; READY WITH RESIDUAL AUDIT
 > **Branch:** `codex/segregated-materialization`
 > **Base de comparação:** merge-base com `Tekt`
 > **Predecessor:** P0083
@@ -143,3 +143,18 @@ O estado esperado, se todas as verificações passarem, é `READY WITH RESIDUAL 
 
 Após `READY WITH RESIDUAL AUDIT`, o merge pode ser realizado em uma ação separada. A
 auditoria restante deve continuar em um novo branch e em lotes menores.
+
+## Resultado
+
+O delta congelado em `1b7e18f` contém 207 arquivos, 14.771 inserções e 568 remoções
+contra o merge-base `75a5665`. Os bloqueios documentais encontrados pelo adversário foram
+reconciliados e o whitespace histórico foi removido. Suíte, hashes, auto-lint,
+`git diff --check` e smoke test no Typst passaram.
+
+Os arquivos Rust novos passam `rustfmt --check`. Arquivos legados tocados apenas por hash
+ou por saneamentos acumulados ainda exibem drift contra o rustfmt atual; formatá-los
+criaria um refactor transversal fora do escopo. Isso fica como auditoria residual, não
+como RED funcional do delta.
+
+O veredito e a matriz completa estão no assessment 0013 e no relatório P0084. Nenhum
+merge, instalação ou release foi executado.
