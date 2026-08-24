@@ -27,6 +27,8 @@ e oráculos `positive`, `negative` e `unknown`. O selo só é publicado atomicam
 - todo negativo retorna `VIOLATED` — `UNKNOWN` não conta como rejeição;
 - todo oráculo de opacidade retorna `UNKNOWN`;
 - `mutation_score = 1.0`;
+- há pelo menos um oráculo de cada categoria;
+- negativos aceitos não contêm resultados inconclusivos além da violação;
 - nenhuma entrada ou repositório analisado é alterado.
 
 O selo registra hash semântico canônico do manifesto, hashes exatos de prompt/contrato,
