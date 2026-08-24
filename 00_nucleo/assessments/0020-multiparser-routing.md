@@ -119,6 +119,20 @@ O gate permanece congelado. O schema L0 deve ser reconciliado e resselado antes 
 ajustar apenas o fixture `Ok`; nenhuma informação dessa reconciliação pode alterar o
 oráculo de roteamento já materializado.
 
+## Gate B resselado — RED isolado
+
+Após reconciliar no L0 os sete campos omitidos de `ParsedFile`, o mesmo verificador
+revalidou os nove hashes e alterou exclusivamente o fixture `Ok`. O oráculo de roteamento
+permaneceu byte a byte inalterado em suas expectativas.
+
+- gate SHA-256:
+  `4e0df518f6eca5918247bec058793d01d63501a34b1a7ffe59897930a7018ffa`;
+- `rustfmt --check` dirigido: PASS;
+- único erro restante: imports ausentes de `parser_slot`, `ParserSlot` e `ParserSet`;
+- classificação congelada: `RED` de produção, sem `SPEC-GAP` residual no gate.
+
+O confronto C da produção está autorizado a partir deste ponto.
+
 ## Papéis e precedência
 
 - A: lê somente este Assessment e L0 hash-pinned; valida ou agrava os gaps.
