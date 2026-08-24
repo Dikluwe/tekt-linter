@@ -1,0 +1,29 @@
+id = "segregated-decoy-witness"
+
+[[observable]]
+key = "stable.variants"
+language = "rust"
+file = "sample.rs"
+query = "(enum_item name: (type_identifier) @_name body: (enum_variant_list) @value (#eq? @_name \"Stable\"))"
+capture = "value"
+cardinality = "one"
+on_missing = "unknown"
+
+[[observable]]
+key = "required.variants"
+language = "rust"
+file = "sample.rs"
+query = "(enum_item name: (type_identifier) @_name body: (enum_variant_list) @value (#eq? @_name \"Required\"))"
+capture = "value"
+cardinality = "one"
+on_missing = "unknown"
+
+[[relation]]
+kind = "preserve"
+source = "stable.variants"
+target = "stable.variants"
+
+[[relation]]
+kind = "preserve"
+source = "required.variants"
+target = "required.variants"

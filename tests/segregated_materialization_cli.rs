@@ -90,6 +90,10 @@ impl Repository {
 
     fn commit_state(root: &Path, source: &str, message: &str) -> String {
         fs::copy(fixture(source), root.join("sample.rs")).unwrap();
+        Self::commit_sample(root, message)
+    }
+
+    fn commit_sample(root: &Path, message: &str) -> String {
         assert!(git(root, &["add", "sample.rs"]).status.success());
         assert!(git(root, &["commit", "-qm", message]).status.success());
         Self::oid(root)
@@ -152,6 +156,100 @@ fn assert_blocked(result: Output, output: &Path) {
         "seal-refinement must be a recognized command before its validation can count as blocking"
     );
     assert!(!output.exists(), "a failed seal must not be published");
+}
+
+#[test]
+fn missing_any_oracle_category_blocks() {
+    let repo = Repository::new();
+    let cases: &[(&str, &[(&str, &str, &str, &str)])] = &[
+        ("all", &[]),
+        (
+            "positive",
+            &[
+                ("negative", "negative", &repo.baseline, &repo.violated),
+                ("opaque", "unknown", &repo.baseline, &repo.unknown),
+            ],
+        ),
+        (
+            "negative",
+            &[
+                ("positive", "positive", &repo.baseline, &repo.preserved),
+                ("opaque", "unknown", &repo.baseline, &repo.unknown),
+            ],
+        ),
+        (
+            "unknown",
+            &[
+                ("positive", "positive", &repo.baseline, &repo.preserved),
+                ("negative", "negative", &repo.baseline, &repo.violated),
+            ],
+        ),
+    ];
+    let mut incorrectly_sealed = Vec::new();
+    for (missing, oracles) in cases {
+        let manifest = repo.manifest(oracles, ["a", "b", "c"]);
+        let output = repo.root().join(format!("missing-category-{missing}.json"));
+        let result = repo.seal(&manifest, &output);
+        if result.status.code() == Some(0) {
+            incorrectly_sealed.push(*missing);
+        } else {
+            assert_blocked(result, &output);
+        }
+    }
+    assert!(
+        incorrectly_sealed.is_empty(),
+        "manifests missing these oracle categories were sealed: {incorrectly_sealed:?}"
+    );
+}
+
+#[test]
+fn negative_with_witness_decoy_and_inconclusive_blocks() {
+    let mut repo = Repository::new();
+    let contract = repo
+        .root()
+        .join("00_nucleo/refinement/contracts/contract.toml");
+    fs::copy(fixture("decoy-contract.toml"), &contract).unwrap();
+
+    fs::write(
+        repo.root().join("sample.rs"),
+        "enum Stable { Alpha, Beta }\nenum Required { Present }\n",
+    )
+    .unwrap();
+    assert!(git(
+        repo.root(),
+        &["add", "sample.rs", contract.to_str().unwrap()]
+    )
+    .status
+    .success());
+    assert!(git(repo.root(), &["commit", "-qm", "decoy baseline"])
+        .status
+        .success());
+    repo.baseline = Repository::oid(repo.root());
+
+    fs::write(
+        repo.root().join("sample.rs"),
+        "// external rewrite\nenum Stable { Alpha, Beta }\nenum Required { Present }\n",
+    )
+    .unwrap();
+    repo.preserved = Repository::commit_sample(repo.root(), "decoy positive");
+
+    fs::write(
+        repo.root().join("sample.rs"),
+        "enum Stable { Alpha }\n// Required is missing: inconclusive alongside the decoy witness.\n",
+    )
+    .unwrap();
+    repo.violated = Repository::commit_sample(repo.root(), "decoy negative");
+
+    fs::write(
+        repo.root().join("sample.rs"),
+        "fn construct_dynamically() {}\n",
+    )
+    .unwrap();
+    repo.unknown = Repository::commit_sample(repo.root(), "decoy unknown");
+
+    let manifest = repo.valid_manifest();
+    let output = repo.root().join("decoy-seal.json");
+    assert_blocked(repo.seal(&manifest, &output), &output);
 }
 
 #[test]

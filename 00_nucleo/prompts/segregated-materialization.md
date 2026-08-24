@@ -1,4 +1,5 @@
 # Prompt: Selo de materialização segregada
+Hash do Código: c9c4c239
 
 > **Estado:** VIGENTE — piloto autorizado pelo ADR-0020
 > **Camadas:** L1–L4
