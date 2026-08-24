@@ -26,3 +26,20 @@ quando recebem entradas em ordem variável do filesystem ou do pipeline paralelo
 Até quatro propriedades, sem alterar produção. Comportamento não decidido pelos prompts
 é `SPEC-GAP`. Falha dependente apenas da ordem de uma coleção logicamente equivalente é
 RED, pois ambas as unidades alimentam saída determinística do linter.
+
+## Resultado da triagem
+
+O gate independente encontrou três REDs e um `SPEC-GAP`:
+
+- `member_layer` escolhe ora L1, ora L3 para membros com o mesmo nome, conforme a
+  permutação; nomes únicos e ausentes permanecem estáveis;
+- `owner_of` escolhe corretamente o ancestral mais profundo, mas diretórios empatados
+  alternam o owner integral segundo a ordem dos membros;
+- o inventário calcula corretamente filtros, contagem e percentual, porém usa como
+  location o primeiro arquivo visto; inverter os arquivos troca `z.rs` por `a.rs`;
+- `foo-bar` e `foo_bar` colidem após normalização. O resultado testado foi estável, mas
+  a API coalesce conflitos silenciosamente sem política de rejeição ou precedência.
+
+Os três REDs pertencem à mesma família: ordem de input usada como desempate implícito
+em estruturas logicamente não ordenadas. A colisão normalizada permanece `SPEC-GAP` e
+exige decidir entre rejeição explícita ou regra canônica antes de qualquer correção.
