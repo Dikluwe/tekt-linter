@@ -91,3 +91,14 @@ Gate local verde, mas portabilidade externa não demonstrada. Conforme a parada 
 P0071, não foram feitos merge no `master`, build/instalação release nem substituição do
 binário do sistema. O próximo ato exige decisão humana sobre executar CI externo ou
 aceitar as lacunas documentadas antes da integração.
+
+## Integração local autorizada
+
+Após nova autorização humana, o branch foi integrado por fast-forward no `master`, que
+passou a apontar para `9d5b8ef22e1363d915c31a50542e358c132043d9`. A suíte e o
+auto-lint foram repetidos no estado integrado com as mesmas contagens e sem falhas.
+
+O release integrado foi construído e passou o smoke test `18a9b6e → 0f4e5df` com
+`PRESERVED`. Hash SHA-256 do release: `60a4b99a…`. O binário instalado continua sendo
+o anterior, hash `8ff2246c…`; nenhuma substituição externa foi feita. A matriz CI está
+configurada, mas ainda depende de publicação/execução remota.
