@@ -143,10 +143,18 @@ fn interface<'a>(reverse: bool) -> PublicInterface<'a> {
 
 #[test]
 fn v6_is_invariant_to_permutations_of_the_same_interface() {
+    let mut current = interface(false);
+    current.functions.push(current.functions[0].clone());
+    current.types.push(current.types[0].clone());
+    current.reexports.push(current.reexports[0]);
+    let mut snapshot = current.clone();
+    snapshot.functions.reverse();
+    snapshot.types.reverse();
+    snapshot.reexports.reverse();
     let fixture = InterfaceFixture {
         header: Some(header(Some("aaaaaaaa"), Some("aaaaaaaa"))),
-        current: interface(false),
-        snapshot: Some(interface(true)),
+        current,
+        snapshot: Some(snapshot),
         path: Path::new("01_core/api.rs"),
     };
     assert!(prompt_stale::check(&fixture).is_empty());
@@ -221,62 +229,155 @@ fn v6_detects_every_field_change_and_preserves_observable_multiplicity() {
         assert_eq!(violations[0].rule_id, "V6");
     }
 
-    let duplicate_current = PublicInterface {
-        functions: vec![
-            function("f", "u8", Some("bool")),
-            function("f", "u8", Some("bool")),
-        ],
-        ..PublicInterface::empty()
+    let one_function = function("f", "u8", Some("bool"));
+    let one_type = TypeSignature {
+        name: "T",
+        kind: TypeKind::Struct,
+        members: vec!["x: u8"],
     };
-    let single_snapshot = PublicInterface {
-        functions: vec![function("f", "u8", Some("bool"))],
-        ..PublicInterface::empty()
-    };
-    let delta = prompt_stale::compute_delta(&duplicate_current, &single_snapshot);
-    assert!(
-        !delta.is_empty(),
-        "V6 lost observable duplicate multiplicity"
-    );
+    for current_has_extra in [true, false] {
+        let (current_count, snapshot_count) = if current_has_extra { (2, 1) } else { (1, 2) };
+        for family in ["function", "type", "reexport"] {
+            let mut current = PublicInterface::empty();
+            let mut snapshot = PublicInterface::empty();
+            match family {
+                "function" => {
+                    current.functions = vec![one_function.clone(); current_count];
+                    snapshot.functions = vec![one_function.clone(); snapshot_count];
+                }
+                "type" => {
+                    current.types = vec![one_type.clone(); current_count];
+                    snapshot.types = vec![one_type.clone(); snapshot_count];
+                }
+                "reexport" => {
+                    current.reexports = vec!["crate::same"; current_count];
+                    snapshot.reexports = vec!["crate::same"; snapshot_count];
+                }
+                _ => unreachable!(),
+            }
+            let delta = prompt_stale::compute_delta(&current, &snapshot);
+            let added =
+                delta.added_functions.len() + delta.added_types.len() + delta.added_reexports.len();
+            let removed = delta.removed_functions.len()
+                + delta.removed_types.len()
+                + delta.removed_reexports.len();
+            assert_eq!(
+                (added, removed),
+                if current_has_extra { (1, 0) } else { (0, 1) },
+                "wrong multiset delta for {family}, current_has_extra={current_has_extra}"
+            );
+        }
+    }
 }
 
 #[test]
 fn v6_delta_description_is_complete_and_deterministic_under_permutation() {
-    let snapshot = PublicInterface::empty();
-    let forward = PublicInterface {
-        functions: vec![function("zeta", "u8", None), function("alpha", "u8", None)],
-        types: vec![
-            TypeSignature {
-                name: "Zulu",
-                kind: TypeKind::Struct,
-                members: vec![],
+    let snapshot = PublicInterface {
+        functions: vec![
+            FunctionSignature {
+                name: "same",
+                params: vec!["z", "a"],
+                return_type: Some("z"),
             },
-            TypeSignature {
-                name: "Alpha",
-                kind: TypeKind::Enum,
-                members: vec![],
+            FunctionSignature {
+                name: "same",
+                params: vec!["a", "z"],
+                return_type: None,
+            },
+            FunctionSignature {
+                name: "same",
+                params: vec!["a", "z"],
+                return_type: None,
             },
         ],
-        reexports: vec!["crate::z", "crate::a"],
+        types: vec![
+            TypeSignature {
+                name: "Same",
+                kind: TypeKind::Trait,
+                members: vec!["z", "a"],
+            },
+            TypeSignature {
+                name: "Same",
+                kind: TypeKind::Enum,
+                members: vec!["a", "z"],
+            },
+        ],
+        reexports: vec!["crate::same", "crate::same", "crate::old"],
+    };
+    let forward = PublicInterface {
+        functions: vec![
+            FunctionSignature {
+                name: "same",
+                params: vec!["a", "z"],
+                return_type: Some("a"),
+            },
+            FunctionSignature {
+                name: "same",
+                params: vec!["a", "z"],
+                return_type: Some("z"),
+            },
+            FunctionSignature {
+                name: "same",
+                params: vec!["a", "z"],
+                return_type: Some("a"),
+            },
+        ],
+        types: vec![
+            TypeSignature {
+                name: "Same",
+                kind: TypeKind::Interface,
+                members: vec!["a", "z"],
+            },
+            TypeSignature {
+                name: "Same",
+                kind: TypeKind::Struct,
+                members: vec!["z", "a"],
+            },
+            TypeSignature {
+                name: "Same",
+                kind: TypeKind::Interface,
+                members: vec!["a", "z"],
+            },
+        ],
+        reexports: vec!["crate::z", "crate::a", "crate::a"],
     };
     let mut reverse = forward.clone();
     reverse.functions.reverse();
     reverse.types.reverse();
     reverse.reexports.reverse();
-    let make_fixture = |current| InterfaceFixture {
+    let mut reverse_snapshot = snapshot.clone();
+    reverse_snapshot.functions.reverse();
+    reverse_snapshot.types.reverse();
+    reverse_snapshot.reexports.reverse();
+    let make_fixture = |current, snapshot| InterfaceFixture {
         header: Some(header(Some("aaaaaaaa"), Some("aaaaaaaa"))),
         current,
-        snapshot: Some(snapshot.clone()),
+        snapshot: Some(snapshot),
         path: Path::new("01_core/api.rs"),
     };
-    let first = prompt_stale::check(&make_fixture(forward));
-    let second = prompt_stale::check(&make_fixture(reverse));
+    let first_fixture = make_fixture(forward, snapshot);
+    let second_fixture = make_fixture(reverse, reverse_snapshot);
+    let first_delta = prompt_stale::compute_delta(
+        &first_fixture.current,
+        first_fixture.snapshot.as_ref().unwrap(),
+    );
+    let second_delta = prompt_stale::compute_delta(
+        &second_fixture.current,
+        second_fixture.snapshot.as_ref().unwrap(),
+    );
+    assert_eq!(
+        first_delta, second_delta,
+        "canonical delta vectors require all-field tie-breaking"
+    );
+    let first = prompt_stale::check(&first_fixture);
+    let second = prompt_stale::check(&second_fixture);
     assert_eq!(first.len(), 1);
     assert_eq!(second.len(), 1);
     assert_eq!(
         first[0].message, second[0].message,
         "V6 delta description depends on extraction order"
     );
-    for symbol in ["alpha", "zeta", "Alpha", "Zulu", "crate::a", "crate::z"] {
+    for symbol in ["same", "Same", "crate::a", "crate::z", "crate::old"] {
         assert!(first[0].message.contains(symbol), "delta omitted {symbol}");
     }
 }
