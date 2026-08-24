@@ -5,7 +5,7 @@
 **Alvo:** `01_core/rules/wildcard_saturation.rs`
 **Baseline:** `2b7e19f775c66f8da5fc0fb14dc1464ec55b0bbf`
 **L0 autorizado:** `00_nucleo/prompts/rules/wildcard-saturation.md`
-**SHA-256 L0:** `5941adf0c444a65e101224dacfdb1fea0cbafebf46a5a9ac6be5bed25063cc08`
+**SHA-256 L0:** `eb359def7e6d4589bdbc102dc3880a95804117f3994bd80d2df6be8d1fc188c5`
 
 ## Escopo
 
@@ -31,8 +31,8 @@ relatórios permanecem proibidos até o gate ser congelado.
 6. Diagnóstico principal nunca é silenciado por exceção/citação; preserva termo nativo,
    pattern/body snippets e location do braço.
 7. Exceção com justificativa vazia ou `ok` gera warning adicional; exceção cujo path:line
-   não corresponde a catch-all ativo gera warning obsoleto. Exceção de outro arquivo não
-   interfere.
+   exato não corresponde a catch-all sintático gera warning obsoleto. Exceção de outro
+   arquivo não interfere; matching e ordem seguem o algoritmo completo do L0.
 8. Ordem de expressões/braços é preservada. A ordem de entrada do HashMap de exceções não
    pode tornar a saída pública não determinística; ocorrências distintas não são perdidas.
 9. Campos irrelevantes, Unicode, paths relativos/absolutos, linha/coluna extremas e
