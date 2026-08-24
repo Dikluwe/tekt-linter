@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/decision-ownership.md
-//! @prompt-hash 4b4c2d62
+//! @prompt-hash 11c8fa39
 //! @layer L1
 //! @updated 2026-08-23
 

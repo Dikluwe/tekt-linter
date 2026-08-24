@@ -1,5 +1,5 @@
 # Prompt: Rule Traits (rule-traits)
-Hash do Código: 5f315695
+Hash do Código: 5b6a9b53
 
 **Camada**: L1 (Core — Contracts)
 **Criado em**: 2026-03-15 (ADR-0006 refactor)
@@ -48,6 +48,7 @@ use crate::entities::parsed_file::{
 
 /// Para V1 — verifica presença e validade do @prompt header
 pub trait HasPromptFilesystem<'a> {
+    fn layer(&self) -> &Layer;
     fn prompt_header(&self) -> Option<&PromptHeader<'a>>;
     fn prompt_file_exists(&self) -> bool;
     fn path(&self) -> &'a Path;
@@ -148,6 +149,7 @@ use crate::entities::rule_traits::{
 };
 
 impl<'a> HasPromptFilesystem<'a> for ParsedFile<'a> {
+    fn layer(&self) -> &Layer { &self.layer }
     fn prompt_header(&self) -> Option<&PromptHeader<'a>> {
         self.prompt_header.as_ref()
     }
@@ -209,8 +211,8 @@ impl<'a> HasWiringPurity<'a> for ParsedFile<'a> {
 
 ## Impacto em cada arquivo de regra
 
-Regras existentes (V1–V3, V5–V12) não mudam — apenas V4 é
-afectada pela adição de `language()` a `HasTokens`:
+V1 usa `HasPromptFilesystem.layer()` para restringir seu escopo a L1–L4 sem
+inferir camada pelo path. V4 usa `HasTokens.language()` para selecionar a lista:
 
 ```rust
 // Em rules/impure_core.rs — usa language() para seleccionar lista
@@ -259,6 +261,8 @@ impl HasTokens<'static> for MockFile {
   a linguagem — nunca via `ImportKind` ou condicionais na regra
 - `HasWiringPurity.declarations()` retorna apenas declarações
   de nível superior — não itens aninhados em funções ou blocos
+- `HasPromptFilesystem.layer()` é o único oráculo de escopo de V1; L0, Lab e
+  Unknown são excluídas antes da avaliação de header e existência
 
 ---
 
@@ -347,3 +351,4 @@ Então retorna Violation V3
 | 2026-03-16 | ADR-0007: HasWiringPurity adicionada para V12; nota sobre V3/V9/V10 partilhando HasImports | rule_traits.rs |
 | 2026-03-16 | ADR-0007 fecho: rule_traits.rs movido de contracts/ para entities/ | rule_traits.rs |
 | 2026-03-18 | ADR-0009 correcção: HasTokens ganha language() para V4 multi-linguagem; nota sobre V4 nunca usar ImportKind; mock de V4 actualizado com campo language; critérios de Rust/Python/TypeScript/Unknown adicionados; critério V3 com ImportKind::Named documenta agnósticidade | rule_traits.rs, impure_core.rs |
+| 2026-08-24 | HasPromptFilesystem ganha layer() como oráculo único do escopo L1–L4 de V1 | rule_traits.rs, parsed_file.rs, prompt_header.rs |

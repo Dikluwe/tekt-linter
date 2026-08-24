@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/refinement-validator.md
-//! @prompt-hash cc8920e0
+//! @prompt-hash 993e71ec
 //! @layer L3
 //! @updated 2026-08-23
 
@@ -112,12 +112,21 @@ pub fn load_contract(path: &Path) -> Result<RefinementContract, String> {
             path.display()
         )
     })?;
-    let dto: ContractDto = toml::from_str(&content)
-        .map_err(|error| format!("invalid refinement contract {}: {error}", path.display()))?;
+    load_contract_from_bytes(content.as_bytes(), &path.display().to_string())
+}
+
+pub fn load_contract_from_bytes(
+    content: &[u8],
+    source: &str,
+) -> Result<RefinementContract, String> {
+    let content = std::str::from_utf8(content)
+        .map_err(|_| format!("refinement contract {source} is not UTF-8"))?;
+    let dto: ContractDto = toml::from_str(content)
+        .map_err(|error| format!("invalid refinement contract {source}: {error}"))?;
     if dto.id.trim().is_empty() || dto.relation.is_empty() {
         return Err(format!(
             "refinement contract {} requires id and at least one [[relation]]",
-            path.display()
+            source
         ));
     }
     let mut relations = Vec::with_capacity(dto.relation.len());

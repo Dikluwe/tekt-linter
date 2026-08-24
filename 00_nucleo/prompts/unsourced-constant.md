@@ -1,5 +1,5 @@
 # Prompt L0 — Regra V21 `HardcodedContextualValue` (escalares contextuais em variáveis de contexto e sumidouros geométricos)
-Hash do Código: eec91e76
+Hash do Código: c2de1d9b
 
 > Família de decisões mecânicas (ADR-0016 / ADR-0017 / Passos 0066 e 0068).
 > Causalidade: este prompt é a origem de `01_core/rules/unsourced_constant.rs`

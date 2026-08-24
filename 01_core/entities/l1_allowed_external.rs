@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/external-type-in-contract.md
-//! @prompt-hash 5952cd0b
+//! @prompt-hash cc425ff2
 //! @layer L1
 //! @updated 2026-06-24
 

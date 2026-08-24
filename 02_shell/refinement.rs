@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/refinement-validator.md
-//! @prompt-hash cc8920e0
+//! @prompt-hash 993e71ec
 //! @layer L2
 //! @updated 2026-08-23
 
@@ -12,6 +12,7 @@ use serde_json::json;
 use crate::entities::refinement::{
     Inconclusive, ObservableValue, RefinementVerdict, UnknownReason, Witness,
 };
+use crate::shell::path_encoding::human_path;
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
@@ -21,6 +22,20 @@ pub enum Command {
     Snapshot(SnapshotArgs),
     /// Compare two immutable Git revisions without checkout
     RefineRevisions(RefineRevisionsArgs),
+    /// Validate frozen refinement oracles and publish a deterministic receipt
+    SealRefinement(SealRefinementArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct SealRefinementArgs {
+    /// Git repository and root of all frozen inputs
+    pub repository: PathBuf,
+    /// Repository-relative segregated refinement manifest
+    #[arg(long)]
+    pub manifest: PathBuf,
+    /// Destination JSON receipt
+    #[arg(long)]
+    pub output: PathBuf,
 }
 
 #[derive(Debug, Args)]
@@ -91,7 +106,7 @@ pub fn exit_code(verdict: &RefinementVerdict) -> i32 {
 pub fn format_snapshot_success(path: &std::path::Path, observable_count: usize) -> String {
     format!(
         "SNAPSHOT {} ({} observables)\n",
-        path.display(),
+        human_path(path),
         observable_count
     )
 }

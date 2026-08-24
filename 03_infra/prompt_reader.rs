@@ -1,15 +1,15 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/prompt-reader.md
-//! @prompt-hash 0d91d230
+//! @prompt-hash 48a4329e
 //! @layer L3
 //! @updated 2026-03-13
 
 use std::path::PathBuf;
 
-use hex::encode;
 use sha2::{Digest, Sha256};
 
 use crate::contracts::prompt_reader::PromptReader;
+use crate::infra::prompt_io::{confined_regular_file, read_confined, without_meta_line};
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -23,29 +23,18 @@ pub struct FsPromptReader {
 
 impl PromptReader for FsPromptReader {
     fn read_hash(&self, prompt_path: &str) -> Option<String> {
-        let full_path = self.nucleo_root.join(prompt_path);
-        
-        // ADR-0006 compliance: prevent hashing giant files (> 10MB)
-        // typically prompts are markdown files under 100KB.
-        let meta = std::fs::metadata(&full_path).ok()?;
-        if meta.len() > 10 * 1024 * 1024 {
-            return None; 
-        }
-
-        let content_raw = std::fs::read_to_string(&full_path).ok()?;
-        
-        // Strip the meta line to avoid the hash paradox (Double Parity)
-        let cleaned: Vec<&str> = content_raw.lines()
-            .filter(|line| !line.contains("Hash do Código:"))
-            .collect();
-        
-        let cleaned_content = cleaned.join("\n");
-        let hash = Sha256::digest(cleaned_content.as_bytes());
-        Some(encode(hash)[..8].to_string())
+        let bytes = read_confined(
+            &self.nucleo_root,
+            PathBuf::from(prompt_path).as_path(),
+            10 * 1024 * 1024,
+        )
+        .ok()?;
+        let cleaned = without_meta_line(&bytes, b"Hash do C\xC3\xB3digo: ", false).ok()?;
+        Some(hex::encode(Sha256::digest(cleaned))[..8].to_string())
     }
 
     fn exists(&self, prompt_path: &str) -> bool {
-        self.nucleo_root.join(prompt_path).exists()
+        confined_regular_file(&self.nucleo_root, PathBuf::from(prompt_path).as_path()).is_ok()
     }
 }
 
@@ -54,6 +43,7 @@ impl PromptReader for FsPromptReader {
 pub struct CachedPromptReader<R: PromptReader> {
     pub inner: R,
     cache: Mutex<HashMap<String, Option<String>>>,
+    exists_cache: Mutex<HashMap<String, bool>>,
 }
 
 impl<R: PromptReader> CachedPromptReader<R> {
@@ -61,6 +51,7 @@ impl<R: PromptReader> CachedPromptReader<R> {
         Self {
             inner,
             cache: Mutex::new(HashMap::new()),
+            exists_cache: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -77,7 +68,13 @@ impl<R: PromptReader> PromptReader for CachedPromptReader<R> {
     }
 
     fn exists(&self, prompt_path: &str) -> bool {
-        self.inner.exists(prompt_path)
+        let mut cache = self.exists_cache.lock().unwrap();
+        if let Some(exists) = cache.get(prompt_path) {
+            return *exists;
+        }
+        let exists = self.inner.exists(prompt_path);
+        cache.insert(prompt_path.to_string(), exists);
+        exists
     }
 }
 
@@ -103,23 +100,51 @@ mod tests {
         count: AtomicUsize,
     }
 
+    struct MissingReader {
+        count: AtomicUsize,
+    }
+
+    impl PromptReader for MissingReader {
+        fn read_hash(&self, _path: &str) -> Option<String> {
+            self.count.fetch_add(1, Ordering::SeqCst);
+            None
+        }
+        fn exists(&self, _path: &str) -> bool {
+            false
+        }
+    }
+
     impl PromptReader for CountingReader {
         fn read_hash(&self, _path: &str) -> Option<String> {
             self.count.fetch_add(1, Ordering::SeqCst);
             Some("hash".to_string())
         }
-        fn exists(&self, _path: &str) -> bool { true }
+        fn exists(&self, _path: &str) -> bool {
+            true
+        }
     }
 
     #[test]
     fn cache_prevents_multiple_reads() {
-        let counter = CountingReader { count: AtomicUsize::new(0) };
+        let counter = CountingReader {
+            count: AtomicUsize::new(0),
+        };
         let cached = CachedPromptReader::new(counter);
-        
+
         assert_eq!(cached.read_hash("foo"), Some("hash".to_string()));
         assert_eq!(cached.read_hash("foo"), Some("hash".to_string()));
-        
+
         // Should only have called inner once
+        assert_eq!(cached.inner.count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn cache_stabilizes_missing_result() {
+        let cached = CachedPromptReader::new(MissingReader {
+            count: AtomicUsize::new(0),
+        });
+        assert_eq!(cached.read_hash("missing"), None);
+        assert_eq!(cached.read_hash("missing"), None);
         assert_eq!(cached.inner.count.load(Ordering::SeqCst), 1);
     }
 
@@ -131,7 +156,9 @@ mod tests {
         }
         let mut f = std::fs::File::create(&file_path).unwrap();
         f.write_all(content.as_bytes()).unwrap();
-        let reader = FsPromptReader { nucleo_root: dir.path().to_path_buf() };
+        let reader = FsPromptReader {
+            nucleo_root: dir.path().to_path_buf(),
+        };
         (dir, reader)
     }
 
@@ -146,7 +173,9 @@ mod tests {
     #[test]
     fn read_hash_returns_none_for_missing_file() {
         let dir = tempfile::tempdir().unwrap();
-        let reader = FsPromptReader { nucleo_root: dir.path().to_path_buf() };
+        let reader = FsPromptReader {
+            nucleo_root: dir.path().to_path_buf(),
+        };
         assert!(reader.read_hash("prompts/missing.md").is_none());
     }
 
@@ -159,7 +188,9 @@ mod tests {
     #[test]
     fn exists_returns_false_when_absent() {
         let dir = tempfile::tempdir().unwrap();
-        let reader = FsPromptReader { nucleo_root: dir.path().to_path_buf() };
+        let reader = FsPromptReader {
+            nucleo_root: dir.path().to_path_buf(),
+        };
         assert!(!reader.exists("prompts/missing.md"));
     }
 
@@ -177,7 +208,9 @@ mod tests {
         std::fs::create_dir_all(dir.path().join("prompts")).unwrap();
         std::fs::write(dir.path().join("prompts/a.md"), b"content A").unwrap();
         std::fs::write(dir.path().join("prompts/b.md"), b"content B").unwrap();
-        let reader = FsPromptReader { nucleo_root: dir.path().to_path_buf() };
+        let reader = FsPromptReader {
+            nucleo_root: dir.path().to_path_buf(),
+        };
         let ha = reader.read_hash("prompts/a.md").unwrap();
         let hb = reader.read_hash("prompts/b.md").unwrap();
         assert_ne!(ha, hb);

@@ -1,5 +1,5 @@
 # Prompt: Rule V1 - Missing Prompt Header (prompt-header)
-Hash do Código: 700de7c2
+Hash do Código: 46495747
 
 **Camada**: L1 (Core - Rules)
 **Regra**: V1
@@ -10,16 +10,34 @@ Toda lógica em um arquivo do Tekt/Crystalline arquitetura em camadas executáve
 
 ## Especificação
 - A regra V1 assinala a ausência do cabeçalho `@prompt` apropriado nos arquivos de L1–L4.
+- L0, Lab e Unknown estão fora do escopo e retornam vazio antes de qualquer outra avaliação.
 - Ela verifica a ausência de um cabeçalho válido (via trait `HasPromptFilesystem`) no arquivo parseado.
 - Adicionalmente, também acusa violação se um path existir no prompt header, mas esse arquivo não estiver presente em `00_nucleo/` (no contexto restrito puro em L1, isso é delegado e o linter de L1 acusa erro caso falte referência fornecida na interface).
+
+Em camada aplicável, os estados são disjuntos e produzem no máximo uma violação:
+
+- sem header: mensagem histórica `Arquivo Cristalino sem linhagem causal @prompt encontrada`;
+- com header e prompt inexistente: mensagem distinta que inclui literalmente `header.prompt_path`;
+- com header e prompt existente: nenhuma violação.
+
+O path causal não é normalizado: caixa, Unicode e representação original são evidência.
 
 ## Estrutura da Violação Gerada
 - Rule ID: `V1`
 - Level: `Error` (Bloqueante)
 - Contexto da Mensagem: "Arquivo Cristalino sem linhagem causal @prompt encontrada".
+- Para referência inexistente, a mensagem distingue a causa e contém o path declarado.
+- Path do arquivo, linha 1, coluna 0 e cardinalidade máxima de uma V1 são invariantes.
+- Severidade `Fatal` em diretório estrito por componentes; `Error` nos demais paths aplicáveis.
 
 ## Restrições (L1 Pura)
-A regra é uma função que recebe uma entidade (via trait `HasPromptFilesystem`) e inspeciona de forma puramente funcional se o `prompt_header` existe. Não abre o arquivo `00_nucleo/` em disco — essa validação é delegada na construção final via L3.
+A regra é uma função que recebe uma entidade (via trait `HasPromptFilesystem`) e inspeciona de forma puramente funcional camada, `prompt_header` e a evidência booleana de existência. Não abre o arquivo `00_nucleo/` em disco — essa validação é delegada na construção final via L3. A camada vem da entidade; V1 não a infere pelo path.
+
+## Histórico de Revisões
+
+| Data | Motivo | Arquivos afetados |
+|------|--------|-------------------|
+| 2026-08-24 | Escopo explícito L1–L4 e estados disjuntos para header ausente e referência inexistente, preservando o path causal literal | prompt_header.rs, rule_traits.rs, parsed_file.rs |
 
 ## Fundamentação Teórica
 

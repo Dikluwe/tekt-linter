@@ -1,0 +1,172 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crystalline_lint::contracts::file_provider::FileProvider;
+use crystalline_lint::infra::config::CrystallineConfig;
+use crystalline_lint::infra::walker::FileWalker;
+
+fn temp(label: &str) -> PathBuf {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    std::env::temp_dir().join(format!("p0073-{label}-{}-{stamp}", std::process::id()))
+}
+
+fn write_config(root: &Path, body: &str) -> PathBuf {
+    let path = root.join("crystalline.toml");
+    fs::write(&path, body).unwrap();
+    path
+}
+
+fn assert_config_rejected(label: &str, body: &str) {
+    let root = temp(label);
+    fs::create_dir_all(&root).unwrap();
+    let path = write_config(&root, body);
+    if let Ok(config) = CrystallineConfig::load(&path) {
+        panic!("FAIL layers {label}: accepted {:?}", config.layers);
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn probe_layers() {
+    let cases = [
+        ("alias", "[layers]\nlab='lab-a'\nLab='lab-b'\n"),
+        ("unknown", "[layers]\nL1='one'\nmystery='two'\n"),
+        ("duplicate-dir", "[layers]\nL1='same'\nL2='same'\n"),
+        ("empty", "[layers]\nL1=''\n"),
+        ("dot", "[layers]\nL1='.'\n"),
+        ("dotdot", "[layers]\nL1='..'\n"),
+        ("slash", "[layers]\nL1='one/two'\n"),
+        ("backslash", "[layers]\nL1='one\\\\two'\n"),
+        ("absolute", "[layers]\nL1='/absolute'\n"),
+        ("unicode-key", "[layers]\nK1='one'\n"),
+    ];
+    for (label, body) in cases {
+        assert_config_rejected(label, body);
+    }
+    let root = temp("unicode-dir");
+    fs::create_dir_all(&root).unwrap();
+    let path = write_config(&root, "[layers]\nL1='ação'\nlab='laboratório'\n");
+    CrystallineConfig::load(&path).expect("FAIL valid single-component Unicode layer dirs");
+    fs::remove_dir_all(root).unwrap();
+    println!("PASS layers aliases/unknown/duplicates/separators rejected; Unicode components accepted");
+}
+
+fn relative(path: &Path, root: &Path) -> PathBuf {
+    path.strip_prefix(root).unwrap().to_path_buf()
+}
+
+fn probe_order_and_mixed_errors() {
+    let root = temp("order");
+    fs::create_dir_all(root.join("z")).unwrap();
+    fs::create_dir_all(root.join("a")).unwrap();
+    fs::write(root.join("z/good.rs"), "fn z() {}\n").unwrap();
+    fs::write(root.join("a/bad.rs"), [0xff, 0xfe]).unwrap();
+    fs::write(root.join("a/good.rs"), "fn a() {}\n").unwrap();
+    let items: Vec<_> = FileWalker::new(root.clone(), CrystallineConfig::default())
+        .files()
+        .collect();
+    let paths: Vec<_> = items
+        .iter()
+        .map(|item| match item {
+            Ok(file) => relative(&file.path, &root),
+            Err(error) => relative(error.path(), &root),
+        })
+        .collect();
+    let mut expected = paths.clone();
+    expected.sort();
+    assert_eq!(paths, expected, "FAIL mixed Ok/Err results not canonically sorted");
+    assert_eq!(items.iter().filter(|item| item.is_err()).count(), 1);
+    assert_eq!(items.iter().filter(|item| item.is_ok()).count(), 2);
+    fs::remove_dir_all(root).unwrap();
+    println!("PASS canonical order includes mixed readable/unreadable results");
+}
+
+fn source_coverage(root: &Path) -> bool {
+    FileWalker::new(root.to_path_buf(), CrystallineConfig::default())
+        .files()
+        .find_map(|item| match item {
+            Ok(file) if file.path.ends_with("foo.rs") => Some(file.has_adjacent_test),
+            _ => None,
+        })
+        .expect("foo.rs missing")
+}
+
+#[cfg(unix)]
+fn probe_hostile_adjacent_and_escape() {
+    use std::os::unix::fs::symlink;
+    use std::os::unix::net::UnixListener;
+
+    let root = temp("adjacent");
+    let outside = temp("outside");
+    fs::create_dir_all(&root).unwrap();
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(root.join("foo.rs"), "fn foo() {}\n").unwrap();
+    fs::write(outside.join("secret.rs"), "EXTERNAL SENTINEL\n").unwrap();
+    let candidate = root.join("foo_test.rs");
+
+    fs::create_dir(&candidate).unwrap();
+    assert!(!source_coverage(&root), "FAIL directory counted as adjacent test");
+    fs::remove_dir(&candidate).unwrap();
+
+    symlink(outside.join("secret.rs"), &candidate).unwrap();
+    assert!(!source_coverage(&root), "FAIL external symlink counted as adjacent test");
+    fs::remove_file(&candidate).unwrap();
+
+    symlink(root.join("foo.rs"), &candidate).unwrap();
+    assert!(!source_coverage(&root), "FAIL internal symlink counted as adjacent test");
+    fs::remove_file(&candidate).unwrap();
+
+    let fifo_status = Command::new("mkfifo").arg(&candidate).status().unwrap();
+    assert!(fifo_status.success());
+    assert!(!source_coverage(&root), "FAIL FIFO counted as adjacent test");
+    fs::remove_file(&candidate).unwrap();
+
+    match UnixListener::bind(&candidate) {
+        Ok(socket) => {
+            assert!(!source_coverage(&root), "FAIL socket counted as adjacent test");
+            drop(socket);
+            fs::remove_file(&candidate).unwrap();
+            println!("PASS socket rejected as adjacent test");
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            println!("SKIP socket fixture: sandbox denied UnixListener::bind ({error})");
+        }
+        Err(error) => panic!("cannot create socket fixture: {error}"),
+    }
+
+    fs::write(&candidate, "#[test] fn works() {}\n").unwrap();
+    assert!(source_coverage(&root), "FAIL regular local test not counted");
+
+    symlink(outside.join("secret.rs"), root.join("escape.rs")).unwrap();
+    symlink(&outside, root.join("escape_dir")).unwrap();
+    let items: Vec<_> = FileWalker::new(root.clone(), CrystallineConfig::default())
+        .files()
+        .collect();
+    assert!(items.iter().all(|item| match item {
+        Ok(file) => file.path.starts_with(&root) && !file.content.contains("EXTERNAL SENTINEL"),
+        Err(error) => error.path().starts_with(&root),
+    }));
+    assert!(!items.iter().any(|item| match item {
+        Ok(file) => file.path.ends_with("escape.rs") || file.path.starts_with(root.join("escape_dir")),
+        Err(_) => false,
+    }));
+
+    fs::remove_dir_all(root).unwrap();
+    fs::remove_dir_all(outside).unwrap();
+    println!("PASS directory/symlink/FIFO rejected as adjacent; symlink escape not read (socket may be SKIP above)");
+}
+
+#[cfg(not(unix))]
+fn probe_hostile_adjacent_and_escape() {
+    println!("SKIP Unix hostile file types");
+}
+
+fn main() {
+    probe_layers();
+    probe_order_and_mixed_errors();
+    probe_hostile_adjacent_and_escape();
+}

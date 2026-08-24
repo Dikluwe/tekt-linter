@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/violation-types.md
-//! @prompt-hash 8b26dc56
+//! @prompt-hash 9e1e91d1
 //! @layer L1
 //! @updated 2026-03-22
 
@@ -9,5 +9,6 @@ pub mod layer;
 pub mod parsed_file;
 pub mod project_index;
 pub mod refinement;
+pub mod refinement_seal;
 pub mod rule_traits;
 pub mod violation;

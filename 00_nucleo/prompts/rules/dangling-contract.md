@@ -1,5 +1,5 @@
 # Prompt: Rule V11 - Dangling Contract (dangling-contract)
-Hash do Código: 95fa9d64
+Hash do Código: b535b5dc
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V11
@@ -66,9 +66,16 @@ pub fn check_dangling_contracts<'a>(
     index: &ProjectIndex<'a>,
     level: ViolationLevel,
 ) -> Vec<Violation<'a>> {
-    index.all_declared_traits
+    let mut pending: Vec<_> = index.all_declared_traits
         .iter()
-        .filter(|t| !index.all_implemented_traits.contains(*t))
+        .filter(|t| {
+            !index.all_implemented_traits.contains(*t)
+                && !index.all_blanket_impl_traits.contains(*t)
+        })
+        .copied()
+        .collect();
+    pending.sort_unstable();
+    pending.into_iter()
         .map(|trait_name| Violation {
             rule_id: "V11".to_string(),
             level: level.clone(),
@@ -87,6 +94,12 @@ pub fn check_dangling_contracts<'a>(
         .collect()
 }
 ```
+
+As referências pendentes são materializadas e ordenadas antes da criação das
+violações. A ordem pública é a ordem total nativa de `str` em Rust (bytes/Unicode),
+sem locale, lowercase ou normalização NFC/NFD. Os `HashSet` de entrada continuam
+neutralizando duplicatas; uma trait satisfeita simultaneamente por implementação
+concreta e blanket impl permanece satisfeita uma única vez.
 
 ---
 
@@ -113,6 +126,8 @@ FQN se colisões se tornarem problema real.
 - A localização da violação aponta para `01_core/contracts` com
   `line: 0` — V11 é uma violação global, não de arquivo específico.
   Uma versão futura pode rastrear o path exato da trait.
+- O vetor de violações é ordenado textualmente pelo nome simples da trait pendente
+  antes da construção de mensagens e não depende da ordem de inserção dos conjuntos
 
 ---
 
@@ -167,3 +182,4 @@ Então a trait não entra em declared_traits
 | 2026-03-16 | Criação inicial (ADR-0007) | dangling_contract.rs |
 | 2026-03-16 | Materialização: check_dangling_contracts() implementado sobre ProjectIndex, 8 testes cobrindo todos os critérios; módulo registado em rules/mod.rs | dangling_contract.rs |
 | 2026-03-23 | ADR-0014: assinatura com `level: ViolationLevel`; nível hardcoded eliminado; nível resolvido em L4 via `config.level_for` | dangling_contract.rs |
+| 2026-08-24 | Ordem pública canônica por nome de trait pendente, usando a ordem nativa de `str` sem normalização | dangling_contract.rs |

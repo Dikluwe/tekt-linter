@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/python.md
-//! @prompt-hash 0642195b
+//! @prompt-hash eb784a66
 //! @layer L3
 //! @updated 2026-03-20
 

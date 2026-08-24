@@ -1,5 +1,5 @@
 # Prompt — V24 `SemanticFieldLoss`
-Hash do Código: 7f392e71
+Hash do Código: 877d1741
 
 **Status:** VIGENTE; ADR-0018 aceito em 2026-08-23  
 **Camada futura:** L1, com projeções AST produzidas por L3  
