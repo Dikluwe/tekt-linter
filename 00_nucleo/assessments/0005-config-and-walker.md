@@ -1,6 +1,6 @@
 # Assessment 0005 — configuração e descoberta de arquivos
 
-**Estado:** CONGELADO PARA TRIAGEM
+**Estado:** SANEADO PELO P0073 — gate 6/6
 **Data:** 2026-08-24
 **Alvos:** `03_infra/config.rs` e `03_infra/walker.rs`
 
@@ -60,3 +60,10 @@ restrito para provar que erros de `WalkDir` não são descartados.
 Os REDs ficam congelados sem correção neste lote. Eles reclassificam config/walker como
 fronteira de integridade, pois podem esconder arquivo, variar análise ou fabricar prova
 de cobertura.
+
+## Fechamento P0073
+
+Layers ambíguas passaram a ser rejeitadas, a enumeração tornou-se canônica, erros de
+travessia permaneceram observáveis e somente arquivo regular local prova teste adjacente.
+O gate final passou 6/6 no commit `61cf043`; EACCES real permanece limite de matriz, não
+RED do delta.

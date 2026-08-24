@@ -1,6 +1,6 @@
 # Assessment 0002 — entidades puras de baixo risco presumido
 
-**Estado:** CONGELADO PARA TRIAGEM
+**Estado:** SANEADO PELO P0072 — gate 4/4
 **Data:** 2026-08-24
 **Alvos:** `layer.rs`, `violation.rs`, `project_index.rs`
 
@@ -50,3 +50,8 @@ verificador corrigiu sua propriedade sem consultar produção, e o gate convergi
 
 O achado reclassifica reduções “mecânicas” que misturam sets e sequências. A família
 deve receber triagem gradual, mas este lote não autoriza ainda alterar produção.
+
+## Fechamento P0072
+
+Aliens passaram a ser ordenados e deduplicados nas reduções local e global. Permutação e
+particionamento ficaram determinísticos; o gate final passou 4/4 no commit `0bfda5f`.

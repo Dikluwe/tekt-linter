@@ -1,7 +1,7 @@
 # Relatório P0083 — saneamento de V4 e V14
 
-**Data:** 2026-08-24  
-**Branch:** `codex/segregated-materialization`  
+**Data:** 2026-08-24
+**Branch:** `codex/segregated-materialization`
 **Resultado:** PASS
 
 ## Alterações
