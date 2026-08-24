@@ -1,14 +1,14 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/pub-leak.md
-//! @prompt-hash 2feec98f
+//! @prompt-hash 4253c633
 //! @layer L1
 //! @updated 2026-06-09
 
 use std::borrow::Cow;
 use std::collections::HashSet;
 
-use crate::entities::rule_traits::HasPubLeak;
 use crate::entities::layer::Layer;
+use crate::entities::rule_traits::HasPubLeak;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 
 // ── L1Ports ───────────────────────────────────────────────────────────────────
@@ -58,20 +58,20 @@ pub fn check<'a, T: HasPubLeak<'a>>(
         // Gravidade afirma o grafo de produção — pula test-origin por padrão (0061).
         .filter(|import| check_test_imports || !import.is_test_origin)
         .filter(|import| import.target_layer == Layer::L1)
-        .filter(|import| {
+        .filter_map(|import| {
             import
                 .target_subdir
-                .map(|subdir| !ports.contains(subdir))
-                .unwrap_or(false)
+                .filter(|subdir| !ports.contains(subdir))
+                .map(|subdir| (import, subdir))
         })
-        .map(|import| Violation {
+        .map(|(import, target_subdir)| Violation {
             rule_id: "V9".to_string(),
             level: ViolationLevel::Error,
             message: format!(
                 "Vazamento de encapsulamento: import '{}' acessa \
-                 subdiretório interno de L1. \
+                 subdiretório interno de L1 '{}'. \
                  Use apenas as portas declaradas em [l1_ports].",
-                import.path
+                import.path, target_subdir
             ),
             location: Location {
                 path: Cow::Borrowed(file.path()),
@@ -97,24 +97,42 @@ mod tests {
     }
 
     impl HasPubLeak<'static> for MockFile {
-        fn layer(&self) -> &Layer { &self.layer }
-        fn imports(&self) -> &[Import<'static>] { &self.imports }
-        fn path(&self) -> &'static Path { self.path }
+        fn layer(&self) -> &Layer {
+            &self.layer
+        }
+        fn imports(&self) -> &[Import<'static>] {
+            &self.imports
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
     }
 
     fn base_file(layer: Layer) -> MockFile {
-        MockFile { layer, imports: vec![], path: Path::new("src/foo.rs") }
+        MockFile {
+            layer,
+            imports: vec![],
+            path: Path::new("src/foo.rs"),
+        }
     }
 
     fn default_ports() -> L1Ports {
         L1Ports::new(
-            ["entities".to_string(), "contracts".to_string(), "rules".to_string()]
-                .into_iter()
-                .collect(),
+            [
+                "entities".to_string(),
+                "contracts".to_string(),
+                "rules".to_string(),
+            ]
+            .into_iter()
+            .collect(),
         )
     }
 
-    fn import_to_l1(path: &'static str, line: usize, subdir: Option<&'static str>) -> Import<'static> {
+    fn import_to_l1(
+        path: &'static str,
+        line: usize,
+        subdir: Option<&'static str>,
+    ) -> Import<'static> {
         Import {
             path,
             line,
@@ -128,7 +146,11 @@ mod tests {
     #[test]
     fn l2_importing_internal_subdir_returns_v9() {
         let mut file = base_file(Layer::L2);
-        file.imports.push(import_to_l1("crate::core::internal::helper", 5, Some("internal")));
+        file.imports.push(import_to_l1(
+            "crate::core::internal::helper",
+            5,
+            Some("internal"),
+        ));
         let violations = check(&file, &default_ports(), false);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "V9");
@@ -139,28 +161,41 @@ mod tests {
     #[test]
     fn l2_importing_entities_port_returns_empty() {
         let mut file = base_file(Layer::L2);
-        file.imports.push(import_to_l1("crate::entities::Layer", 3, Some("entities")));
+        file.imports
+            .push(import_to_l1("crate::entities::Layer", 3, Some("entities")));
         assert!(check(&file, &default_ports(), false).is_empty());
     }
 
     #[test]
     fn l3_importing_contracts_port_returns_empty() {
         let mut file = base_file(Layer::L3);
-        file.imports.push(import_to_l1("crate::contracts::FileProvider", 7, Some("contracts")));
+        file.imports.push(import_to_l1(
+            "crate::contracts::FileProvider",
+            7,
+            Some("contracts"),
+        ));
         assert!(check(&file, &default_ports(), false).is_empty());
     }
 
     #[test]
     fn l1_file_is_exempt_from_v9() {
         let mut file = base_file(Layer::L1);
-        file.imports.push(import_to_l1("crate::core::internal::foo", 1, Some("internal")));
+        file.imports.push(import_to_l1(
+            "crate::core::internal::foo",
+            1,
+            Some("internal"),
+        ));
         assert!(check(&file, &default_ports(), false).is_empty());
     }
 
     #[test]
     fn l4_file_is_exempt_from_v9() {
         let mut file = base_file(Layer::L4);
-        file.imports.push(import_to_l1("crate::core::internal::foo", 1, Some("internal")));
+        file.imports.push(import_to_l1(
+            "crate::core::internal::foo",
+            1,
+            Some("internal"),
+        ));
         assert!(check(&file, &default_ports(), false).is_empty());
     }
 
@@ -181,8 +216,40 @@ mod tests {
     #[test]
     fn violation_message_contains_import_path() {
         let mut file = base_file(Layer::L2);
-        file.imports.push(import_to_l1("crate::core::secret::impl_detail", 10, Some("secret")));
+        file.imports.push(import_to_l1(
+            "crate::core::secret::impl_detail",
+            10,
+            Some("secret"),
+        ));
         let violations = check(&file, &default_ports(), false);
-        assert!(violations[0].message.contains("crate::core::secret::impl_detail"));
+        assert!(violations[0]
+            .message
+            .contains("crate::core::secret::impl_detail"));
+        assert!(violations[0].message.contains("secret"));
+    }
+
+    #[test]
+    fn same_import_path_with_distinct_subdirs_has_distinct_evidence() {
+        let mut file = base_file(Layer::L3);
+        file.imports
+            .push(import_to_l1("crate::same::Item", 9, Some("internal")));
+        file.imports
+            .push(import_to_l1("crate::same::Item", 9, Some("Internal")));
+        let violations = check(&file, &default_ports(), false);
+        assert_eq!(violations.len(), 2);
+        assert_ne!(violations[0].message, violations[1].message);
+        assert!(violations[0].message.contains("internal"));
+        assert!(violations[1].message.contains("Internal"));
+    }
+
+    #[test]
+    fn hostile_and_empty_subdirs_are_preserved_literally() {
+        let ports = L1Ports::new(HashSet::new());
+        let mut file = base_file(Layer::L2);
+        file.imports.push(import_to_l1("same", 1, Some("e\u{301}")));
+        file.imports.push(import_to_l1("same", 2, Some("")));
+        let violations = check(&file, &ports, false);
+        assert!(violations[0].message.contains("'e\u{301}'"));
+        assert!(violations[1].message.contains("''"));
     }
 }

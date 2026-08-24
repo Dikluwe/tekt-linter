@@ -1,7 +1,7 @@
 # Passo operacional 0079 — saneamento da evidência de V9
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** escrito, não executado
+> **Estado:** executado; gate local concluído
 > **Branch:** `codex/segregated-materialization`
 > **Base:** assessment 0010 e P0078, commits `c02110a` e `efffcfb`
 
