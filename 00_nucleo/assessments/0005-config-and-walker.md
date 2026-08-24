@@ -39,3 +39,24 @@ e schema sem política executável é `SPEC-GAP`, não assertion inventada.
 Este é o primeiro lote após P0072. Os resultados permanecem no branch
 `codex/segregated-materialization`; nenhum merge será considerado até o inventário de
 assessments cobrir todos os módulos do linter e os REDs legítimos estiverem fechados.
+
+## Resultado da triagem
+
+O gate independente terminou com duas propriedades verdes e quatro REDs:
+
+- `[layers]` aceita duas layers para o mesmo diretório e aceita chave desconhecida
+  disputando o mesmo diretório; a ordem TOML não torna a ambiguidade válida;
+- a enumeração de arquivos segue a ordem de criação do fixture, não uma ordem canônica;
+- um symlink externo com nome de teste adjacente marca o source como coberto;
+- um diretório com nome de teste adjacente também marca o source como coberto;
+- arquivo elegível com UTF-8 inválido gera `SourceError` sem ocultar o arquivo válido;
+- exclusões, paths Unix não UTF-8 distintos e `Layer::Unknown` permaneceram corretos.
+
+Erro de travessia provocado apenas por permissões ficou `SPEC-GAP` operacional: o UID
+do ambiente consegue atravessar o fixture e `SourceError` hoje só representa arquivo
+ilegível. Um gate futuro precisa injetar a fonte de caminhada ou executar sob usuário
+restrito para provar que erros de `WalkDir` não são descartados.
+
+Os REDs ficam congelados sem correção neste lote. Eles reclassificam config/walker como
+fronteira de integridade, pois podem esconder arquivo, variar análise ou fabricar prova
+de cobertura.
