@@ -1,7 +1,7 @@
 # Passo operacional 0080 — triagem segregada de V12/V13
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** escrito, não executado
+> **Estado:** executado; PASS funcional, sem alteração de produção
 > **Branch:** `codex/segregated-materialization`
 > **Contrato permanente:** assessment 0011
 
