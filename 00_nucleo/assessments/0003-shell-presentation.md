@@ -26,3 +26,24 @@ porque diferenças de ordem ou perda de conteúdo afetam comparação e automaç
 Até quatro propriedades independentes, sem alterar produção. O prompt histórico pode
 estar defasado quanto à quantidade de regras; divergência documental é `SPEC-GAP`, não
 falha automática do formatador atual.
+
+## Resultado da triagem
+
+O gate independente terminou com duas propriedades verdes e duas descobertas:
+
+- catálogo único V0–V25, referências, níveis, posições e ordem recebida no SARIF
+  passaram;
+- a tabela completa e a monotonicidade de `should_fail` passaram;
+- `sort_violations` não desempata coluna, rule id ou mensagem; permutar violações com
+  a mesma severidade/path/linha muda a saída final;
+- paths Unix com bytes não UTF-8 perdem identidade tanto no texto quanto no SARIF,
+  embora mensagens e paths UTF-8 hostis façam round-trip corretamente.
+
+O primeiro RED é defeito contra a alegação explícita de ordem total determinística. O
+segundo fica como `SPEC-GAP`: SARIF representa URI como string Unicode, e o contrato
+ainda não escolhe percent-encoding, URI de bytes ou rejeição explícita. Corrigir sem
+essa decisão apenas substituiria uma conversão implícita por outra.
+
+Também foi confirmada uma divergência histórica sem falha atual: o prompt ainda fala
+em V0–V12, enquanto a API publica catálogo coerente V0–V25. A atualização documental
+deve acompanhar a futura correção, mas não invalida o gate atual.
