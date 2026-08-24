@@ -28,6 +28,7 @@ use crystalline_lint::infra::config::CrystallineConfig;
 use crystalline_lint::infra::cpp_parser::CppParser;
 use crystalline_lint::infra::crate_registry::CrateRegistry;
 use crystalline_lint::infra::elixir_parser::ElixirParser;
+use crystalline_lint::infra::git_refinement::{extract_revision_snapshot, resolve_commit};
 use crystalline_lint::infra::go_parser::GoParser;
 use crystalline_lint::infra::hash_writer;
 use crystalline_lint::infra::java_parser::JavaParser;
@@ -35,10 +36,10 @@ use crystalline_lint::infra::prompt_reader::FsPromptReader;
 use crystalline_lint::infra::prompt_snapshot_reader::FsPromptSnapshotReader;
 use crystalline_lint::infra::prompt_walker::FsPromptWalker;
 use crystalline_lint::infra::py_parser::PyParser;
-use crystalline_lint::infra::refinement_snapshot::{load_contract, load_snapshot};
 use crystalline_lint::infra::refinement_extractor::{
     extract_snapshot, load_observable_specs, serialize_snapshot, write_snapshot_atomic,
 };
+use crystalline_lint::infra::refinement_snapshot::{load_contract, load_snapshot};
 use crystalline_lint::infra::rs_parser::RustParser;
 use crystalline_lint::infra::snapshot_writer;
 use crystalline_lint::infra::ts_parser::TsParser;
@@ -89,12 +90,11 @@ fn main() {
             eprintln!("crystalline-lint: snapshot contract error: {error}");
             process::exit(2);
         });
-        let snapshot = extract_snapshot(&args.path, &args.artifact_id, &specs).unwrap_or_else(
-            |error| {
+        let snapshot =
+            extract_snapshot(&args.path, &args.artifact_id, &specs).unwrap_or_else(|error| {
                 eprintln!("crystalline-lint: snapshot extraction error: {error}");
                 process::exit(2);
-            },
-        );
+            });
         let content = serialize_snapshot(&snapshot).unwrap_or_else(|error| {
             eprintln!("crystalline-lint: snapshot serialization error: {error}");
             process::exit(2);
@@ -108,6 +108,45 @@ fn main() {
             refinement::format_snapshot_success(&args.output, snapshot.observables.len())
         );
         process::exit(0);
+    }
+
+    if let Some(RefinementCommand::RefineRevisions(args)) = &cli.command {
+        let specs = load_observable_specs(&args.contract).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: refinement contract error: {error}");
+            process::exit(2);
+        });
+        let contract = load_contract(&args.contract).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: refinement contract error: {error}");
+            process::exit(2);
+        });
+        let before_oid =
+            resolve_commit(&args.repository, &args.before_ref).unwrap_or_else(|error| {
+                eprintln!("crystalline-lint: before ref error: {error}");
+                process::exit(2);
+            });
+        let after_oid = resolve_commit(&args.repository, &args.after_ref).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: after ref error: {error}");
+            process::exit(2);
+        });
+        let source = extract_revision_snapshot(&args.repository, &before_oid, &specs)
+            .unwrap_or_else(|error| {
+                eprintln!("crystalline-lint: before revision extraction error: {error}");
+                process::exit(2);
+            });
+        let target = extract_revision_snapshot(&args.repository, &after_oid, &specs)
+            .unwrap_or_else(|error| {
+                eprintln!("crystalline-lint: after revision extraction error: {error}");
+                process::exit(2);
+            });
+        eprintln!(
+            "crystalline-lint: comparing immutable Git objects {before_oid} -> {after_oid}; working tree ignored"
+        );
+        let verdict = compare_refinement(&contract, &source, &target);
+        match args.format {
+            RefinementOutputFormat::Text => print!("{}", refinement::format_text(&verdict)),
+            RefinementOutputFormat::Sarif => println!("{}", refinement::format_sarif(&verdict)),
+        }
+        process::exit(refinement::exit_code(&verdict));
     }
 
     // ── Arg validation ────────────────────────────────────────────────────────

@@ -52,6 +52,7 @@ número de passo.
 | P0070 | V23–V25 | absorvido por ADR-0018 e prompts vigentes; elegível para arquivo/remoção |
 | Validação de refinamento | ADR-0019/L0 vigentes; Etapas A e B1 materializadas no branch dedicado | validar e manter Git/wrapper/SMT fora de escopo |
 | Extração de snapshots | Etapa B1 autorizada e materializada no branch de refinamento | absorver em ADR-0019/L0; sem iniciar sequência numérica |
+| Refinamento entre revisões | Etapa B2 aprovada e materializada no branch dedicado | backend Git batch; absorver em ADR-0019/L0 sem numeração de passo |
 
 P0070 já foi absorvido pelos artefatos causais correspondentes e deixou de ser fonte
 necessária. O passo descritivo de validação de refinamento é apenas uma proposta; ele

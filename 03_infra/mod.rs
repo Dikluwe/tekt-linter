@@ -21,5 +21,6 @@ pub mod ts_parser;
 pub mod walker;
 pub mod zig_parser;
 pub mod go_parser;
+pub mod git_refinement;
 pub mod java_parser;
 pub mod elixir_parser;

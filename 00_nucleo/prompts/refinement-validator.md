@@ -3,7 +3,7 @@ Hash do Código: dc19bcf0
 
 > **Estado:** VIGENTE — ADR-0019 aprovado pelo humano em 2026-08-23
 > **Camadas:** L1–L4
-> **Materialização:** Etapas A e B1 no branch `codex/refinement-validator`
+> **Materialização:** Etapas A, B1 e B2 no branch `codex/refinement-validator`
 
 ## Intenção
 
@@ -179,12 +179,39 @@ Quando comparar
 Então veredito e serialização são idênticos
 ```
 
+## Etapa B2 — comparação de revisões Git imutáveis
+
+O subcomando aprovado é:
+
+```bash
+crystalline-lint refine-revisions <repository-root> \
+  --before-ref <sha-ou-ref> --after-ref <sha-ou-ref> \
+  --contract refinement.toml
+```
+
+Cada ref é resolvida uma única vez para um commit OID. A partir daí somente o OID
+imutável participa da enumeração de trees, extração, `artifact_id` e testemunhas. A
+fonte Git fornece bytes por path lógico ao mesmo extrator B1; não existe comparador,
+normalizador ou semântica de query paralela.
+
+O adapter usa processos Git locais com argumentos separados, nunca shell. Deve
+desabilitar prompts, lazy fetch, replace objects, locks opcionais, protocolos externos,
+hooks, configuração global/sistema, filtros, textconv e seguimento de symlinks. Não
+executa checkout, worktree, stash, build, LFS ou submódulo. Working tree, índice, HEAD,
+branch e stash são ignorados e não podem ser alterados.
+
+Aceitam-se apenas blobs regulares. Arquivo ausente respeita `on_missing`; objeto
+esperado ausente, symlink, submódulo, framing inválido e erro de leitura são
+inconclusivos ou erro de entrada, nunca ausência conhecida. Limites iniciais: 512
+paths, 4 MiB por blob e 32 MiB por revisão. Excesso produz
+`Unknown(BudgetExhausted)` sem truncamento. O backend não adiciona biblioteca Git e
+mantém `snapshot + refine` como fallback sem autoridade de subprocesso.
+
 ## Limites da primeira versão
 
 - fatos finitos previamente extraídos;
 - sem execução simbólica ou concreta;
 - sem memória, aliases interprocedurais ou macros expandidas;
-- sem wrapper de processo;
 - sem manipulação do worktree;
 - sem solver SMT;
 - suporte inicial de extração pode ser apenas Rust, mas L1 permanece neutro.
@@ -214,3 +241,4 @@ fonte única e a apresentação deve evitar duplicidade.
 | 2026-08-23 | Proposto | Hipótese confirmada pelo experimento descartável e ADR-0019 |
 | 2026-08-23 | Vigente | Humano aprovou materialização segura da Etapa A em branch dedicado |
 | 2026-08-24 | Vigente | Humano aprovou Etapa B1: snapshot Rust por queries explícitas, sem Git |
+| 2026-08-24 | Vigente | Humano aprovou Etapa B2: leitura imutável por Git batch, sem checkout ou rede |

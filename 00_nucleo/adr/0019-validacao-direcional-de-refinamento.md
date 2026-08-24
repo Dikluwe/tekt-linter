@@ -185,6 +185,90 @@ Gate aprovado pelo humano em 2026-08-23. A materialização fica limitada à Eta
 - wrapper, SMT e extração interprocedural continuam não autorizados.
 - leitura de Git continua não autorizada; B1 recebe somente um diretório explícito.
 
+## Adenda proposta B2 — fonte imutável de revisões Git
+
+**Estado da adenda:** ACEITA — aprovada pelo humano em 2026-08-24 após o ensaio
+ponta a ponta. A materialização está autorizada no branch dedicado, dentro dos limites
+desta seção.
+
+### Backend recomendado
+
+Usar um único processo local `git cat-file --batch-command --buffer`, precedido por
+resolução única de cada ref em commit/OID e enumeração de blobs com `git ls-tree -z`.
+O processo recebe argumentos e protocolo por `Command`, nunca por shell. A exportação
+externa de snapshots (B1 + `refine`) permanece alternativa suportada e de menor
+autoridade.
+
+A opção A supera C apenas em ergonomia e reprodutibilidade: congela os dois OIDs e
+elimina a exportação manual sem tocar no working tree. Em contrapartida, concede ao
+produto autoridade para iniciar o executável `git` instalado pelo utilizador e ler os
+objetos locais do repositório indicado. Não concede autoridade de rede, escrita,
+checkout, build ou execução de conteúdo do repositório.
+
+`gix` não é escolhido agora porque acrescenta uma superfície Rust Git ampla, features
+e supply chain ao binário para uma capacidade opcional. `git2` acrescenta bindings a
+libgit2 e potencial compilação/linkagem de C. Ambos evitam o protocolo de subprocesso,
+mas duplicam no produto compatibilidade que o Git local já fornece. `gix` deve ser
+reavaliado se distribuição sem executável Git se tornar requisito. A escolha não muda
+as dependências atuais.
+
+### Modelo de ameaça e política de efeitos
+
+Refs, paths, objetos, configuração local e repositórios são não confiáveis. O adapter
+deve congelar refs com `rev-parse --verify --end-of-options <ref>^{commit}`, usar apenas
+OIDs daí em diante, separar opções com `--`, consumir saídas delimitadas por NUL e
+validar tipo, modo, tamanho e framing de cada resposta. Não se aceitam aliases, shell,
+nomes de comando derivados do repositório nem mensagens do Git como identificadores
+estáveis.
+
+Cada processo deve receber ambiente mínimo com prompts, lazy fetch e locks opcionais
+desabilitados (`GIT_TERMINAL_PROMPT=0`, `GIT_NO_LAZY_FETCH=1`,
+`GIT_OPTIONAL_LOCKS=0`, `GIT_NO_REPLACE_OBJECTS=1`), configuração global/sistema
+neutralizada e configuração de comando que proíba protocolos e hooks. O fluxo usa
+blobs crus: não solicita
+`--filters`, `--textconv` ou `--follow-symlinks`; portanto não executa filtros,
+Git LFS ou drivers externos. Hooks não pertencem aos comandos de leitura usados.
+Submódulos (modo `160000`) e symlinks (modo `120000`) não são atravessados; geram
+resultado inconclusivo tipado quando forem a fonte declarada de um observável.
+
+Objetos ausentes, inclusive em clone parcial, nunca iniciam fetch. Ref inexistente é
+erro de entrada; entrada esperada no tree cujo objeto não pode ser lido é evidência
+desconhecida, não ausência. Arquivo realmente ausente no tree continua obedecendo ao
+`on_missing` do contrato. Ponteiro LFS é apenas conteúdo de blob e não aciona LFS.
+
+### Orçamentos e atomicidade
+
+Valores iniciais propostos: no máximo 512 paths observáveis, 4 MiB por blob, 32 MiB
+somados por revisão e 10 segundos por operação Git. Exceder qualquer limite produz
+`Unknown(BudgetExhausted)` ou erro de entrada antes de publicar resultado; conteúdo
+nunca é truncado silenciosamente. O processo deve ser encerrado no timeout e toda
+saída deve ser validada antes de virar snapshot.
+
+Não há checkout nem temporário por padrão: blobs alimentam diretamente o mesmo
+extrator B1 em memória e os dois snapshots só são publicados após sucesso completo.
+Uma opção futura de diagnóstico poderá gravá-los atomicamente fora do repositório. O
+working tree, índice, HEAD, branch e stash são ignorados e devem permanecer inalterados
+mesmo em erro.
+
+### Camadas e portabilidade
+
+L1 recebe uma porta abstrata de conteúdo por path lógico e identidade imutável, sem
+tipos Git. L3 implementa filesystem e Git sobre essa porta; L4 resolve os OIDs e chama
+o extrator/comparador únicos. A equivalência entre `refine-revisions` e
+`snapshot + refine` é requisito de fixture.
+
+Linux, macOS e Windows são suportáveis via `std::process::Command`, stdin/stdout em
+bytes e ausência de shell; a materialização deve testar os três. O requisito externo
+proposto é Git 2.43 ou compatibilidade demonstrada com `--batch-command` e
+`--end-of-options`. Repositórios SHA-1 e SHA-256 devem tratar OIDs como strings opacas;
+alternates e shallow clones ficam a cargo da leitura local do Git, sempre sem fetch.
+
+### Condição para aprovação
+
+Se aprovada, a B2 será materializada em commit separado com fixtures RED para
+imutabilidade, refs hostis, objetos ausentes, budgets, symlinks, submódulos e
+equivalência B1/B2. Até essa aprovação, o gate anterior permanece vigente.
+
 ## Referências
 
 - AliveToolkit, [`alive2`](https://github.com/AliveToolkit/alive2).

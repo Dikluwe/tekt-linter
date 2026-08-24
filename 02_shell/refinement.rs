@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/refinement-validator.md
-//! @prompt-hash d5832752
+//! @prompt-hash cc8920e0
 //! @layer L2
 //! @updated 2026-08-23
 
@@ -19,6 +19,8 @@ pub enum Command {
     Refine(RefineArgs),
     /// Extract a deterministic Rust-query refinement snapshot from a project
     Snapshot(SnapshotArgs),
+    /// Compare two immutable Git revisions without checkout
+    RefineRevisions(RefineRevisionsArgs),
 }
 
 #[derive(Debug, Args)]
@@ -51,6 +53,25 @@ pub struct SnapshotArgs {
     /// Destination refinement snapshot JSON file
     #[arg(long)]
     pub output: PathBuf,
+}
+
+#[derive(Debug, Args)]
+pub struct RefineRevisionsArgs {
+    /// Git repository whose object database is read without checkout
+    #[arg(default_value = ".")]
+    pub repository: PathBuf,
+    /// Source commit SHA or ref, resolved once to an immutable OID
+    #[arg(long)]
+    pub before_ref: String,
+    /// Target commit SHA or ref, resolved once to an immutable OID
+    #[arg(long)]
+    pub after_ref: String,
+    /// Refinement contract containing observables and relations
+    #[arg(long)]
+    pub contract: PathBuf,
+    /// Output format for the refinement verdict
+    #[arg(long, default_value = "text")]
+    pub format: RefinementOutputFormat,
 }
 
 #[derive(Debug, Clone, ValueEnum, PartialEq, Eq)]
