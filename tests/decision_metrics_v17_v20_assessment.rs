@@ -81,11 +81,23 @@ fn language_and_empty_matrix() {
     x.pattern_depth = u8::MAX;
     x.or_alternatives = u16::MAX;
     let mut z = f("src/x.rs", vec![e(vec![x])]);
-    z.lang = Language::Python;
-    assert!(compound_guard::check(&z).is_empty());
-    assert!(range_pattern::check(&z).is_empty());
-    assert!(or_pattern_alternatives::check(&z).is_empty());
-    assert!(deep_pattern_nesting::check(&z).is_empty());
+    for lang in [
+        Language::Python,
+        Language::TypeScript,
+        Language::C,
+        Language::Cpp,
+        Language::Zig,
+        Language::Go,
+        Language::Java,
+        Language::Elixir,
+        Language::Unknown,
+    ] {
+        z.lang = lang;
+        assert!(compound_guard::check(&z).is_empty());
+        assert!(range_pattern::check(&z).is_empty());
+        assert!(or_pattern_alternatives::check(&z).is_empty());
+        assert!(deep_pattern_nesting::check(&z).is_empty());
+    }
     z.lang = Language::Rust;
     z.exprs.clear();
     assert!(compound_guard::check(&z).is_empty());
@@ -323,4 +335,123 @@ fn order_cardinality_and_isolation() {
         63,
         4,
     );
+}
+
+fn same_diagnostic(a: &Violation<'_>, b: &Violation<'_>) {
+    assert_eq!(a.rule_id, b.rule_id);
+    assert_eq!(a.level, b.level);
+    assert_eq!(a.message, b.message);
+    assert_eq!(a.location, b.location);
+}
+
+#[test]
+fn every_rule_preserves_multi_expression_multi_arm_order_and_cardinality() {
+    let make = |s, l, c| {
+        let mut x = a(s, l, c);
+        x.has_guard = true;
+        x.guard_is_compound = true;
+        x.pattern_is_range = true;
+        x.or_alternatives = 2;
+        x.pattern_depth = 3;
+        x
+    };
+    let input = || {
+        f(
+            "src/order-all.rs",
+            vec![
+                e(vec![make("FIRST", 10, 2), make("SECOND", 20, 3)]),
+                e(vec![make("THIRD", 30, 4), make("FOURTH", 40, 5)]),
+            ],
+        )
+    };
+    let expected = vec![(10, 2), (20, 3), (30, 4), (40, 5)];
+    let locations = |v: Vec<Violation<'_>>| {
+        v.iter()
+            .map(|x| (x.location.line, x.location.column))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(locations(compound_guard::check(&input())), expected);
+    assert_eq!(locations(range_pattern::check(&input())), expected);
+    assert_eq!(
+        locations(or_pattern_alternatives::check(&input())),
+        expected
+    );
+    assert_eq!(locations(deep_pattern_nesting::check(&input())), expected);
+}
+
+#[test]
+fn v18_systematic_irrelevant_field_mutation_preserves_entire_diagnostic() {
+    let mut base = a("1..=9", 71, 8);
+    base.pattern_is_range = true;
+    let baseline = range_pattern::check(&f("src/domain.rs", vec![e(vec![base])])).remove(0);
+
+    let mut changed = a("1..=9", 71, 8);
+    changed.pattern_is_range = true;
+    changed.is_catchall = true;
+    changed.bound_ident_used_in_body = true;
+    changed.qualified_prefixes = vec!["Other", "Noise"];
+    changed.has_guard = true;
+    changed.guard_is_compound = true;
+    changed.pattern_depth = u8::MAX;
+    changed.or_alternatives = u16::MAX;
+    changed.body_form = BodyForm::ErrorBarrier;
+    changed.body_snippet = "changed body";
+    let mut changed_expr = e(vec![changed]);
+    changed_expr.snippet_scrutinee = "changed scrutinee";
+    changed_expr.scrutinee_form = ScrutineeForm::Tuple;
+    changed_expr.line = usize::MAX;
+    changed_expr.column = usize::MAX;
+    let mutated = range_pattern::check(&f("src/domain.rs", vec![changed_expr])).remove(0);
+    same_diagnostic(&baseline, &mutated);
+}
+
+#[test]
+fn v19_systematic_irrelevant_field_mutation_preserves_entire_diagnostic() {
+    let mut base = a("A | B", 72, 9);
+    base.or_alternatives = 2;
+    let baseline =
+        or_pattern_alternatives::check(&f("src/domain.rs", vec![e(vec![base])])).remove(0);
+
+    let mut changed = a("A | B", 72, 9);
+    changed.or_alternatives = 2;
+    changed.is_catchall = true;
+    changed.bound_ident_used_in_body = true;
+    changed.qualified_prefixes = vec!["Other", "Noise"];
+    changed.has_guard = true;
+    changed.guard_is_compound = true;
+    changed.pattern_is_range = true;
+    changed.pattern_depth = u8::MAX;
+    changed.body_form = BodyForm::MessageProducer;
+    changed.body_snippet = "changed body";
+    let mut changed_expr = e(vec![changed]);
+    changed_expr.snippet_scrutinee = "changed scrutinee";
+    changed_expr.scrutinee_form = ScrutineeForm::Tuple;
+    changed_expr.line = usize::MAX;
+    changed_expr.column = usize::MAX;
+    let mutated = or_pattern_alternatives::check(&f("src/domain.rs", vec![changed_expr])).remove(0);
+    same_diagnostic(&baseline, &mutated);
+}
+
+#[test]
+fn v20_systematic_irrelevant_field_mutation_preserves_entire_diagnostic() {
+    let mut base = a("Outer(Middle(Inner))", 73, 10);
+    base.pattern_depth = 3;
+    let baseline = deep_pattern_nesting::check(&f("src/domain.rs", vec![e(vec![base])])).remove(0);
+
+    let mut changed = a("Outer(Middle(Inner))", 73, 10);
+    changed.pattern_depth = 3;
+    changed.bound_ident_used_in_body = true;
+    changed.qualified_prefixes = vec!["Other", "Noise"];
+    changed.has_guard = true;
+    changed.guard_is_compound = true;
+    changed.pattern_is_range = true;
+    changed.or_alternatives = u16::MAX;
+    changed.body_form = BodyForm::MessageProducer;
+    changed.body_snippet = "changed body";
+    let mut changed_expr = e(vec![changed]);
+    changed_expr.snippet_scrutinee = "changed scrutinee";
+    changed_expr.line = usize::MAX;
+    changed_expr.column = usize::MAX;
+    let mutated = deep_pattern_nesting::check(&f("src/domain.rs", vec![changed_expr])).remove(0);
+    same_diagnostic(&baseline, &mutated);
 }

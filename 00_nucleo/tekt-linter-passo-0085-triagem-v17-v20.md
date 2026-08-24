@@ -1,9 +1,9 @@
 # Passo operacional 0085 — triagem segregada V17–V20
 
-> **Natureza:** envelope operacional temporário; não é regra arquitetural  
-> **Estado:** contrato congelado; triagem em execução  
-> **Branch:** `codex/audit-low-risk-v17-v20`  
-> **Base:** `master@cea1e70`  
+> **Natureza:** envelope operacional temporário; não é regra arquitetural
+> **Estado:** contrato congelado; triagem em execução
+> **Branch:** `codex/audit-low-risk-v17-v20`
+> **Base:** `master@cea1e70`
 > **Assessment:** 0014
 
 ## Objetivo
