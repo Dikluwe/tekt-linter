@@ -29,8 +29,9 @@ e oráculos `positive`, `negative` e `unknown`. O selo só é publicado atomicam
 - `mutation_score = 1.0`;
 - nenhuma entrada ou repositório analisado é alterado.
 
-O selo registra hashes, OIDs resolvidos, recibos dos oráculos, score e versão do
-protocolo. Strings de produtor são recibos nominais, não prova de isolamento. O piloto
+O selo registra hash semântico canônico do manifesto, hashes exatos de prompt/contrato,
+OIDs resolvidos, recibos dos oráculos, contagens, score e versão do protocolo. Strings
+de produtor são recibos nominais, não prova de isolamento. O piloto
 registra essa limitação e depende também do isolamento real do executor.
 
 ## Camadas
