@@ -110,7 +110,8 @@ pub trait FileProvider {
 }
 ```
 
-L4 converte `SourceError` em violação **bloqueante** `V0`:
+L4 encaminha `SourceError` ao projetor puro L1, que o converte em violação
+**bloqueante** `V0`:
 ```rust
 pub enum ViolationLevel { Fatal, Error, Warning }
 ```
@@ -118,6 +119,10 @@ pub enum ViolationLevel { Fatal, Error, Warning }
 `V0 — UnreadableSource` tem nível `Fatal` — bloqueia CI
 independentemente de `--fail-on`. Não há configuração que
 permita ignorar um arquivo ilegível.
+
+**Revisão P0089 (2026-08-24):** a formulação original atribuía a política de projeção a
+L4. Isso contradizia a regra posterior de composição sem lógica de negócio. A projeção
+erro→`Violation` passa a L1; L4 conserva apenas encaminhamento e orquestração.
 
 ### 2. Pipeline concorrente — Paralelismo em L3/L4
 
