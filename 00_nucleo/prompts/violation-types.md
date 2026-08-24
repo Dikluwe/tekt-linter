@@ -477,8 +477,8 @@ L1 apenas lê — nunca deriva, nunca aloca além das exceções documentadas.
 - **Proibido** `.to_string()` ou `String::from()` dentro das funções
   de regras — exceto `rule_id` e `message`
 - `Token.symbol` é `Cow<'a, str>` — V4 acessa via `Deref<Target = str>`
-- `Location.path` é `Cow<'a, Path>` — regras sobre `ParsedFile` usam `Borrowed`;
-  a projeção pura V0/PARSE usa `Owned` para erros de infraestrutura
+- `Location.path` é `Cow<'a, Path>` — regras usam `Borrowed`,
+  wiring usa `Owned` para erros de infraestrutura
 - Comparação de `FunctionSignature` e `TypeSignature` usa `PartialEq`
   derivado — nunca comparar apenas por `name`
 - `Declaration` populado por L3 para todos os arquivos —

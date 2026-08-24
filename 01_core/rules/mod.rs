@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash c67d1040
+//! @prompt-hash e042f8ff
 //! @layer L1
 //! @updated 2026-03-22
 
@@ -9,6 +9,7 @@ pub mod dangling_contract;
 pub mod external_type_in_contract;
 pub mod forbidden_import;
 pub mod impure_core;
+pub mod infrastructure_error;
 pub mod multi_prompt_header;
 pub mod mutable_state_core;
 pub mod orphan_prompt;

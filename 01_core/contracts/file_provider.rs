@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/file-provider.md
-//! @prompt-hash eabe7c7e
+//! @prompt-hash ace5d315
 //! @layer L1
 //! @updated 2026-03-16
 
@@ -13,7 +13,7 @@ use crate::entities::layer::{Language, Layer};
 /// Erro irrecuperável ao ler um arquivo fonte.
 /// Propagado pelo FileWalker (L3) via FileProvider::files().
 /// Nunca silenciado — dispara V0 Fatal no pipeline (ADR-0004).
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SourceError {
     Unreadable { path: PathBuf, reason: String },
 }

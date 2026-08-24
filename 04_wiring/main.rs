@@ -1,10 +1,9 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 80859d12
+//! @prompt-hash e042f8ff
 //! @layer L4
 //! @updated 2026-08-24
 
-use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::process;
 
@@ -28,7 +27,7 @@ use crystalline_lint::entities::refinement::{
     compare_refinement, ArtifactFacts, ObservableValue, UnknownReason,
 };
 use crystalline_lint::entities::refinement_seal::{accepts, OracleKind, VerdictName};
-use crystalline_lint::entities::violation::{Location, Violation, ViolationLevel};
+use crystalline_lint::entities::violation::{Violation, ViolationLevel};
 use crystalline_lint::infra::c_parser::CParser;
 use crystalline_lint::infra::citation_freshness::FsCitationFreshnessResolver;
 use crystalline_lint::infra::config::CrystallineConfig;
@@ -61,6 +60,9 @@ use crystalline_lint::infra::snapshot_writer;
 use crystalline_lint::infra::ts_parser::TsParser;
 use crystalline_lint::infra::walker::FileWalker;
 use crystalline_lint::infra::zig_parser::ZigParser;
+use crystalline_lint::rules::infrastructure_error::{
+    parse_error_to_violation, source_error_to_violation,
+};
 use crystalline_lint::rules::pub_leak::L1Ports;
 use crystalline_lint::rules::{
     alien_file, compound_guard, context_erasure, dangling_contract, decision_ownership,
@@ -1184,63 +1186,4 @@ fn run_checks<'a>(
         violations.extend(decision_ownership::check(file, semantic_levels[2].clone()));
     }
     violations
-}
-
-// ── Error → Violation converters ─────────────────────────────────────────────
-
-/// V0 — Unreadable source. Fatal, uses Cow::Owned (path not in any SourceFile).
-fn source_error_to_violation(err: &SourceError) -> Violation<'static> {
-    match err {
-        SourceError::Unreadable { path, reason } => Violation {
-            rule_id: "V0".to_string(),
-            level: ViolationLevel::Fatal,
-            message: format!("Arquivo ilegível: {reason}"),
-            location: Location {
-                path: Cow::Owned(path.clone()),
-                line: 0,
-                column: 0,
-            },
-        },
-    }
-}
-
-/// Converts a parse error into a `Violation<'static>`.
-fn parse_error_to_violation(err: ParseError) -> Violation<'static> {
-    match err {
-        ParseError::SyntaxError {
-            path,
-            line,
-            column,
-            message,
-        } => Violation {
-            rule_id: "PARSE".to_string(),
-            level: ViolationLevel::Error,
-            message: format!("Syntax error: {message}"),
-            location: Location {
-                path: Cow::Owned(path),
-                line,
-                column,
-            },
-        },
-        ParseError::UnsupportedLanguage { path, language } => Violation {
-            rule_id: "PARSE".to_string(),
-            level: ViolationLevel::Warning,
-            message: format!("Unsupported language: {language:?}"),
-            location: Location {
-                path: Cow::Owned(path),
-                line: 0,
-                column: 0,
-            },
-        },
-        ParseError::EmptySource { path } => Violation {
-            rule_id: "PARSE".to_string(),
-            level: ViolationLevel::Warning,
-            message: "Empty source file skipped".to_string(),
-            location: Location {
-                path: Cow::Owned(path),
-                line: 0,
-                column: 0,
-            },
-        },
-    }
 }
