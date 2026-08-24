@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/external-type-in-contract.md
-//! @prompt-hash 6ef17d90
+//! @prompt-hash cc425ff2
 //! @layer L1
 //! @updated 2026-06-24
 
@@ -44,7 +44,7 @@ pub fn check<'a, T: HasImports<'a>>(
                 "Dependência externa não autorizada em L1: '{}' não está em \
                  [l1_allowed_external]. Adicionar ao crystalline.toml se necessário, \
                  ou mover a dependência para L3.",
-                import.path,
+                package_name(import.path),
             ),
             location: Location {
                 path: Cow::Borrowed(file.path()),
@@ -71,6 +71,17 @@ fn package_name(import_path: &str) -> &str {
     // Rust: "serde::Serialize" → "serde"
     //       "std::collections::HashMap" → "std" (isento)
     // TypeScript e Python: o path já é o nome do pacote
+    if import_path.starts_with('@') {
+        let Some(scope_end) = import_path.find('/') else {
+            return import_path;
+        };
+        let package_and_subpath = &import_path[scope_end + 1..];
+        return match package_and_subpath.find('/') {
+            Some(subpath_start) => &import_path[..scope_end + 1 + subpath_start],
+            None => import_path,
+        };
+    }
+
     import_path
         .split("::")
         .next()
@@ -149,17 +160,31 @@ mod tests {
     }
 
     impl HasImports<'static> for MockFile {
-        fn layer(&self) -> &Layer { &self.layer }
-        fn imports(&self) -> &[Import<'static>] { &self.imports }
-        fn path(&self) -> &'static Path { self.path }
+        fn layer(&self) -> &Layer {
+            &self.layer
+        }
+        fn imports(&self) -> &[Import<'static>] {
+            &self.imports
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
     }
 
     fn l1_file_with(imports: Vec<Import<'static>>) -> MockFile {
-        MockFile { layer: Layer::L1, imports, path: Path::new("01_core/foo.rs") }
+        MockFile {
+            layer: Layer::L1,
+            imports,
+            path: Path::new("01_core/foo.rs"),
+        }
     }
 
     fn l3_file_with(imports: Vec<Import<'static>>) -> MockFile {
-        MockFile { layer: Layer::L3, imports, path: Path::new("03_infra/foo.rs") }
+        MockFile {
+            layer: Layer::L3,
+            imports,
+            path: Path::new("03_infra/foo.rs"),
+        }
     }
 
     fn external_import(path: &'static str, line: usize) -> Import<'static> {
@@ -198,7 +223,7 @@ mod tests {
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "V14");
         assert_eq!(violations[0].level, ViolationLevel::Error);
-        assert!(violations[0].message.contains("comemo::Tracked"));
+        assert!(violations[0].message.contains("'comemo'"));
     }
 
     #[test]
@@ -215,7 +240,7 @@ mod tests {
         let allowed = whitelist_type_level(&[("ecow", &["EcoString", "EcoVec"])]);
         let violations = check(&file, &allowed, false);
         assert_eq!(violations.len(), 1);
-        assert!(violations[0].message.contains("ecow::EcoMap"));
+        assert!(violations[0].message.contains("'ecow'"));
     }
 
     #[test]
@@ -232,12 +257,15 @@ mod tests {
         let allowed = whitelist_type_level(&[("ecow", &["EcoString", "EcoVec"])]);
         let violations = check(&file, &allowed, false);
         assert_eq!(violations.len(), 1);
-        assert!(violations[0].message.contains("ecow::{EcoString, EcoMap}"));
+        assert!(violations[0].message.contains("'ecow'"));
     }
 
     #[test]
     fn type_level_nested_path_matches_last_segment() {
-        let file = l1_file_with(vec![external_import("hayagriva::citationberg::IndependentStyle", 9)]);
+        let file = l1_file_with(vec![external_import(
+            "hayagriva::citationberg::IndependentStyle",
+            9,
+        )]);
         let allowed = whitelist_type_level(&[("hayagriva", &["Entry", "IndependentStyle"])]);
         let violations = check(&file, &allowed, false);
         assert!(violations.is_empty());
@@ -318,5 +346,7 @@ mod tests {
         assert_eq!(super::package_name("serde::Serialize"), "serde");
         assert_eq!(super::package_name("std::collections::HashMap"), "std");
         assert_eq!(super::package_name("tokio"), "tokio");
+        assert_eq!(super::package_name("@scope/pkg"), "@scope/pkg");
+        assert_eq!(super::package_name("@scope/pkg/subpath"), "@scope/pkg");
     }
 }
