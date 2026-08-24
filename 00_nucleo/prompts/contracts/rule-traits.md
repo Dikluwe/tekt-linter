@@ -207,6 +207,46 @@ impl<'a> HasWiringPurity<'a> for ParsedFile<'a> {
 }
 ```
 
+### IR pública de V21
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConstantKind {
+    FunctionNumberLiteral, FunctionStringLiteral, ItemDefinition,
+    MatchPattern, FormatString, NegativeLiteral,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CitationKind<'a> {
+    Ref { path: &'a str, line: usize }, Spec(&'a str), Rationale(&'a str),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Citation<'a> { pub kind: CitationKind<'a>, pub raw: &'a str, pub line: usize }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceConstant<'a> {
+    pub kind: ConstantKind,
+    pub snippet: &'a str,
+    pub line: usize,
+    pub column: usize,
+    pub citation: Option<Citation<'a>>,
+    pub is_test_origin: bool,
+    pub function_return_type: Option<&'a str>,
+    pub is_in_binary_scaling: bool,
+    pub context_var: Option<String>,
+    pub geometric_sink: Option<String>,
+    pub is_in_data_table: bool,
+}
+
+pub trait HasConstants<'a> {
+    fn layer(&self) -> &Layer;
+    fn constants(&self) -> &[SourceConstant<'a>];
+    fn path(&self) -> &'a Path;
+    fn language(&self) -> &Language;
+}
+```
+
 ---
 
 ## Impacto em cada arquivo de regra

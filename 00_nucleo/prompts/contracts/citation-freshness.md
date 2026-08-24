@@ -50,6 +50,20 @@ autoriza silêncio de `Ref`.
 
 ## Semântica L3
 
+Superfície pública do adapter:
+
+```rust
+// módulo crystalline_lint::infra::citation_freshness
+pub struct FsCitationFreshnessResolver { /* estado privado */ }
+
+impl FsCitationFreshnessResolver {
+    pub fn new(root: PathBuf, max_bytes: u64) -> Self;
+}
+```
+
+O construtor não faz I/O nem falha. `max_bytes == 0` faz toda resolução retornar
+`Unknown(BudgetExceeded)`; raiz inválida é classificada durante `resolve`.
+
 O adapter recebe raiz e orçamento máximo positivo em bytes. `path` é relativo, UTF-8 e
 não vazio. Absoluto, prefix/root, `..` ou vazio são `Unknown(OutsideRoot)`; `.` é removido
 lexicalmente. Root symlink ou qualquer componente symlink é `Unknown(Symlink)`, mesmo
