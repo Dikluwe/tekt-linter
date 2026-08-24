@@ -1,6 +1,6 @@
 # Assessment 0018 — projeções V0/PARSE
 
-**Estado:** RESSELADO APÓS SPEC-GAP; AGUARDA GATE CEGO
+**Estado:** READY WITH RESIDUAL AUDIT
 **Data:** 2026-08-24
 **Passo:** P0089
 **Baseline:** `cc1924b52f2079034c7814241ade88e0ca8f7583`
@@ -15,7 +15,7 @@
 | SourceError | `00_nucleo/prompts/contracts/file-provider.md` | `f5ed3805807f730576bd3af99d850eacfad49b9c2c1708f10aacd04c0af2e9ce` |
 | fail-fast | `00_nucleo/adr/0004-reformulação-do-motor-de-análise.md` | `25d0571e0621b207b59d79ffd4ce6dfd31008738812a06fd82d0ac95d8d7fe3d` |
 | paths owned | `00_nucleo/adr/0005-location-owned-paths-e-cargo.toml-como-artefato-gerido.md` | `917f4a1194e3d7b2a6955b6182684ad55bf909705cbf2537b095145d22b78421` |
-| protocolo | `00_nucleo/tekt-linter-passo-0089-auditoria-v0-parse.md` | `f4bd91b4b438c0ee58e1e4d46968860d5c8f0fb3b1fc7167f5dccc8c7289d54f` |
+| protocolo | `00_nucleo/tekt-linter-passo-0089-auditoria-v0-parse.md` | `b0379c2bf5c0bca13d83ba3b5dbfea2dc1bb4c27030ff2c01e5d4805a7126ae3` |
 | projetor puro | `00_nucleo/prompts/rules/infrastructure-error.md` | `bb2f8f5669ca264b205d03240a06d53c576b57847450388f44663f4f89cab119` |
 
 ## Alegações a congelar
@@ -65,3 +65,13 @@ as expectativas usadas pelo gate cego.
 
 Resultados válidos: `PASS`, `RED`, `SPEC-GAP`, `GATE-DEFECT`. Fechamento somente como
 `READY WITH RESIDUAL AUDIT` ou `BLOCKED`, sem merge.
+
+## Fechamento
+
+- SPEC-GAP camada/API: fechado por projetor puro L1 e encaminhamento L4.
+- Gate cego: 7/7 PASS; SHA-256
+  `7cf459d6251533df903019795b036ff43345731f14d9b9eb636e6773b5bbb7db`.
+- RED API ausente e RED `SourceError` sem derives: fechados em `f1f8486`.
+- Gate final de whitespace: fechado em `ec43f05`.
+- Suíte workspace, fixtures, hashes e auto-lint arquitetural: PASS.
+- Adversário D: `READY WITH RESIDUAL AUDIT`.
