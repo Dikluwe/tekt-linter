@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/violation-types.md
-//! @prompt-hash 45a6321f
+//! @prompt-hash 8b26dc56
 //! @layer L1
 //! @updated 2026-06-09
 
@@ -13,15 +13,15 @@ use crate::entities::layer::{Language, Layer};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportKind {
-    Direct,  // import of single module or symbol
-    Glob,    // import of all symbols (*)
-    Alias,   // import with renaming (as)
-    Named,   // import of named subset ({A, B})
+    Direct, // import of single module or symbol
+    Glob,   // import of all symbols (*)
+    Alias,  // import with renaming (as)
+    Named,  // import of named subset ({A, B})
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Import<'a> {
-    pub path: &'a str,  // sempre presente no buffer — &'a str puro
+    pub path: &'a str, // sempre presente no buffer — &'a str puro
     pub line: usize,
     pub kind: ImportKind,
     /// Resolvido por L3 via crystalline.toml [layers].
@@ -153,7 +153,9 @@ pub struct WiringConfig {
 
 impl Default for WiringConfig {
     fn default() -> Self {
-        Self { allow_adapter_structs: true }
+        Self {
+            allow_adapter_structs: true,
+        }
     }
 }
 
@@ -171,7 +173,11 @@ pub struct PublicInterface<'a> {
 
 impl<'a> PublicInterface<'a> {
     pub fn empty() -> Self {
-        Self { functions: vec![], types: vec![], reexports: vec![] }
+        Self {
+            functions: vec![],
+            types: vec![],
+            reexports: vec![],
+        }
     }
 }
 
@@ -181,7 +187,7 @@ impl<'a> PublicInterface<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionSignature<'a> {
     pub name: &'a str,
-    pub params: Vec<&'a str>,         // tipos normalizados (whitespace colapsado)
+    pub params: Vec<&'a str>, // tipos normalizados (whitespace colapsado)
     pub return_type: Option<&'a str>, // None para fn que retorna ()
 }
 
@@ -247,7 +253,11 @@ impl<'a> InterfaceDelta<'a> {
         for r in &self.removed_reexports {
             parts.push(format!("-reexport {r}"));
         }
-        if parts.is_empty() { "(no diff)".to_string() } else { parts.join(", ") }
+        if parts.is_empty() {
+            "(no diff)".to_string()
+        } else {
+            parts.join(", ")
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -264,10 +274,10 @@ impl<'a> InterfaceDelta<'a> {
 /// Cobre todas as variantes incluindo as novas de linguagens OO (ADR-0009).
 pub fn type_kind_str(kind: &TypeKind) -> &'static str {
     match kind {
-        TypeKind::Struct    => "struct",
-        TypeKind::Enum      => "enum",
-        TypeKind::Trait     => "trait",
-        TypeKind::Class     => "class",
+        TypeKind::Struct => "struct",
+        TypeKind::Enum => "enum",
+        TypeKind::Trait => "trait",
+        TypeKind::Class => "class",
         TypeKind::Interface => "interface",
         TypeKind::TypeAlias => "type",
     }
@@ -278,8 +288,8 @@ pub fn type_kind_str(kind: &TypeKind) -> &'static str {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PromptHeader<'a> {
     pub prompt_path: &'a str,
-    pub prompt_hash: Option<&'a str>,  // declarado no header do arquivo
-    pub current_hash: Option<String>,  // EXCEÇÃO: SHA256 calculado do disco
+    pub prompt_hash: Option<&'a str>, // declarado no header do arquivo
+    pub current_hash: Option<String>, // EXCEÇÃO: SHA256 calculado do disco
     pub layer: Layer,
     pub updated: Option<&'a str>,
 }
@@ -289,8 +299,9 @@ pub struct PromptHeader<'a> {
 
 use crate::entities::rule_traits::{
     DecisionExpr, HasConstants, HasCoverage, HasDecisionArms, HasHashes, HasImports,
-    HasModuleDecls, HasPromptFilesystem, HasPromptRefs, HasPublicInterface, HasPubLeak,
-    HasStaticDeclarations, HasTokens, HasWiringPurity, SourceConstant,
+    HasModuleDecls, HasPromptFilesystem, HasPromptRefs, HasPubLeak, HasPublicInterface,
+    HasSemanticObservations, HasStaticDeclarations, HasTokens, HasWiringPurity,
+    SemanticObservation, SourceConstant,
 };
 
 impl<'a> HasPromptFilesystem<'a> for ParsedFile<'a> {
@@ -405,11 +416,15 @@ impl<'a> HasWiringPurity<'a> for ParsedFile<'a> {
 }
 
 impl<'a> HasStaticDeclarations<'a> for ParsedFile<'a> {
-    fn layer(&self) -> &Layer { &self.layer }
+    fn layer(&self) -> &Layer {
+        &self.layer
+    }
     fn static_declarations(&self) -> &[StaticDeclaration<'a>] {
         &self.static_declarations
     }
-    fn path(&self) -> &'a Path { self.path }
+    fn path(&self) -> &'a Path {
+        self.path
+    }
 }
 
 impl<'a> HasModuleDecls<'a> for ParsedFile<'a> {
@@ -439,6 +454,18 @@ impl<'a> HasConstants<'a> for ParsedFile<'a> {
     }
     fn constants(&self) -> &[SourceConstant<'a>] {
         &self.constants
+    }
+    fn path(&self) -> &'a Path {
+        self.path
+    }
+    fn language(&self) -> &Language {
+        &self.language
+    }
+}
+
+impl<'a> HasSemanticObservations<'a> for ParsedFile<'a> {
+    fn semantic_observations(&self) -> &[SemanticObservation] {
+        &self.semantic_observations
     }
     fn path(&self) -> &'a Path {
         self.path
@@ -520,6 +547,9 @@ pub struct ParsedFile<'a> {
     /// For V21: source constants / literals subject to provenance (T1–T6).
     /// Populated only by RustParser in this phase; other parsers produce `vec![]`.
     pub constants: Vec<SourceConstant<'a>>,
+
+    /// V23–V25: fatos AST produzidos apenas sob contratos semânticos declarados.
+    pub semantic_observations: Vec<SemanticObservation>,
 }
 
 #[cfg(test)]
@@ -549,6 +579,7 @@ mod tests {
             module_decls: vec![],
             decision_exprs: vec![],
             constants: vec![],
+            semantic_observations: vec![],
         }
     }
 
@@ -665,19 +696,47 @@ mod tests {
 
     #[test]
     fn declaration_clone_and_eq() {
-        let d = Declaration { kind: DeclarationKind::Struct, name: "Adapter", line: 5 };
+        let d = Declaration {
+            kind: DeclarationKind::Struct,
+            name: "Adapter",
+            line: 5,
+        };
         assert_eq!(d.clone(), d);
     }
 
     #[test]
     fn declarations_field_accepts_multiple_kinds() {
         let mut f = base_file();
-        f.declarations.push(Declaration { kind: DeclarationKind::Struct, name: "Adapter", line: 2 });
-        f.declarations.push(Declaration { kind: DeclarationKind::Enum, name: "Mode", line: 5 });
-        f.declarations.push(Declaration { kind: DeclarationKind::Impl, name: "Adapter", line: 8 });
-        f.declarations.push(Declaration { kind: DeclarationKind::Class, name: "Formatter", line: 11 });
-        f.declarations.push(Declaration { kind: DeclarationKind::Interface, name: "Config", line: 14 });
-        f.declarations.push(Declaration { kind: DeclarationKind::TypeAlias, name: "Mode2", line: 17 });
+        f.declarations.push(Declaration {
+            kind: DeclarationKind::Struct,
+            name: "Adapter",
+            line: 2,
+        });
+        f.declarations.push(Declaration {
+            kind: DeclarationKind::Enum,
+            name: "Mode",
+            line: 5,
+        });
+        f.declarations.push(Declaration {
+            kind: DeclarationKind::Impl,
+            name: "Adapter",
+            line: 8,
+        });
+        f.declarations.push(Declaration {
+            kind: DeclarationKind::Class,
+            name: "Formatter",
+            line: 11,
+        });
+        f.declarations.push(Declaration {
+            kind: DeclarationKind::Interface,
+            name: "Config",
+            line: 14,
+        });
+        f.declarations.push(Declaration {
+            kind: DeclarationKind::TypeAlias,
+            name: "Mode2",
+            line: 17,
+        });
         assert_eq!(f.declarations.len(), 6);
         assert_eq!(f.declarations[1].kind, DeclarationKind::Enum);
         assert_eq!(f.declarations[3].kind, DeclarationKind::Class);
@@ -688,7 +747,11 @@ mod tests {
     #[test]
     fn declaration_name_is_borrowed_from_source() {
         // name is &'a str — no allocation
-        let d = Declaration { kind: DeclarationKind::Impl, name: "L3HashRewriter", line: 10 };
+        let d = Declaration {
+            kind: DeclarationKind::Impl,
+            name: "L3HashRewriter",
+            line: 10,
+        };
         assert_eq!(d.name, "L3HashRewriter");
         assert_eq!(d.line, 10);
     }
@@ -697,7 +760,11 @@ mod tests {
 
     #[test]
     fn module_decl_fields_accessible() {
-        let decl = ModuleDecl { name: "foo", target_layer: Layer::L1, line: 3 };
+        let decl = ModuleDecl {
+            name: "foo",
+            target_layer: Layer::L1,
+            line: 3,
+        };
         assert_eq!(decl.name, "foo");
         assert_eq!(decl.target_layer, Layer::L1);
         assert_eq!(decl.line, 3);
@@ -705,7 +772,11 @@ mod tests {
 
     #[test]
     fn module_decl_clone_and_eq() {
-        let d = ModuleDecl { name: "rules", target_layer: Layer::L1, line: 7 };
+        let d = ModuleDecl {
+            name: "rules",
+            target_layer: Layer::L1,
+            line: 7,
+        };
         assert_eq!(d.clone(), d);
     }
 
@@ -720,10 +791,10 @@ mod tests {
     #[test]
     fn type_kind_str_covers_all_variants() {
         use super::type_kind_str;
-        assert_eq!(type_kind_str(&TypeKind::Struct),    "struct");
-        assert_eq!(type_kind_str(&TypeKind::Enum),      "enum");
-        assert_eq!(type_kind_str(&TypeKind::Trait),     "trait");
-        assert_eq!(type_kind_str(&TypeKind::Class),     "class");
+        assert_eq!(type_kind_str(&TypeKind::Struct), "struct");
+        assert_eq!(type_kind_str(&TypeKind::Enum), "enum");
+        assert_eq!(type_kind_str(&TypeKind::Trait), "trait");
+        assert_eq!(type_kind_str(&TypeKind::Class), "class");
         assert_eq!(type_kind_str(&TypeKind::Interface), "interface");
         assert_eq!(type_kind_str(&TypeKind::TypeAlias), "type");
     }
@@ -734,7 +805,10 @@ mod tests {
         let kind_class = TypeKind::Class;
         let kind_iface = TypeKind::Interface;
         assert_eq!(format!("+{} Foo", type_kind_str(&kind_class)), "+class Foo");
-        assert_eq!(format!("-{} Bar", type_kind_str(&kind_iface)), "-interface Bar");
+        assert_eq!(
+            format!("-{} Bar", type_kind_str(&kind_iface)),
+            "-interface Bar"
+        );
     }
 
     // ── WiringConfig ──────────────────────────────────────────────────────────
@@ -747,7 +821,9 @@ mod tests {
 
     #[test]
     fn wiring_config_can_disable_adapter_structs() {
-        let cfg = WiringConfig { allow_adapter_structs: false };
+        let cfg = WiringConfig {
+            allow_adapter_structs: false,
+        };
         assert!(!cfg.allow_adapter_structs);
     }
 
@@ -784,10 +860,17 @@ mod tests {
         use crate::entities::rule_traits::HasWiringPurity;
         let mut f = base_file();
         f.layer = Layer::L4;
-        f.declarations.push(Declaration { kind: DeclarationKind::Enum, name: "Mode", line: 3 });
+        f.declarations.push(Declaration {
+            kind: DeclarationKind::Enum,
+            name: "Mode",
+            line: 3,
+        });
         assert_eq!(HasWiringPurity::layer(&f), &Layer::L4);
         assert_eq!(HasWiringPurity::declarations(&f).len(), 1);
-        assert_eq!(HasWiringPurity::declarations(&f)[0].kind, DeclarationKind::Enum);
+        assert_eq!(
+            HasWiringPurity::declarations(&f)[0].kind,
+            DeclarationKind::Enum
+        );
     }
 
     #[test]

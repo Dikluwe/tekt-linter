@@ -2,6 +2,11 @@
 
 > Linter arquitetural para projetos que seguem a [Arquitetura Cristalina](https://github.com/Dikluwe/crystalline-architecture-standard).
 
+Os arquivos chamados “passos” são comandos operacionais temporários herdados do fluxo
+do `typst-crystalline`; não são regras nem unidades da Arquitetura Tekt. Regras (`V*`),
+decisões (`ADR-*`) e prompts são os artefatos permanentes. Consulte o
+[`índice do núcleo`](00_nucleo/README.md).
+
 Sem este linter, as regras estruturais são sugestões. Com ele,
 violações se tornam ruído visível no CI, no editor e no terminal
 — antes de virarem dívida técnica.
@@ -72,6 +77,9 @@ crystalline-lint --update-snapshot --dry-run .
 | V20 | `DeepPatternNesting` | **info** | Aninhamento de padrão > 2 fora de contexto de tabela de tuplas regulares (métrica de complexidade) |
 | V21 | `HardcodedContextualValue` | **warning** | Literal numérico escala variável de fonte contextual e alimenta sumidouro geométrico sem proveniência declarada |
 | V22 | `ProvenanceInventory` | **info** | Métrica agregada por módulo: rácio `(literais citados) / (total de literais)` para vigilância de tendência (opt-in) |
+| V23 | `ContextErasure` | **warning** | Contexto requerido é neutralizado ou projetado antes de sumidouro declarado |
+| V24 | `SemanticFieldLoss` | **warning** | Campo obrigatório de identidade/projeção é substituído por neutro |
+| V25 | `DecisionOwnership` | **warning** | Decisão é duplicada, recomposta por proxy ou recanonicalizada fora do owner |
 
 **Sobre níveis Fatal (V0, V8, V10):** a ausência de violações garante
 que todos os arquivos foram lidos e analisados com sucesso. Fatal
@@ -100,7 +108,7 @@ ARGS:
 OPTIONS:
   --format <fmt>         sarif | text | n16-summary     [padrão: text]
   --fail-on <level>      error | warning                [padrão: error]
-  --checks <list>        v0,v1,...,v20                  [padrão: all]
+  --checks <list>        v0,v1,...,v25                  [padrão: V1–V21,V23–V25]
   --no-drift             desabilita V5
   --no-stale             desabilita V6
   --machine-readable     alias para --format sarif
@@ -211,6 +219,9 @@ V19 = { level = "info", languages = ["rust"] }
 V20 = { level = "info", languages = ["rust"] }
 V21 = { level = "warning", languages = ["rust"] }
 V22 = { level = "info", languages = ["rust"] }
+V23 = { level = "warning", languages = ["rust"] }
+V24 = { level = "warning", languages = ["rust"] }
+V25 = { level = "warning", languages = ["rust"] }
 
 # Configuração de contexto e sumidouros para V21
 [v21]

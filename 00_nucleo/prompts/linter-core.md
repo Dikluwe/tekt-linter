@@ -1,5 +1,5 @@
 # Prompt: Crystalline Linter (crystalline-lint)
-Hash do Código: 4d6b5ed5
+Hash do Código: 95675242
 
 **Camada**: L1 → L4 (sistema completo)
 **Criado em**: 2025-03-13
@@ -679,6 +679,14 @@ Então exit 0 — o linter passa em sua própria validação
 ```
 
 ---
+
+## Preservação semântica declarativa (V23–V25, ADR-0018)
+
+V23 `ContextErasure`, V24 `SemanticFieldLoss` e V25 `DecisionOwnership` operam apenas
+sob contratos `[[semantic.context]]`, `[[semantic.projection]]` e
+`[[semantic.decision]]`. Entram na seleção `all`, mas configuração vazia produz zero
+diagnósticos. O parser extrai observações AST genéricas e L1 decide a violação; nomes do
+Typst e inferência nominal de tipos são proibidos no núcleo. Nível padrão: Warning.
 
 ## Histórico de Revisões
 

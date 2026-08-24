@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/wiring-logic-leak.md
-//! @prompt-hash f6262c69
+//! @prompt-hash 84c2aebf
 //! @layer L1
 //! @updated 2026-03-16
 

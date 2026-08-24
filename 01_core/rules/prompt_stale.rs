@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/prompt-stale.md
-//! @prompt-hash 9241b6e4
+//! @prompt-hash 06a25fbb
 //! @layer L1
 //! @updated 2026-03-14
 
@@ -128,6 +128,7 @@ mod tests {
             module_decls: vec![],
             decision_exprs: vec![],
             constants: vec![],
+            semantic_observations: vec![],
         }
     }
 

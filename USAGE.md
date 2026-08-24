@@ -277,7 +277,7 @@ ARGS:
 OPTIONS:
   --format <fmt>         sarif | text              [padrão: text]
   --fail-on <level>      error | warning           [padrão: error]
-  --checks <list>        v0,v1,...,v14             [padrão: all]
+  --checks <list>        v0,v1,...,v25             [padrão: V1–V21,V23–V25]
   --no-drift             desactiva V5 (prompt drift)
   --no-stale             desactiva V6 (prompt stale)
   --quiet                apenas exit code, sem output
@@ -310,6 +310,47 @@ crystalline-lint --checks v3,v9,v14 .
 # Não falhar em warnings — apenas errors e fatals
 crystalline-lint --fail-on error .
 ```
+
+### Contratos de preservação semântica (V23–V25)
+
+As três regras são conservadoras: sem contrato explícito, não emitem diagnóstico.
+
+```toml
+[[semantic.context]]
+id = "rounded-radius"
+language = "rust"
+scopes = ["03_infra/export.rs::draw"]
+sources = ["radius"]
+resolvers = [{ symbol = "resolve_pt", context_arg = 0 }]
+erasing_projections = ["abs"]
+sinks = ["rounded_rect"]
+absolute_sources = ["absolute_radius"]
+
+[[semantic.projection]]
+id = "font-identity-variations"
+language = "rust"
+scope = "03_infra/font.rs::identity"
+source = "style.variations"
+destination = "return.2"
+neutral_forms = ["default", "none", "zero"]
+normalization = "preserve"
+
+[[semantic.decision]]
+id = "math-authority"
+language = "rust"
+owner = "03_infra/style.rs::is_math"
+consumers = ["03_infra/export.rs::*"]
+explicit_sources = ["style.math"]
+proxies = ["contains(\"math\")"]
+duplicate_owners = []
+canonicalizers = ["map_glyph"]
+resolved_after = ["03_infra/export.rs::emit"]
+```
+
+V23 cobre contexto neutro e projeção apagadora; V24 cobre slots de retorno declarados;
+V25 cobre owner duplicado, proxy e canonicalizador após marco resolvido. A primeira
+versão é intraprocedural e Rust-only. Configuração incompleta, destino não suportado ou
+IDs duplicados falham como erro de configuração.
 
 **Combinações inválidas (exit 1 imediato):**
 - `--dry-run` sem `--fix-hashes` ou `--update-snapshot`

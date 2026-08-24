@@ -7,7 +7,9 @@
 use std::path::Path;
 
 use crate::entities::layer::{Language, Layer};
-use crate::entities::parsed_file::{Declaration, Import, ModuleDecl, PromptHeader, PublicInterface, StaticDeclaration, Token};
+use crate::entities::parsed_file::{
+    Declaration, Import, ModuleDecl, PromptHeader, PublicInterface, StaticDeclaration, Token,
+};
 
 // ── V1 ────────────────────────────────────────────────────────────────────────
 
@@ -116,7 +118,6 @@ pub trait HasWiringPurity<'a> {
     fn path(&self) -> &'a Path;
 }
 
-
 // ── V16–V20 (Decisões Mecânicas — ADR-0016) ──────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -185,7 +186,9 @@ pub fn decision_arm_term_for(language: &Language) -> &'static str {
         Language::TypeScript => "cláusula `default:`",
         Language::Go => "cláusula `default:`",
         Language::Zig => "—",
-        Language::C | Language::Cpp | Language::Java | Language::Elixir | Language::Unknown => "wildcard",
+        Language::C | Language::Cpp | Language::Java | Language::Elixir | Language::Unknown => {
+            "wildcard"
+        }
     }
 }
 
@@ -255,6 +258,33 @@ pub trait HasConstants<'a> {
     fn language(&self) -> &Language;
 }
 
+// ── V23–V25 Semantic preservation (ADR-0018) ────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SemanticObservationKind {
+    ContextNeutralArgument,
+    ContextErasingProjection,
+    NeutralProjectionDestination,
+    DuplicateDecisionOwner,
+    DecisionProxyReentry,
+    CanonicalizerReentry,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SemanticObservation {
+    pub contract_id: String,
+    pub kind: SemanticObservationKind,
+    pub detail: String,
+    pub line: usize,
+    pub column: usize,
+}
+
+pub trait HasSemanticObservations<'a> {
+    fn semantic_observations(&self) -> &[SemanticObservation];
+    fn path(&self) -> &'a Path;
+    fn language(&self) -> &Language;
+}
+
 /// Termo idiomático para o construto de constante na linguagem do arquivo.
 pub fn source_term_for(language: &Language, kind: &ConstantKind) -> &'static str {
     match (language, kind) {
@@ -286,9 +316,15 @@ mod tests {
         path: &'static Path,
     }
     impl HasPromptFilesystem<'static> for MockV1 {
-        fn prompt_header(&self) -> Option<&PromptHeader<'static>> { None }
-        fn prompt_file_exists(&self) -> bool { false }
-        fn path(&self) -> &'static Path { self.path }
+        fn prompt_header(&self) -> Option<&PromptHeader<'static>> {
+            None
+        }
+        fn prompt_file_exists(&self) -> bool {
+            false
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
     }
 
     struct MockV2 {
@@ -296,9 +332,15 @@ mod tests {
         path: &'static Path,
     }
     impl HasCoverage<'static> for MockV2 {
-        fn layer(&self) -> &Layer { &self.layer }
-        fn has_test_coverage(&self) -> bool { true }
-        fn path(&self) -> &'static Path { self.path }
+        fn layer(&self) -> &Layer {
+            &self.layer
+        }
+        fn has_test_coverage(&self) -> bool {
+            true
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
     }
 
     struct MockV3 {
@@ -307,9 +349,15 @@ mod tests {
         path: &'static Path,
     }
     impl HasImports<'static> for MockV3 {
-        fn layer(&self) -> &Layer { &self.layer }
-        fn imports(&self) -> &[Import<'static>] { &self.imports }
-        fn path(&self) -> &'static Path { self.path }
+        fn layer(&self) -> &Layer {
+            &self.layer
+        }
+        fn imports(&self) -> &[Import<'static>] {
+            &self.imports
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
     }
 
     struct MockV4 {
@@ -319,18 +367,30 @@ mod tests {
         path: &'static Path,
     }
     impl HasTokens<'static> for MockV4 {
-        fn layer(&self) -> &Layer { &self.layer }
-        fn tokens(&self) -> &[Token<'static>] { &self.tokens }
-        fn path(&self) -> &'static Path { self.path }
-        fn language(&self) -> &Language { &self.language }
+        fn layer(&self) -> &Layer {
+            &self.layer
+        }
+        fn tokens(&self) -> &[Token<'static>] {
+            &self.tokens
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
+        fn language(&self) -> &Language {
+            &self.language
+        }
     }
 
     struct MockV5 {
         path: &'static Path,
     }
     impl HasHashes<'static> for MockV5 {
-        fn prompt_header(&self) -> Option<&PromptHeader<'static>> { None }
-        fn path(&self) -> &'static Path { self.path }
+        fn prompt_header(&self) -> Option<&PromptHeader<'static>> {
+            None
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
     }
 
     struct MockV6 {
@@ -338,10 +398,18 @@ mod tests {
         path: &'static Path,
     }
     impl HasPublicInterface<'static> for MockV6 {
-        fn prompt_header(&self) -> Option<&PromptHeader<'static>> { None }
-        fn public_interface(&self) -> &PublicInterface<'static> { &self.iface }
-        fn prompt_snapshot(&self) -> Option<&PublicInterface<'static>> { None }
-        fn path(&self) -> &'static Path { self.path }
+        fn prompt_header(&self) -> Option<&PromptHeader<'static>> {
+            None
+        }
+        fn public_interface(&self) -> &PublicInterface<'static> {
+            &self.iface
+        }
+        fn prompt_snapshot(&self) -> Option<&PublicInterface<'static>> {
+            None
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
     }
 
     struct MockV9 {
@@ -350,9 +418,15 @@ mod tests {
         path: &'static Path,
     }
     impl HasPubLeak<'static> for MockV9 {
-        fn layer(&self) -> &Layer { &self.layer }
-        fn imports(&self) -> &[Import<'static>] { &self.imports }
-        fn path(&self) -> &'static Path { self.path }
+        fn layer(&self) -> &Layer {
+            &self.layer
+        }
+        fn imports(&self) -> &[Import<'static>] {
+            &self.imports
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
     }
 
     struct MockV12 {
@@ -361,9 +435,15 @@ mod tests {
         path: &'static Path,
     }
     impl HasWiringPurity<'static> for MockV12 {
-        fn layer(&self) -> &Layer { &self.layer }
-        fn declarations(&self) -> &[Declaration<'static>] { &self.declarations }
-        fn path(&self) -> &'static Path { self.path }
+        fn layer(&self) -> &Layer {
+            &self.layer
+        }
+        fn declarations(&self) -> &[Declaration<'static>] {
+            &self.declarations
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
     }
 
     struct MockV15 {
@@ -372,28 +452,43 @@ mod tests {
         path: &'static Path,
     }
     impl HasPromptRefs<'static> for MockV15 {
-        fn layer(&self) -> &Layer { &self.layer }
-        fn prompt_refs(&self) -> &[&'static str] { &self.refs }
-        fn path(&self) -> &'static Path { self.path }
+        fn layer(&self) -> &Layer {
+            &self.layer
+        }
+        fn prompt_refs(&self) -> &[&'static str] {
+            &self.refs
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
     }
 
     #[test]
     fn mock_v1_implements_has_prompt_filesystem() {
-        let m = MockV1 { path: Path::new("foo.rs") };
+        let m = MockV1 {
+            path: Path::new("foo.rs"),
+        };
         assert!(!m.prompt_file_exists());
         assert!(m.prompt_header().is_none());
     }
 
     #[test]
     fn mock_v2_implements_has_coverage() {
-        let m = MockV2 { layer: Layer::L1, path: Path::new("foo.rs") };
+        let m = MockV2 {
+            layer: Layer::L1,
+            path: Path::new("foo.rs"),
+        };
         assert_eq!(m.layer(), &Layer::L1);
         assert!(m.has_test_coverage());
     }
 
     #[test]
     fn mock_v3_implements_has_imports() {
-        let m = MockV3 { layer: Layer::L2, imports: vec![], path: Path::new("foo.rs") };
+        let m = MockV3 {
+            layer: Layer::L2,
+            imports: vec![],
+            path: Path::new("foo.rs"),
+        };
         assert_eq!(m.layer(), &Layer::L2);
         assert!(m.imports().is_empty());
     }
@@ -406,19 +501,29 @@ mod tests {
             column: 0,
             kind: TokenKind::CallExpression,
         };
-        let m = MockV4 { layer: Layer::L1, language: Language::Rust, tokens: vec![tok], path: Path::new("foo.rs") };
+        let m = MockV4 {
+            layer: Layer::L1,
+            language: Language::Rust,
+            tokens: vec![tok],
+            path: Path::new("foo.rs"),
+        };
         assert_eq!(m.tokens().len(), 1);
     }
 
     #[test]
     fn mock_v5_implements_has_hashes() {
-        let m = MockV5 { path: Path::new("foo.rs") };
+        let m = MockV5 {
+            path: Path::new("foo.rs"),
+        };
         assert!(m.prompt_header().is_none());
     }
 
     #[test]
     fn mock_v6_implements_has_public_interface() {
-        let m = MockV6 { iface: PublicInterface::empty(), path: Path::new("foo.rs") };
+        let m = MockV6 {
+            iface: PublicInterface::empty(),
+            path: Path::new("foo.rs"),
+        };
         assert!(m.public_interface().functions.is_empty());
         assert!(m.public_interface().types.is_empty());
         assert!(m.prompt_snapshot().is_none());
@@ -434,13 +539,21 @@ mod tests {
             target_subdir: Some("entities"),
             is_test_origin: false,
         };
-        let m = MockV9 { layer: Layer::L2, imports: vec![imp], path: Path::new("foo.rs") };
+        let m = MockV9 {
+            layer: Layer::L2,
+            imports: vec![imp],
+            path: Path::new("foo.rs"),
+        };
         assert_eq!(m.imports().len(), 1);
     }
 
     #[test]
     fn mock_v12_implements_has_wiring_purity() {
-        let decl = Declaration { kind: DeclarationKind::Enum, name: "OutputMode", line: 3 };
+        let decl = Declaration {
+            kind: DeclarationKind::Enum,
+            name: "OutputMode",
+            line: 3,
+        };
         let m = MockV12 {
             layer: Layer::L4,
             declarations: vec![decl],
@@ -482,10 +595,18 @@ mod tests {
         path: &'static Path,
     }
     impl HasDecisionArms<'static> for MockV16 {
-        fn layer(&self) -> &Layer { &self.layer }
-        fn decision_exprs(&self) -> &[DecisionExpr<'static>] { &self.exprs }
-        fn path(&self) -> &'static Path { self.path }
-        fn language(&self) -> &Language { &self.language }
+        fn layer(&self) -> &Layer {
+            &self.layer
+        }
+        fn decision_exprs(&self) -> &[DecisionExpr<'static>] {
+            &self.exprs
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
+        fn language(&self) -> &Language {
+            &self.language
+        }
     }
 
     #[test]
@@ -505,7 +626,10 @@ mod tests {
     fn decision_arm_terms_are_idiomatic() {
         assert_eq!(decision_arm_term_for(&Language::Rust), "wildcard `_ =>`");
         assert_eq!(decision_arm_term_for(&Language::Python), "`case _`");
-        assert_eq!(decision_arm_term_for(&Language::TypeScript), "cláusula `default:`");
+        assert_eq!(
+            decision_arm_term_for(&Language::TypeScript),
+            "cláusula `default:`"
+        );
         assert_eq!(decision_arm_term_for(&Language::Go), "cláusula `default:`");
         assert_eq!(decision_arm_term_for(&Language::Zig), "—");
     }
@@ -517,10 +641,18 @@ mod tests {
         path: &'static Path,
     }
     impl HasConstants<'static> for MockV21 {
-        fn layer(&self) -> &Layer { &self.layer }
-        fn constants(&self) -> &[SourceConstant<'static>] { &self.constants }
-        fn path(&self) -> &'static Path { self.path }
-        fn language(&self) -> &Language { &self.language }
+        fn layer(&self) -> &Layer {
+            &self.layer
+        }
+        fn constants(&self) -> &[SourceConstant<'static>] {
+            &self.constants
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
+        fn language(&self) -> &Language {
+            &self.language
+        }
     }
 
     #[test]
@@ -538,8 +670,13 @@ mod tests {
 
     #[test]
     fn source_terms_are_idiomatic() {
-        assert_eq!(source_term_for(&Language::Rust, &ConstantKind::ItemDefinition), "definição de constante");
-        assert_eq!(source_term_for(&Language::Rust, &ConstantKind::FunctionNumberLiteral), "literal numérico");
+        assert_eq!(
+            source_term_for(&Language::Rust, &ConstantKind::ItemDefinition),
+            "definição de constante"
+        );
+        assert_eq!(
+            source_term_for(&Language::Rust, &ConstantKind::FunctionNumberLiteral),
+            "literal numérico"
+        );
     }
-
 }

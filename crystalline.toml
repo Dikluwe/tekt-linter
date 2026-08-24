@@ -114,6 +114,15 @@ V19 = { level = "info", languages = ["rust"] }
 V20 = { level = "info", languages = ["rust"] }
 V21 = { level = "warning", languages = ["rust"] }
 V22 = { level = "info", languages = ["rust"] }
+V23 = { level = "warning", languages = ["rust"] }
+V24 = { level = "warning", languages = ["rust"] }
+V25 = { level = "warning", languages = ["rust"] }
+
+# V23–V25 só analisam contratos explicitamente declarados. Exemplos completos em
+# USAGE.md. A ausência destas tabelas é válida e produz zero achados semânticos.
+# [[semantic.context]]
+# [[semantic.projection]]
+# [[semantic.decision]]
 
 [wildcard_exceptions]
 

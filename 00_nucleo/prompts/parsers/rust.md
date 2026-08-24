@@ -1,5 +1,5 @@
 # Prompt: Rust Parser (parsers/rust)
-Hash do Código: e877b64d
+Hash do Código: 81039772
 
 > **Nota de localização:** Este prompt foi movido de `prompts/rs-parser.md`
 > para `prompts/parsers/rust.md` pelo ADR-0009. É a implementação de
@@ -596,6 +596,14 @@ Então nenhum acesso a disco ocorre durante testes
 ```
 
 ---
+
+## Contratos de preservação semântica (ADR-0018)
+
+O parser extrai observações AST para contratos declarados em `crystalline.toml`. A
+configuração seleciona escopos e símbolos; o parser não contém nomes do Typst e não
+emite violações. A primeira versão cobre fluxo intraprocedural por parâmetros, `let`
+imutável, campos, chamadas, retornos/slots e composição booleana. Casos fora desse
+limite permanecem não analisáveis.
 
 ## Histórico de Revisões
 

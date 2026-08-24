@@ -182,6 +182,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for TsParser<R, S>
             module_decls: vec![],
             decision_exprs: vec![],
             constants: vec![],
+            semantic_observations: vec![],
         })
     }
 }

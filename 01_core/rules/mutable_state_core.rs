@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/mutable-state-core.md
-//! @prompt-hash 5e372e8d
+//! @prompt-hash 44adb246
 //! @layer L1
 //! @updated 2026-03-22
 
