@@ -162,3 +162,79 @@ fn historical_oracles_accept_fix_and_reject_regression() {
         );
     }
 }
+
+#[test]
+fn refine_revisions_reads_commits_without_changing_worktree() {
+    let repository = tempfile::tempdir().unwrap();
+    let git = |args: &[&str]| {
+        Command::new("git")
+            .current_dir(repository.path())
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    assert!(git(&["init", "-q"]).status.success());
+    assert!(git(&["config", "user.email", "fixture@example.invalid"])
+        .status
+        .success());
+    assert!(git(&["config", "user.name", "Fixture"]).status.success());
+    std::fs::write(
+        repository.path().join("sample.rs"),
+        "enum Stable { Alpha, Beta }\n",
+    )
+    .unwrap();
+    assert!(git(&["add", "sample.rs"]).status.success());
+    assert!(git(&["commit", "-qm", "before"]).status.success());
+    let before = String::from_utf8(git(&["rev-parse", "HEAD"]).stdout)
+        .unwrap()
+        .trim()
+        .to_string();
+    std::fs::write(
+        repository.path().join("sample.rs"),
+        "// formatting only\nenum Stable { Alpha, Beta }\n",
+    )
+    .unwrap();
+    assert!(git(&["add", "sample.rs"]).status.success());
+    assert!(git(&["commit", "-qm", "after"]).status.success());
+    let after = String::from_utf8(git(&["rev-parse", "HEAD"]).stdout)
+        .unwrap()
+        .trim()
+        .to_string();
+    std::fs::write(repository.path().join("dirty.txt"), "must survive\n").unwrap();
+
+    let contract = repository.path().join("refinement.toml");
+    std::fs::write(
+        &contract,
+        "id='git-fixture'\n[[observable]]\nkey='stable.variants'\nlanguage='rust'\nfile='sample.rs'\nquery='(enum_item name: (type_identifier) @_name body: (enum_variant_list) @value (#eq? @_name \"Stable\"))'\ncapture='value'\ncardinality='one'\non_missing='unknown'\n[[relation]]\nkind='preserve'\nsource='stable.variants'\ntarget='stable.variants'\n",
+    )
+    .unwrap();
+    let status_before = git(&["status", "--porcelain=v1", "-z"]).stdout;
+    let output = Command::new(env!("CARGO_BIN_EXE_crystalline-lint"))
+        .args([
+            "refine-revisions",
+            repository.path().to_str().unwrap(),
+            "--before-ref",
+            &before,
+            "--after-ref",
+            &after,
+            "--contract",
+            contract.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "PRESERVED\n");
+    assert_eq!(
+        git(&["status", "--porcelain=v1", "-z"]).stdout,
+        status_before
+    );
+    assert_eq!(
+        std::fs::read_to_string(repository.path().join("dirty.txt")).unwrap(),
+        "must survive\n"
+    );
+}

@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/refinement-validator.md
-//! @prompt-hash d5832752
+//! @prompt-hash cc8920e0
 //! @layer L3
 //! @updated 2026-08-24
 
@@ -136,34 +136,15 @@ fn normalize_syntax(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn extract_one(root: &Path, spec: &ObservableSpec) -> Result<ObservableValue, String> {
-    let canonical_root = root
-        .canonicalize()
-        .map_err(|error| format!("cannot resolve project root {}: {error}", root.display()))?;
-    let requested = root.join(&spec.file);
-    let path = match requested.canonicalize() {
-        Ok(path) => path,
-        Err(_) => return Ok(ObservableValue::Unknown(UnknownReason::MissingObservable)),
-    };
-    if !path.starts_with(&canonical_root) {
-        return Err(format!(
-            "observable `{}` resolves outside project root: {}",
-            spec.key,
-            path.display()
-        ));
-    }
-    let source = match fs::read_to_string(&path) {
-        Ok(source) => source,
-        Err(_) => return Ok(ObservableValue::Unknown(UnknownReason::MissingObservable)),
-    };
+fn extract_source(source: &str, spec: &ObservableSpec) -> Result<ObservableValue, String> {
     let language = tree_sitter_rust::LANGUAGE.into();
     let mut parser = Parser::new();
     parser
         .set_language(&language)
         .map_err(|error| format!("cannot initialize Rust parser: {error}"))?;
     let tree = parser
-        .parse(&source, None)
-        .ok_or_else(|| format!("Rust parser returned no tree for {}", path.display()))?;
+        .parse(source, None)
+        .ok_or_else(|| format!("Rust parser returned no tree for {}", spec.file.display()))?;
     if tree.root_node().has_error() {
         return Ok(ObservableValue::Unknown(UnknownReason::OpaqueConstruction));
     }
@@ -195,6 +176,59 @@ fn extract_one(root: &Path, spec: &ObservableSpec) -> Result<ObservableValue, St
         spec.cardinality,
         spec.on_missing,
     ))
+}
+
+fn extract_one(root: &Path, spec: &ObservableSpec) -> Result<ObservableValue, String> {
+    let canonical_root = root
+        .canonicalize()
+        .map_err(|error| format!("cannot resolve project root {}: {error}", root.display()))?;
+    let requested = root.join(&spec.file);
+    let path = match requested.canonicalize() {
+        Ok(path) => path,
+        Err(_) => return Ok(ObservableValue::Unknown(UnknownReason::MissingObservable)),
+    };
+    if !path.starts_with(&canonical_root) {
+        return Err(format!(
+            "observable `{}` resolves outside project root: {}",
+            spec.key,
+            path.display()
+        ));
+    }
+    let source = match fs::read_to_string(&path) {
+        Ok(source) => source,
+        Err(_) => return Ok(ObservableValue::Unknown(UnknownReason::MissingObservable)),
+    };
+    extract_source(&source, spec)
+}
+
+pub fn extract_snapshot_from_content<F>(
+    artifact_id: &str,
+    specs: &[ObservableSpec],
+    mut read: F,
+) -> Result<ArtifactFacts, String>
+where
+    F: FnMut(&Path) -> Result<Option<Vec<u8>>, String>,
+{
+    if artifact_id.trim().is_empty() {
+        return Err("artifact-id must not be empty".to_string());
+    }
+    let mut observables = BTreeMap::new();
+    for spec in specs {
+        let value = match read(&spec.file)? {
+            None => ObservableValue::Unknown(UnknownReason::MissingObservable),
+            Some(bytes) => match std::str::from_utf8(&bytes) {
+                Ok(source) => extract_source(source, spec)?,
+                Err(_) => ObservableValue::Unknown(UnknownReason::OpaqueConstruction),
+            },
+        };
+        observables.insert(spec.key.clone(), value);
+    }
+    Ok(ArtifactFacts {
+        artifact_id: artifact_id.to_string(),
+        format_version: 1,
+        extractor_version: EXTRACTOR_VERSION.to_string(),
+        observables,
+    })
 }
 
 pub fn extract_snapshot(
