@@ -1,7 +1,7 @@
 # Passo operacional 0082 — análise segregada de V4 e V14
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** em execução
+> **Estado:** executado; merge bloqueado por RED/SPEC-GAP
 > **Branch:** `codex/segregated-materialization`
 > **Predecessor:** P0081
 
@@ -55,3 +55,15 @@ novo em `tests/`. Nenhum papel altera produção.
 Qualquer `RED` ou `SPEC-GAP` é congelado antes de correção. Depois do confronto C, emitir
 assessment e decidir separadamente se há saneamento. Não fazer merge, instalação ou
 release neste passo.
+
+## Resultado congelado
+
+- B4: 5/6. O único RED é defeito do gate: `os.path_near` ainda casa com a entrada
+  normativa mais ampla `os` pelo prefixo `os.`. Não demonstra defeito funcional de V4.
+- B14: 5/7. Os dois REDs demonstram divergência produção–L0 na mensagem: a produção
+  imprime o path completo, mas o L0 exige o nome extraído do pacote.
+- C confirmou os resultados e encontrou gaps normativos adicionais em ambas as regras.
+
+Nenhuma produção foi alterada. O relatório
+`00_nucleo/assessments/0012-impure-core-external-contract.md` contém a classificação e
+as condições necessárias antes do merge.
