@@ -1,6 +1,6 @@
 # Relatório do piloto — materialização segregada
 
-Data: 2026-08-24  
+Data: 2026-08-24
 Branch: `codex/segregated-materialization`
 
 ## Resultado

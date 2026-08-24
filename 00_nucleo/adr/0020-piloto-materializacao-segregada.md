@@ -1,7 +1,7 @@
 # ADR-0020 — Piloto de materialização segregada
 
-**Status:** ACEITO — autorizado pelo humano em 2026-08-24  
-**Data:** 2026-08-24  
+**Status:** ACEITO — autorizado pelo humano em 2026-08-24
+**Data:** 2026-08-24
 **Origem:** Tekt ADR-0003 (proposta)
 
 ## Contexto
