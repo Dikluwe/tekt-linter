@@ -1,0 +1,126 @@
+// Probe adversarial independente do Assessment 0007.
+// Artefato .txt deliberadamente fora do auto-lint; para executar, copie para /tmp.
+use crystalline_lint::contracts::prompt_provider::{AllPrompts, PromptEntry};
+use crystalline_lint::entities::layer::Layer;
+use crystalline_lint::entities::parsed_file::{
+    FunctionSignature, PromptHeader, PublicInterface, TypeKind, TypeSignature,
+};
+use crystalline_lint::entities::project_index::ProjectIndex;
+use crystalline_lint::entities::rule_traits::{HasHashes, HasPublicInterface};
+use crystalline_lint::entities::violation::ViolationLevel;
+use crystalline_lint::rules::{orphan_prompt, prompt_drift, prompt_stale};
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
+
+struct HashFile {
+    header: Option<PromptHeader<'static>>,
+    path: &'static Path,
+}
+impl HasHashes<'static> for HashFile {
+    fn prompt_header(&self) -> Option<&PromptHeader<'static>> { self.header.as_ref() }
+    fn path(&self) -> &'static Path { self.path }
+}
+
+struct InterfaceFile {
+    header: Option<PromptHeader<'static>>,
+    current: PublicInterface<'static>,
+    snapshot: Option<PublicInterface<'static>>,
+    path: &'static Path,
+}
+impl HasPublicInterface<'static> for InterfaceFile {
+    fn prompt_header(&self) -> Option<&PromptHeader<'static>> { self.header.as_ref() }
+    fn public_interface(&self) -> &PublicInterface<'static> { &self.current }
+    fn prompt_snapshot(&self) -> Option<&PublicInterface<'static>> { self.snapshot.as_ref() }
+    fn path(&self) -> &'static Path { self.path }
+}
+
+fn header(declared: Option<&'static str>, current: Option<&str>) -> PromptHeader<'static> {
+    PromptHeader {
+        prompt_path: "00_nucleo/prompts/p.md",
+        prompt_hash: declared,
+        current_hash: current.map(str::to_owned),
+        layer: Layer::L1,
+        updated: None,
+    }
+}
+fn fun(name: &'static str) -> FunctionSignature<'static> {
+    FunctionSignature { name, params: vec!["u8"], return_type: Some("u8") }
+}
+fn iface(functions: Vec<FunctionSignature<'static>>) -> PublicInterface<'static> {
+    PublicInterface { functions, types: vec![], reexports: vec![] }
+}
+fn stale(current: PublicInterface<'static>, snapshot: PublicInterface<'static>) -> Vec<String> {
+    let f = InterfaceFile {
+        header: Some(header(None, None)), current, snapshot: Some(snapshot),
+        path: Path::new("01_core/x.rs"),
+    };
+    prompt_stale::check(&f).into_iter().map(|v| v.message).collect()
+}
+
+fn main() {
+    // P1: tabela de verdade e comparação textual exata de V5.
+    for (declared, current, expected) in [
+        (None, None, 0), (None, Some("a"), 0), (Some("a"), None, 0),
+        (Some("a"), Some("a"), 0), (Some("a"), Some("A"), 1),
+    ] {
+        let f = HashFile { header: Some(header(declared, current)), path: Path::new("01_core/hash.rs") };
+        let got = prompt_drift::check(&f);
+        assert_eq!(got.len(), expected);
+        if expected == 1 {
+            assert!(got[0].message.contains("a") && got[0].message.contains("A"));
+            assert_eq!(got[0].location.path.as_ref(), Path::new("01_core/hash.rs"));
+        }
+    }
+    let absent = HashFile { header: None, path: Path::new("01_core/hash.rs") };
+    assert!(prompt_drift::check(&absent).is_empty());
+    println!("PASS P1 V5 truth-table/exact bytes/path");
+
+    // P2: a mera permutação do mesmo conjunto não gera V6.
+    assert!(stale(iface(vec![fun("b"), fun("a")]), iface(vec![fun("a"), fun("b")])).is_empty());
+    println!("PASS P2 V6 permutation equivalence");
+
+    // P3: qualquer campo público e reexport alterado produz delta não vazio.
+    let base = PublicInterface {
+        functions: vec![FunctionSignature { name: "f", params: vec!["u8"], return_type: Some("u8") }],
+        types: vec![TypeSignature { name: "T", kind: TypeKind::Struct, members: vec!["x:u8"] }],
+        reexports: vec!["a::B"],
+    };
+    let variants = vec![
+        PublicInterface { functions: vec![FunctionSignature { name: "g", params: vec!["u8"], return_type: Some("u8") }], ..base.clone() },
+        PublicInterface { functions: vec![FunctionSignature { name: "f", params: vec!["u16"], return_type: Some("u8") }], ..base.clone() },
+        PublicInterface { functions: vec![FunctionSignature { name: "f", params: vec!["u8"], return_type: Some("u16") }], ..base.clone() },
+        PublicInterface { types: vec![TypeSignature { name: "U", kind: TypeKind::Struct, members: vec!["x:u8"] }], ..base.clone() },
+        PublicInterface { types: vec![TypeSignature { name: "T", kind: TypeKind::Enum, members: vec!["x:u8"] }], ..base.clone() },
+        PublicInterface { types: vec![TypeSignature { name: "T", kind: TypeKind::Struct, members: vec!["y:u8"] }], ..base.clone() },
+        PublicInterface { reexports: vec!["a::C"], ..base.clone() },
+    ];
+    for changed in variants { assert_eq!(stale(changed, base.clone()).len(), 1); }
+    println!("PASS P3 V6 all public fields observable");
+
+    // P4: multiplicidade é perdida por contains(): [f,f] e [f] viram delta vazio.
+    let multiplicity = stale(iface(vec![fun("f"), fun("f")]), iface(vec![fun("f")]));
+    assert!(multiplicity.is_empty());
+    println!("RED P4 V6 multiplicity collapsed: [f,f] accepted as [f]");
+
+    // P5: conteúdo do delta depende da ordem de enumeração de entradas equivalentes.
+    let m_ab = stale(iface(vec![fun("a"), fun("b")]), PublicInterface::empty());
+    let m_ba = stale(iface(vec![fun("b"), fun("a")]), PublicInterface::empty());
+    assert_eq!(m_ab.len(), 1); assert_eq!(m_ba.len(), 1); assert_ne!(m_ab, m_ba);
+    println!("RED P5 V6 description order-dependent: {:?} != {:?}", m_ab[0], m_ba[0]);
+
+    // P6: V7 é exata, ordenada, uma ocorrência por entrada e preserva nível/path.
+    let all = AllPrompts { entries: BTreeSet::from([
+        PromptEntry { relative_path: "00_nucleo/prompts/é.md" },
+        PromptEntry { relative_path: "00_nucleo/prompts/e\u{301}.md" },
+        PromptEntry { relative_path: "00_nucleo/prompts/z.md" },
+    ])};
+    let mut index = ProjectIndex::new();
+    index.referenced_prompts.insert("00_nucleo/prompts/z.md");
+    index.referenced_prompts.insert("00_nucleo/prompts/./z.md");
+    let v = orphan_prompt::check_orphans(&index, &all, ViolationLevel::Error);
+    assert_eq!(v.len(), 2);
+    assert!(v.iter().all(|x| x.level == ViolationLevel::Error));
+    let paths: Vec<PathBuf> = v.iter().map(|x| x.location.path.as_ref().to_owned()).collect();
+    assert_eq!(paths, vec![PathBuf::from("00_nucleo/prompts/e\u{301}.md"), PathBuf::from("00_nucleo/prompts/é.md")]);
+    println!("PASS P6 V7 exact representation/cardinality/order/level");
+}
