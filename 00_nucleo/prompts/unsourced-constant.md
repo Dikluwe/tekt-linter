@@ -56,6 +56,16 @@ Diferente de uma varredura cega por literais no código, a regra V21 opera sobre
    Valores neutros canônicos (`0`, `1`, `-1`, `2`, `100`, `0.0`, `1.0`, `""`,
    strings de 1 caractere) são ignorados.
 
+Matching de `format_syntax_modules`, `scope_modules` e `strict_modules` é lexical por
+componente/stem completo, case-sensitive, aceitando `/` e `\` como separadores. Não há
+substring. `scope_types`, `context_vars` e `geometric_sinks` casam segmentos de
+identificador case-insensitive, separados por `_` ou fronteira de campo; substring
+interna acidental não basta.
+
+Triviais usam igualdade lexical após `trim`, sem normalização numérica: `0.0` não torna
+`0.00` trivial. String vazia, um caractere e escapes `\n`, `\t`, `\r`, `\"` são
+triviais; outras strings não.
+
 ---
 
 ## 4. Gramática de Citação e Resolução
@@ -74,6 +84,21 @@ do alvo, na linha imediatamente anterior ou na janela de proximidade de 3 linhas
 Quando a citação usa `// ref: <caminho>:<linha>`, a regra verifica a existência do
 arquivo e a validade da linha referenciada. Se o alvo for movido, excluído ou ficar
 vazio, V21 emite um aviso específico de citação obsoleta (`StaleCitation`).
+
+V21 L1 não lê filesystem. `check` recebe `CitationFreshnessResolver`, porta causal de
+`prompts/contracts/citation-freshness.md`. Para `Ref`: `Valid` silencia;
+`Stale(reason)` emite uma única V21 Warning `StaleCitation`; `Unknown(reason)` emite uma
+única V21 Warning `CitationFreshnessUnknown`. Ambos preservam path, linha e razão e nunca
+são promovidos por strict module.
+
+Os diagnósticos usam `rule_id == "V21"`. A mensagem de stale contém literalmente
+`StaleCitation`, o path, a linha e o `Debug` da razão; a mensagem de unknown contém
+literalmente `CitationFreshnessUnknown`, o path, a linha e o `Debug` da razão.
+
+`Spec(payload)` e `Rationale(payload)` silenciam somente com `payload.trim()` não vazio;
+vazio/whitespace equivale a ausência de proveniência. O parser associa citações na linha
+alvo ou nas três linhas anteriores, inclusive; posteriores não associam. Havendo várias,
+vence a mais próxima e, no empate, a mais recente antes do alvo.
 
 ---
 
@@ -110,6 +135,47 @@ Dado literal trivial 0.0 ou 1.0 em operação contextual
 Quando V21::check() for chamado
 Então retorna vec![] — trivial da allowlist
 ```
+
+## 6.1 API pública black-box
+
+O gate pode importar `V21RuleConfig`, `HasConstants`, `SourceConstant`, `Citation`,
+`CitationKind`, `CitationFreshnessResolver`, `CitationFreshness` e razões públicas.
+
+```rust
+pub fn check<'a, T: HasConstants<'a>, R: CitationFreshnessResolver + ?Sized>(
+    file: &T,
+    config: &V21RuleConfig,
+    freshness: &R,
+) -> Vec<Violation<'a>>
+```
+
+`V21RuleConfig` é público e contém exatamente:
+
+```rust
+pub context_vars: Vec<String>,
+pub geometric_sinks: Vec<String>,
+pub format_syntax_modules: Vec<String>,
+pub scope_modules: Vec<String>,
+pub scope_types: Vec<String>,
+pub trivial_literals: HashSet<String>,
+pub strict_modules: Vec<String>,
+```
+
+Os defaults de `context_vars`, `geometric_sinks`, `format_syntax_modules`,
+`scope_modules`, `scope_types` e `trivial_literals` são, na ordem, as listas das
+seções 2–3 e da implementação previamente nucleada; `strict_modules` começa vazio.
+`scope_modules` e `scope_types` são configuração compartilhada com inventário/extração e
+não acrescentam eixo ao predicado V21 já extraído.
+
+V21 é Rust-only. O produto usa os
+fatos extraídos `is_in_binary_scaling`, `context_var` e `geometric_sink`; direção do
+operador, campos profundos e janela são responsabilidades do parser L3 e ficam para lote
+separado.
+
+Sem citação válida, nível é Warning ou Error sob strict module. Mensagem preserva
+snippet, context var e sink; location usa path/linha/coluna da constante. Ordem e
+duplicatas são preservadas. O resolver só é chamado para Ref de ocorrência que passou
+todos os filtros.
 
 ---
 

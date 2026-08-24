@@ -207,6 +207,46 @@ impl<'a> HasWiringPurity<'a> for ParsedFile<'a> {
 }
 ```
 
+### IR pública de V21
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConstantKind {
+    FunctionNumberLiteral, FunctionStringLiteral, ItemDefinition,
+    MatchPattern, FormatString, NegativeLiteral,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CitationKind<'a> {
+    Ref { path: &'a str, line: usize }, Spec(&'a str), Rationale(&'a str),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Citation<'a> { pub kind: CitationKind<'a>, pub raw: &'a str, pub line: usize }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceConstant<'a> {
+    pub kind: ConstantKind,
+    pub snippet: &'a str,
+    pub line: usize,
+    pub column: usize,
+    pub citation: Option<Citation<'a>>,
+    pub is_test_origin: bool,
+    pub function_return_type: Option<&'a str>,
+    pub is_in_binary_scaling: bool,
+    pub context_var: Option<String>,
+    pub geometric_sink: Option<String>,
+    pub is_in_data_table: bool,
+}
+
+pub trait HasConstants<'a> {
+    fn layer(&self) -> &Layer;
+    fn constants(&self) -> &[SourceConstant<'a>];
+    fn path(&self) -> &'a Path;
+    fn language(&self) -> &Language;
+}
+```
+
 ---
 
 ## Impacto em cada arquivo de regra
@@ -289,6 +329,18 @@ uma variante exige primeiro revisão coordenada deste L0 e do L0 da regra consum
 deduplica, ordena nem interpreta `detail`; classifiers preservam ordem e multiplicidade.
 `ParsedFile` implementa `HasSemanticObservations` por empréstimo somente leitura. A
 decisão que produz cada kind pertence a L3 e será auditada separadamente.
+
+## Contrato de constantes e citações V21
+
+V21 consome `ConstantKind`, `CitationKind`, `Citation`, `SourceConstant` e
+`HasConstants`. Os campos públicos normativos são os materializados em
+`01_core/entities/rule_traits.rs`: kind, snippet, line, column, citation, test-origin,
+function-return-type, scaling, context-var, geometric-sink e data-table. A trait expõe
+layer, constants, path e language somente leitura.
+
+Frescura de `CitationKind::Ref` não pertence à IR nem ao parser. O classificador recebe
+a porta pura `contracts/citation-freshness.md`; entities/rules não importam filesystem ou
+o adapter L3.
 
 ---
 
@@ -406,3 +458,4 @@ Então retorna Violation V3
 | 2026-03-18 | ADR-0009 correcção: HasTokens ganha language() para V4 multi-linguagem; nota sobre V4 nunca usar ImportKind; mock de V4 actualizado com campo language; critérios de Rust/Python/TypeScript/Unknown adicionados; critério V3 com ImportKind::Named documenta agnósticidade | rule_traits.rs, impure_core.rs |
 | 2026-08-24 | HasPromptFilesystem ganha layer() como oráculo único do escopo L1–L4 de V1 | rule_traits.rs, parsed_file.rs, prompt_header.rs |
 | 2026-08-24 | Taxonomia pública V23–V25 documentada; DirectDecisionReimplementation fecha a quarta modalidade sem colapsá-la em proxy/canonicalizer | rule_traits.rs, decision_ownership.rs |
+| 2026-08-24 | IR V21 vinculada à porta pura de frescura; filesystem permanece fora de entities/rules | rule_traits.rs, citation_freshness.rs, unsourced_constant.rs |

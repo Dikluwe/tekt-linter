@@ -10,6 +10,7 @@
 //! invoca o binário com `current_dir` na fixture (replicando `crystalline-lint .`
 //! com o `crystalline.toml` e o `00_nucleo/` da própria fixture).
 
+use crystalline_lint::contracts::citation_freshness::UnknownCitationFreshness;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -633,7 +634,7 @@ fn v21_hardcoded_contextual_value_triggers_warning() {
         }],
     };
 
-    let viols = check(&file, &V21RuleConfig::default(), None);
+    let viols = check(&file, &V21RuleConfig::default(), &UnknownCitationFreshness);
     assert_eq!(viols.len(), 1, "escalar contextual fixo dispara V21");
     assert_eq!(viols[0].rule_id, "V21");
     assert_eq!(
@@ -688,7 +689,7 @@ fn v21_isolated_literal_outside_scaling_does_not_trigger() {
         }],
     };
 
-    let viols = check(&file, &V21RuleConfig::default(), None);
+    let viols = check(&file, &V21RuleConfig::default(), &UnknownCitationFreshness);
     assert!(viols.is_empty(), "literal isolado nao dispara V21");
 }
 
@@ -735,7 +736,7 @@ fn v21_data_table_is_exempt() {
         }],
     };
 
-    let viols = check(&file, &V21RuleConfig::default(), None);
+    let viols = check(&file, &V21RuleConfig::default(), &UnknownCitationFreshness);
     assert!(viols.is_empty(), "tabela de dados é isenta de V21");
 }
 
@@ -782,7 +783,7 @@ fn v21_format_syntax_module_is_exempt() {
         }],
     };
 
-    let viols = check(&file, &V21RuleConfig::default(), None);
+    let viols = check(&file, &V21RuleConfig::default(), &UnknownCitationFreshness);
     assert!(
         viols.is_empty(),
         "modulo de sintaxe de formato é isento de V21"
@@ -795,6 +796,7 @@ fn v21_valid_ref_suppresses() {
     use crystalline_lint::entities::rule_traits::{
         Citation, CitationKind, ConstantKind, HasConstants, SourceConstant,
     };
+    use crystalline_lint::infra::citation_freshness::FsCitationFreshnessResolver;
     use crystalline_lint::rules::unsourced_constant::{check, V21RuleConfig};
     use std::io::Write;
     use std::path::Path;
@@ -802,7 +804,14 @@ fn v21_valid_ref_suppresses() {
 
     let mut temp = NamedTempFile::new().unwrap();
     writeln!(temp, "// spec line 1").unwrap();
-    let temp_path = temp.path().to_str().unwrap().to_string();
+    let temp_root = temp.path().parent().unwrap().to_path_buf();
+    let temp_name = temp
+        .path()
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
 
     struct MockFile {
         path: &'static Path,
@@ -832,7 +841,7 @@ fn v21_valid_ref_suppresses() {
             column: 8,
             citation: Some(Citation {
                 kind: CitationKind::Ref {
-                    path: Box::leak(temp_path.into_boxed_str()),
+                    path: Box::leak(temp_name.into_boxed_str()),
                     line: 1,
                 },
                 raw: "// ref: ...",
@@ -847,7 +856,8 @@ fn v21_valid_ref_suppresses() {
         }],
     };
 
-    let viols = check(&file, &V21RuleConfig::default(), None);
+    let resolver = FsCitationFreshnessResolver::new(temp_root, 1024);
+    let viols = check(&file, &V21RuleConfig::default(), &resolver);
     assert!(viols.is_empty(), "// ref: válido apaga o aviso");
 }
 
@@ -857,6 +867,7 @@ fn v21_stale_ref_triggers_stale_citation_warning() {
     use crystalline_lint::entities::rule_traits::{
         Citation, CitationKind, ConstantKind, HasConstants, SourceConstant,
     };
+    use crystalline_lint::infra::citation_freshness::FsCitationFreshnessResolver;
     use crystalline_lint::rules::unsourced_constant::{check, V21RuleConfig};
     use std::path::Path;
 
@@ -903,13 +914,15 @@ fn v21_stale_ref_triggers_stale_citation_warning() {
         }],
     };
 
-    let viols = check(&file, &V21RuleConfig::default(), None);
+    let root = tempfile::tempdir().unwrap();
+    let resolver = FsCitationFreshnessResolver::new(root.path().to_path_buf(), 1024);
+    let viols = check(&file, &V21RuleConfig::default(), &resolver);
     assert_eq!(viols.len(), 1, "ref: obsoleto dispara StaleCitation");
     assert_eq!(
         viols[0].level,
         crystalline_lint::entities::violation::ViolationLevel::Warning
     );
-    assert!(viols[0].message.contains("Citação obsoleta"));
+    assert!(viols[0].message.contains("StaleCitation"));
 }
 
 #[test]
@@ -1021,7 +1034,7 @@ fn non_regression_v21_and_v22_on_typescript() {
     let file = MockTsFile {
         path: Path::new("01_core/index.ts"),
     };
-    let viols21 = check(&file, &V21RuleConfig::default(), None);
+    let viols21 = check(&file, &V21RuleConfig::default(), &UnknownCitationFreshness);
     assert!(
         viols21.is_empty(),
         "TypeScript file must produce zero V21 violations"
@@ -1062,7 +1075,7 @@ fn non_regression_v21_and_v22_on_python() {
     let file = MockPyFile {
         path: Path::new("01_core/main.py"),
     };
-    let viols21 = check(&file, &V21RuleConfig::default(), None);
+    let viols21 = check(&file, &V21RuleConfig::default(), &UnknownCitationFreshness);
     assert!(
         viols21.is_empty(),
         "Python file must produce zero V21 violations"
