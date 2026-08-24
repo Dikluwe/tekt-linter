@@ -84,6 +84,11 @@ publica selo parcial.
   semântica canônica (campos e oráculos ordenados), não sobre os bytes crus do TOML.
 - Identidade nominal não é apresentada como prova de sandbox.
 - Um negativo só é morto por `VIOLATED`.
+- O manifesto contém pelo menos um oráculo de cada categoria: `positive`, `negative` e
+  `unknown`; categoria ausente bloqueia antes da execução.
+- Um negativo `VIOLATED` que também contenha qualquer inconclusivo bloqueia o selo. A
+  versão 1 não possui vínculo causal suficiente para distinguir uma testemunha válida
+  de uma divergência-isca que lave uma mutação inconclusiva.
 
 ## Fixtures RED
 
