@@ -88,6 +88,28 @@ pub trait FileProvider {
 }
 ```
 
+## Partição pura de resultados
+
+A separação do stream produzido por L3 é transformação pura L1, pública para gate
+black-box:
+
+```rust
+pub fn collect_walker_results<I>(
+    results: I,
+) -> (Vec<SourceFile>, Vec<SourceError>)
+where
+    I: Iterator<Item = Result<SourceFile, SourceError>>;
+```
+
+A função toma o iterador por valor, não exige `Clone`, começa com dois `Vec::new()` e
+move cada item por `push`, sem reconstruir ou normalizar campos. Cada saída é exatamente
+a subsequência estável de seu ramo, preservando duplicatas e multiplicidade.
+
+O consumo chama `next()` uma vez por item e uma vez adicional para observar o primeiro
+`None`; nunca chama novamente após esse `None`, não faz replay/segunda coleta e não chama
+`size_hint`. Nenhum filesystem, config, ambiente, relógio, rede ou processo é acessado.
+L3 produz os resultados; L4 somente chama esta função L1.
+
 ---
 
 ## Restrições
@@ -132,6 +154,11 @@ Então retorna true
 Dado mock de FileProvider retornando SourceFiles fixos
 Quando usado em teste de L1
 Então nenhum acesso a disco ocorre
+
+Dado iterador instrumentado alternando Ok/Err e duplicatas
+Quando collect_walker_results for chamado
+Então preserva as duas subsequências estáveis e toda multiplicidade
+E chama next exatamente itens+1 vezes, size_hint zero vezes e nunca após EOF
 
 Dado FileProvider com um Ok e um Err
 Quando L4 processar o iterator

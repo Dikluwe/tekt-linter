@@ -124,6 +124,10 @@ permita ignorar um arquivo ilegível.
 L4. Isso contradizia a regra posterior de composição sem lógica de negócio. A projeção
 erro→`Violation` passa a L1; L4 conserva apenas encaminhamento e orquestração.
 
+**Revisão P0090 (2026-08-24):** a separação sequencial dos resultados do `FileProvider`
+em sucessos e erros é transformação pura L1. L4 chama a função do contrato e não mantém
+loop de classificação próprio; a paralelização continua posterior e fora dessa seam.
+
 ### 2. Pipeline concorrente — Paralelismo em L3/L4
 
 O orquestrador em L4 usa `rayon` para transformar o iterador
