@@ -1,14 +1,13 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/unsourced-constant.md
-//! @prompt-hash 10f0b72c
+//! @prompt-hash 60475ada
 //! @layer L1
-//! @updated 2026-08-14
+//! @updated 2026-08-24
 
 use std::borrow::Cow;
 use std::collections::HashSet;
-use std::fs;
-use std::path::Path;
 
+use crate::contracts::citation_freshness::{CitationFreshness, CitationFreshnessResolver};
 use crate::entities::layer::Language;
 use crate::entities::rule_traits::{CitationKind, HasConstants};
 use crate::entities::violation::{Location, Violation, ViolationLevel};
@@ -69,10 +68,7 @@ impl Default for V21RuleConfig {
             "size".to_string(),
             "frame".to_string(),
         ];
-        let format_syntax_modules = vec![
-            "export/pdf".to_string(),
-            "export/svg".to_string(),
-        ];
+        let format_syntax_modules = vec!["export/pdf".to_string(), "export/svg".to_string()];
         let scope_modules = vec![
             "layout/".to_string(),
             "export/".to_string(),
@@ -110,10 +106,10 @@ impl Default for V21RuleConfig {
 ///
 /// Caça escalares contextuais tratados como fixos: literal numérico operando de `*`/`/`
 /// com uma variável de fonte contextual cujo resultado alimenta um sumidouro geométrico.
-pub fn check<'a, T: HasConstants<'a>>(
+pub fn check<'a, T: HasConstants<'a>, R: CitationFreshnessResolver + ?Sized>(
     file: &T,
     config: &V21RuleConfig,
-    project_root: Option<&Path>,
+    freshness: &R,
 ) -> Vec<Violation<'a>> {
     if *file.language() != Language::Rust {
         return vec![];
@@ -126,7 +122,7 @@ pub fn check<'a, T: HasConstants<'a>>(
     if config
         .format_syntax_modules
         .iter()
-        .any(|m| path_str.contains(m))
+        .any(|m| path_contains_sequence(&path_str, m))
     {
         return vec![];
     }
@@ -134,7 +130,7 @@ pub fn check<'a, T: HasConstants<'a>>(
     let is_strict = config
         .strict_modules
         .iter()
-        .any(|s| path_str.contains(s) || path_str.starts_with(s));
+        .any(|s| path_contains_sequence(&path_str, s));
 
     for constant in file.constants() {
         // Exclusões: testes/fixtures e tabelas de tradução
@@ -155,10 +151,10 @@ pub fn check<'a, T: HasConstants<'a>>(
 
         // (b) A variável parceira deve ser uma fonte contextual
         let var_match = match &constant.context_var {
-            Some(v) => {
-                let v_lower = v.to_lowercase();
-                config.context_vars.iter().any(|c| v_lower.contains(c))
-            }
+            Some(v) => config
+                .context_vars
+                .iter()
+                .any(|c| identifier_has_segment(v, c)),
             None => false,
         };
         if !var_match {
@@ -167,10 +163,10 @@ pub fn check<'a, T: HasConstants<'a>>(
 
         // (c) O resultado deve alimentar um sumidouro geométrico
         let sink_match = match &constant.geometric_sink {
-            Some(s) => {
-                let s_lower = s.to_lowercase();
-                config.geometric_sinks.iter().any(|g| s_lower.contains(g))
-            }
+            Some(s) => config
+                .geometric_sinks
+                .iter()
+                .any(|g| identifier_has_segment(s, g)),
             None => false,
         };
         if !sink_match {
@@ -201,25 +197,38 @@ pub fn check<'a, T: HasConstants<'a>>(
                     },
                 });
             }
-            Some(citation) => {
-                if let CitationKind::Ref { path: ref_path, line: ref_line } = citation.kind {
-                    if is_ref_citation_stale(ref_path, ref_line, project_root) {
-                        violations.push(Violation {
-                            rule_id: "V21".to_string(),
-                            level: ViolationLevel::Warning,
-                            message: format!(
-                                "Citação obsoleta: 'ref: {}:{}' aponta para arquivo ou linha inexistente/vazia",
-                                ref_path, ref_line
-                            ),
-                            location: Location {
-                                path: Cow::Borrowed(file.path()),
-                                line: constant.line,
-                                column: constant.column,
-                            },
-                        });
-                    }
+            Some(citation) => match &citation.kind {
+                CitationKind::Spec(payload) | CitationKind::Rationale(payload)
+                    if payload.trim().is_empty() =>
+                {
+                    push_missing(&mut violations, file, constant, is_strict)
                 }
-            }
+                CitationKind::Ref {
+                    path: ref_path,
+                    line: ref_line,
+                } => {
+                    let (label, reason) = match freshness.resolve(ref_path, *ref_line) {
+                        CitationFreshness::Valid => continue,
+                        CitationFreshness::Stale(reason) => {
+                            ("StaleCitation", format!("{reason:?}"))
+                        }
+                        CitationFreshness::Unknown(reason) => {
+                            ("CitationFreshnessUnknown", format!("{reason:?}"))
+                        }
+                    };
+                    violations.push(Violation {
+                        rule_id: "V21".to_string(),
+                        level: ViolationLevel::Warning,
+                        message: format!("{label}: ref: {ref_path}:{ref_line} ({reason})"),
+                        location: Location {
+                            path: Cow::Borrowed(file.path()),
+                            line: constant.line,
+                            column: constant.column,
+                        },
+                    });
+                }
+                _ => {}
+            },
         }
     }
 
@@ -233,33 +242,67 @@ fn is_trivial_literal(snippet: &str, trivial_set: &HashSet<String>) -> bool {
     }
     if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2 {
         let inner = &trimmed[1..trimmed.len() - 1];
-        if inner.is_empty() || inner.chars().count() == 1 || inner == r"\n" || inner == r"\t" || inner == r"\r" || inner == r#"\""# {
+        if inner.is_empty()
+            || inner.chars().count() == 1
+            || inner == r"\n"
+            || inner == r"\t"
+            || inner == r"\r"
+            || inner == r#"\""#
+        {
             return true;
         }
     }
     false
 }
 
-fn is_ref_citation_stale(ref_path: &str, ref_line: usize, project_root: Option<&Path>) -> bool {
-    if ref_line == 0 {
-        return true;
-    }
-    let full_path = match project_root {
-        Some(root) => root.join(ref_path),
-        None => Path::new(ref_path).to_path_buf(),
+fn identifier_has_segment(value: &str, configured: &str) -> bool {
+    value
+        .split(|c: char| c == '.' || c == '_')
+        .any(|segment| segment.eq_ignore_ascii_case(configured))
+}
+
+fn path_contains_sequence(path: &str, configured: &str) -> bool {
+    let path: Vec<_> = path
+        .split(['/', '\\'])
+        .filter(|part| !part.is_empty())
+        .collect();
+    let configured: Vec<_> = configured
+        .split(['/', '\\'])
+        .filter(|part| !part.is_empty())
+        .collect();
+    !configured.is_empty()
+        && path.windows(configured.len()).any(|window| {
+            window.iter().zip(&configured).all(|(actual, expected)| {
+                actual == expected
+                    || actual
+                        .rsplit_once('.')
+                        .is_some_and(|(stem, _)| stem == *expected)
+            })
+        })
+}
+
+fn push_missing<'a, T: HasConstants<'a>>(
+    violations: &mut Vec<Violation<'a>>,
+    file: &T,
+    constant: &crate::entities::rule_traits::SourceConstant<'a>,
+    is_strict: bool,
+) {
+    let level = if is_strict {
+        ViolationLevel::Error
+    } else {
+        ViolationLevel::Warning
     };
-    if !full_path.exists() || !full_path.is_file() {
-        return true;
-    }
-    let content = match fs::read_to_string(&full_path) {
-        Ok(c) => c,
-        Err(_) => return true,
-    };
-    let lines: Vec<&str> = content.lines().collect();
-    if ref_line > lines.len() {
-        return true;
-    }
-    lines[ref_line - 1].trim().is_empty()
+    let var_name = constant.context_var.as_deref().unwrap_or("var");
+    let sink_name = constant.geometric_sink.as_deref().unwrap_or("sink");
+    violations.push(Violation {
+        rule_id: "V21".to_string(),
+        level,
+        message: format!(
+            "Escalar contextual fixo: literal `{}` escala `{}` para `{}` sem proveniência citada (adicione `// ref:`, `// spec:` ou `// rationale:`)",
+            constant.snippet, var_name, sink_name
+        ),
+        location: Location { path: Cow::Borrowed(file.path()), line: constant.line, column: constant.column },
+    });
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -267,8 +310,10 @@ fn is_ref_citation_stale(ref_path: &str, ref_line: usize, project_root: Option<&
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::contracts::citation_freshness::UnknownCitationFreshness;
     use crate::entities::layer::{Language, Layer};
     use crate::entities::rule_traits::{ConstantKind, SourceConstant};
+    use std::path::Path;
 
     struct MockFile {
         path: &'static Path,
@@ -276,10 +321,18 @@ mod tests {
     }
 
     impl HasConstants<'static> for MockFile {
-        fn layer(&self) -> &Layer { &Layer::L1 }
-        fn constants(&self) -> &[SourceConstant<'static>] { &self.constants }
-        fn path(&self) -> &'static Path { self.path }
-        fn language(&self) -> &Language { &Language::Rust }
+        fn layer(&self) -> &Layer {
+            &Layer::L1
+        }
+        fn constants(&self) -> &[SourceConstant<'static>] {
+            &self.constants
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
+        fn language(&self) -> &Language {
+            &Language::Rust
+        }
     }
 
     #[test]
@@ -301,12 +354,14 @@ mod tests {
             }],
         };
 
-        let viols = check(&file, &V21RuleConfig::default(), None);
+        let viols = check(&file, &V21RuleConfig::default(), &UnknownCitationFreshness);
         assert_eq!(viols.len(), 1);
         assert_eq!(viols[0].rule_id, "V21");
         assert!(viols[0].message.contains("0.6"));
         assert!(viols[0].message.contains("layouter.style.size"));
-        assert!(viols[0].message.contains("layouter.regions.current.cursor_y"));
+        assert!(viols[0]
+            .message
+            .contains("layouter.regions.current.cursor_y"));
     }
 
     #[test]
@@ -328,7 +383,7 @@ mod tests {
             }],
         };
 
-        let viols = check(&file, &V21RuleConfig::default(), None);
+        let viols = check(&file, &V21RuleConfig::default(), &UnknownCitationFreshness);
         assert_eq!(viols.len(), 1);
         assert_eq!(viols[0].rule_id, "V21");
         assert_eq!(viols[0].level, ViolationLevel::Warning);
@@ -356,8 +411,11 @@ mod tests {
             }],
         };
 
-        let viols = check(&file, &V21RuleConfig::default(), None);
-        assert!(viols.is_empty(), "literal isolado fora de multiplicacao contextual nao dispara V21");
+        let viols = check(&file, &V21RuleConfig::default(), &UnknownCitationFreshness);
+        assert!(
+            viols.is_empty(),
+            "literal isolado fora de multiplicacao contextual nao dispara V21"
+        );
     }
 
     #[test]
@@ -379,7 +437,7 @@ mod tests {
             }],
         };
 
-        let viols = check(&file, &V21RuleConfig::default(), None);
+        let viols = check(&file, &V21RuleConfig::default(), &UnknownCitationFreshness);
         assert!(viols.is_empty(), "tabela de dados e isenta de V21");
     }
 
@@ -402,7 +460,10 @@ mod tests {
             }],
         };
 
-        let viols = check(&file, &V21RuleConfig::default(), None);
-        assert!(viols.is_empty(), "modulo de sintaxe de formato e isento de V21");
+        let viols = check(&file, &V21RuleConfig::default(), &UnknownCitationFreshness);
+        assert!(
+            viols.is_empty(),
+            "modulo de sintaxe de formato e isento de V21"
+        );
     }
 }

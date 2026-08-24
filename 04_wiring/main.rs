@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash c67d1040
+//! @prompt-hash 80859d12
 //! @layer L4
-//! @updated 2026-06-09
+//! @updated 2026-08-24
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
@@ -11,6 +11,9 @@ use std::process;
 use clap::Parser as ClapParser;
 use rayon::prelude::*;
 
+use crystalline_lint::contracts::citation_freshness::{
+    CitationFreshnessResolver, UnknownCitationFreshness,
+};
 use crystalline_lint::contracts::file_provider::{FileProvider, SourceError, SourceFile};
 use crystalline_lint::contracts::language_parser::LanguageParser;
 use crystalline_lint::contracts::parse_error::ParseError;
@@ -27,6 +30,7 @@ use crystalline_lint::entities::refinement::{
 use crystalline_lint::entities::refinement_seal::{accepts, OracleKind, VerdictName};
 use crystalline_lint::entities::violation::{Location, Violation, ViolationLevel};
 use crystalline_lint::infra::c_parser::CParser;
+use crystalline_lint::infra::citation_freshness::FsCitationFreshnessResolver;
 use crystalline_lint::infra::config::CrystallineConfig;
 use crystalline_lint::infra::cpp_parser::CppParser;
 use crystalline_lint::infra::crate_registry::CrateRegistry;
@@ -385,6 +389,7 @@ fn main() {
 
     // ── WiringConfig for V12 ──────────────────────────────────────────────────
     let v21_config = config.v21_rule_config();
+    let citation_freshness = FsCitationFreshnessResolver::new(cli.path.clone(), 4 * 1024 * 1024);
     let semantic_levels = [
         config.level_for("V23", ViolationLevel::Warning),
         config.level_for("V24", ViolationLevel::Warning),
@@ -504,7 +509,7 @@ fn main() {
         &config.wildcard_exceptions,
         &v21_config,
         &semantic_levels,
-        Some(&cli.path),
+        &citation_freshness,
     );
 
     // ── --emit-resolution (instrumentação 0058, fora do selo de veredito) ──────
@@ -671,7 +676,7 @@ fn main() {
                 &config.wildcard_exceptions,
                 &v21_config,
                 &semantic_levels,
-                Some(&cli.path),
+                &UnknownCitationFreshness,
             );
             violations.iter().filter(|v| v.rule_id == "V5").count()
         };
@@ -805,7 +810,7 @@ fn main() {
                 &config.wildcard_exceptions,
                 &v21_config,
                 &semantic_levels,
-                Some(&cli.path),
+                &UnknownCitationFreshness,
             );
             violations.iter().filter(|v| v.rule_id == "V6").count()
         };
@@ -1010,7 +1015,7 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
     wildcard_exceptions: &HashMap<String, String>,
     v21_config: &crystalline_lint::rules::unsourced_constant::V21RuleConfig,
     semantic_levels: &[ViolationLevel; 3],
-    project_root: Option<&Path>,
+    citation_freshness: &(dyn CitationFreshnessResolver + Sync),
 ) -> (Vec<Violation<'a>>, Vec<ParsedFile<'a>>, ProjectIndex<'a>) {
     // Fase Map ─────────────────────────────────────────────────────────────────
 
@@ -1041,7 +1046,7 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
                         wildcard_exceptions,
                         v21_config,
                         semantic_levels,
-                        project_root,
+                        citation_freshness,
                     );
                     let local = LocalIndex::from_parsed(&parsed);
                     (violations, Some(parsed), local)
@@ -1103,7 +1108,7 @@ fn run_checks<'a>(
     wildcard_exceptions: &HashMap<String, String>,
     v21_config: &crystalline_lint::rules::unsourced_constant::V21RuleConfig,
     semantic_levels: &[ViolationLevel; 3],
-    project_root: Option<&Path>,
+    citation_freshness: &(dyn CitationFreshnessResolver + Sync),
 ) -> Vec<Violation<'a>> {
     let mut violations = Vec::new();
     let l1_allowed_lang = l1_allowed.for_language(&file.language);
@@ -1163,7 +1168,11 @@ fn run_checks<'a>(
         violations.extend(deep_pattern_nesting::check(file));
     }
     if enabled.v21 {
-        violations.extend(unsourced_constant::check(file, v21_config, project_root));
+        violations.extend(unsourced_constant::check(
+            file,
+            v21_config,
+            citation_freshness,
+        ));
     }
     if enabled.v23 {
         violations.extend(context_erasure::check(file, semantic_levels[0].clone()));
