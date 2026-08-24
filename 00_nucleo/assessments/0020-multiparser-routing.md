@@ -12,13 +12,13 @@
 |---|---|---|
 | sistema/composição | `00_nucleo/prompts/linter-core.md` | `3e4e0c4f80cca0d139a145a7f17dde8b8decd61ff02dfab2de91d3667610ef7e` |
 | contrato parser | `00_nucleo/prompts/contracts/language-parser.md` | `ffb5ef5658e3882dc518fe71e90eb0541ed8cd5083905f3b4bbbe3edaf9c87d5` |
-| enum Language | `00_nucleo/prompts/violation-types.md` | `0979ed5856022466aad8d60a37da9858c3fe06263e3295c648422ae7f3e215e9` |
+| tipos de IR/Language | `00_nucleo/prompts/violation-types.md` | `147afa0d8f3f3e6e30e050590dad0b99c7da8486d3565e3f6c42f7fa883ea4dc` |
 | ParseError | `00_nucleo/prompts/contracts/parse-error.md` | `1f8c47cb5d0001c356c71e2df8ec0619d76dd5a439a5ba9e9b8f8d7285282645` |
 | SourceFile/Language | `00_nucleo/prompts/contracts/file-provider.md` | `1574ce788513573901376fc80933464cca5e7b6bc17acf5af8bfcd28e4d7335d` |
 | isolamento multilíngue | `00_nucleo/adr/0009-isolamento- de-parsers-por-linguagem.md` | `fbfeb007115f2464ece7e1f0e2a5615bb06b459e7bb7446bbd2957a06ee67452` |
 | protocolo segregado | `00_nucleo/prompts/segregated-materialization.md` | `366fd0855c6b04e533f4f4a477a73d7e5ec65f24c056720c61fca906bb5299a4` |
 | ADR segregado | `00_nucleo/adr/0020-piloto-materializacao-segregada.md` | `ee1a4a7f3665674b008d127373ed23fc6762d0ff13b2ca83efe5d2ace1539d23` |
-| protocolo P0091 | `00_nucleo/tekt-linter-passo-0091-auditoria-roteamento-multiparser.md` | `53d347672d69bcb3c39c297bcfb10b7e77e4c2c6851a954cba1302e5b7cffdb3` |
+| protocolo P0091 | `00_nucleo/tekt-linter-passo-0091-auditoria-roteamento-multiparser.md` | `dc6ca436637ab6b72897b5efc4174e152d0d08f138744e311bd82988301a0c54` |
 
 ## Alegações candidatas
 
