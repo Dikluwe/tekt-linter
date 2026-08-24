@@ -1,0 +1,82 @@
+// Probe final independente do P0076. `.txt` evita auto-lint como produção.
+use crystalline_lint::entities::project_index::ProjectIndex;
+use crystalline_lint::entities::violation::{Violation, ViolationLevel};
+use crystalline_lint::rules::dangling_contract::check_dangling_contracts;
+use std::path::Path;
+
+const HOSTILE: [&str; 8] = ["A", "AA", "Aa", "a", "aA", "e\u{301}", "É", "é"];
+
+fn build(order: &[usize], implemented: &[&'static str], blanket: &[&'static str]) -> ProjectIndex<'static> {
+    let mut i = ProjectIndex::new();
+    for &n in order { i.all_declared_traits.insert(HOSTILE[n]); }
+    i.all_implemented_traits.extend(implemented.iter().copied());
+    i.all_blanket_impl_traits.extend(blanket.iter().copied());
+    i
+}
+
+fn names(v: &[Violation<'_>]) -> Vec<String> {
+    v.iter().map(|x| HOSTILE.iter().find(|n| x.message.contains(&format!("trait '{}'", n)))
+        .expect("message must contain exact trait identity").to_string()).collect()
+}
+
+fn main() {
+    let canonical: Vec<String> = HOSTILE.iter().map(|x| x.to_string()).collect();
+
+    // P1: muitas construções/hash seeds/inserções do mesmo conjunto dão vetor idêntico.
+    let mut baseline: Option<Vec<Violation<'static>>> = None;
+    for seed in 0..512usize {
+        let order: Vec<usize> = (0..HOSTILE.len())
+            .map(|step| (seed.wrapping_mul(5) + step.wrapping_mul(3)) % HOSTILE.len())
+            .collect();
+        // Quando a fórmula repete índices, completa o mesmo conjunto em ordem reversa.
+        let mut i = build(&order, &[], &[]);
+        for n in (0..HOSTILE.len()).rev() { i.all_declared_traits.insert(HOSTILE[n]); }
+        let got = check_dangling_contracts(&i, ViolationLevel::Warning);
+        assert_eq!(names(&got), canonical);
+        if let Some(ref expected) = baseline { assert_eq!(&got, expected); } else { baseline = Some(got); }
+    }
+    println!("PASS P1 512 equivalent constructions are byte-identical");
+
+    // P2: ordem nativa str preserva caixa, prefixos e NFC/NFD como identidades distintas.
+    let reversed: Vec<usize> = (0..HOSTILE.len()).rev().collect();
+    let got = check_dangling_contracts(&build(&reversed, &[], &[]), ViolationLevel::Error);
+    assert_eq!(names(&got), canonical);
+    assert_eq!(got.len(), HOSTILE.len());
+    println!("PASS P2 native str order/case/prefix/NFC-NFD");
+
+    // P3: concrete U blanket, overlap e duplicatas neutralizam exatamente os satisfeitos.
+    let mut i = build(&(0..HOSTILE.len()).collect::<Vec<_>>(), &["A", "Aa", "outside", "A"],
+                      &["A", "a", "blanket_only", "a"]);
+    i.all_declared_traits.insert("A"); // duplicata explícita
+    let got = check_dangling_contracts(&i, ViolationLevel::Info);
+    assert_eq!(names(&got), vec!["AA", "aA", "e\u{301}", "É", "é"]);
+    println!("PASS P3 concrete+blanket overlap and duplicate neutrality");
+
+    // P4: supersets/unrelated implementações não inventam nem removem traits declaradas distintas.
+    let mut i = ProjectIndex::new();
+    i.all_declared_traits.extend(["A", "AA"]);
+    i.all_implemented_traits.extend(["A_suffix", "unrelated", "a"]);
+    i.all_blanket_impl_traits.extend(["A_prefix", "É"]);
+    let got = check_dangling_contracts(&i, ViolationLevel::Fatal);
+    assert_eq!(names(&got), vec!["A", "AA"]);
+    println!("PASS P4 unrelated/superset names do not satisfy by substring");
+
+    // P5: cardinalidade, rule, nível, location e mensagem para todos os níveis injetáveis.
+    for level in [ViolationLevel::Info, ViolationLevel::Warning, ViolationLevel::Error, ViolationLevel::Fatal] {
+        let mut i = ProjectIndex::new(); i.all_declared_traits.extend(["é", "e\u{301}"]);
+        let got = check_dangling_contracts(&i, level.clone());
+        assert_eq!(got.len(), 2);
+        assert!(got.iter().all(|v| v.rule_id == "V11" && v.level == level
+            && v.location.path.as_ref() == Path::new("01_core/contracts")
+            && (v.location.line, v.location.column) == (0, 0)
+            && v.message.contains("L1/contracts/") && v.message.contains("L2 ou L3")));
+        assert_eq!(names(&got), vec!["e\u{301}", "é"]);
+    }
+    println!("PASS P5 level/location/message/cardinality preserved");
+
+    // P6: identidades do conjunto vazio e integralmente satisfeito.
+    assert!(check_dangling_contracts(&ProjectIndex::new(), ViolationLevel::Error).is_empty());
+    let i = build(&(0..HOSTILE.len()).collect::<Vec<_>>(), &HOSTILE, &[]);
+    assert!(check_dangling_contracts(&i, ViolationLevel::Error).is_empty());
+    println!("PASS P6 empty and fully-satisfied identities");
+}

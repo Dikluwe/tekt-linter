@@ -2,7 +2,7 @@ use crystalline_lint::entities::layer::Layer;
 use crystalline_lint::entities::parsed_file::{Import, ImportKind};
 use crystalline_lint::entities::project_index::ProjectIndex;
 use crystalline_lint::entities::rule_traits::{HasCoverage, HasImports};
-use crystalline_lint::entities::violation::ViolationLevel;
+use crystalline_lint::entities::violation::{Violation, ViolationLevel};
 use crystalline_lint::rules::{alien_file, dangling_contract, quarantine_leak, test_file};
 use std::path::Path;
 
@@ -196,49 +196,84 @@ fn v10_preserves_multiset_evidence_under_input_permutation() {
         .any(|(_, message)| message.contains("lab::β")));
 }
 
-fn dangling_for(order: &[&'static str], level: ViolationLevel) -> Vec<(String, ViolationLevel)> {
+fn dangling_for(
+    declared: &[&'static str],
+    concrete: &[&'static str],
+    blanket: &[&'static str],
+    level: ViolationLevel,
+) -> Vec<Violation<'static>> {
     let mut index = ProjectIndex::new();
-    for name in order {
+    for name in declared {
+        index.all_declared_traits.insert(name);
         index.all_declared_traits.insert(name);
     }
-    index.all_implemented_traits.insert("Implemented");
-    index.all_blanket_impl_traits.insert("Blanket");
+    index
+        .all_implemented_traits
+        .extend(concrete.iter().copied());
+    index
+        .all_blanket_impl_traits
+        .extend(blanket.iter().copied());
     dangling_contract::check_dangling_contracts(&index, level)
-        .into_iter()
-        .map(|v| {
-            assert_eq!(v.rule_id, "V11");
-            assert_eq!(v.location.path.as_ref(), Path::new("01_core/contracts"));
-            assert_eq!((v.location.line, v.location.column), (0, 0));
-            (v.message, v.level)
-        })
-        .collect()
 }
 
 #[test]
 fn v11_is_exact_set_difference_with_injected_level_and_canonical_order() {
-    let first = dangling_for(
-        &["Zulu", "Implemented", "Árvore", "Blanket", "Alpha", "Alpha"],
-        ViolationLevel::Info,
-    );
-    let second = dangling_for(
-        &["Alpha", "Blanket", "Árvore", "Implemented", "Zulu"],
-        ViolationLevel::Info,
-    );
-    assert_eq!(
-        first, second,
-        "V11 depends on insertion order or duplicates"
-    );
-    assert_eq!(first.len(), 3);
-    assert!(first
-        .iter()
-        .all(|(_, level)| *level == ViolationLevel::Info));
-    for name in ["Alpha", "Zulu", "Árvore"] {
+    let pending = [
+        "Trait",
+        "TraitA",
+        "TraitAA",
+        "trait",
+        "Árvore",
+        "A\u{301}rvore",
+        "Alpha",
+    ];
+    let satisfied = ["Concrete", "Blanket", "SatisfiedBoth"];
+    let mut all_declared = pending.to_vec();
+    all_declared.extend(satisfied);
+    let concrete = ["Concrete", "SatisfiedBoth", "UnrelatedConcrete"];
+    let blanket = ["Blanket", "SatisfiedBoth", "UnrelatedBlanket"];
+
+    let reference = dangling_for(&all_declared, &concrete, &blanket, ViolationLevel::Info);
+    for rotation in 0..all_declared.len() {
+        let mut declared = all_declared.clone();
+        declared.rotate_left(rotation);
+        if rotation % 2 == 1 {
+            declared.reverse();
+        }
+        let mut concrete_order = concrete;
+        let concrete_shift = rotation % concrete_order.len();
+        concrete_order.rotate_left(concrete_shift);
+        let mut blanket_order = blanket;
+        let blanket_shift = rotation % blanket_order.len();
+        blanket_order.rotate_right(blanket_shift);
+        let candidate = dangling_for(
+            &declared,
+            &concrete_order,
+            &blanket_order,
+            ViolationLevel::Info,
+        );
         assert_eq!(
-            first
-                .iter()
-                .filter(|(message, _)| message.contains(name))
-                .count(),
-            1
+            candidate, reference,
+            "full V11 vector changed for construction {rotation}"
+        );
+    }
+
+    assert_eq!(reference.len(), pending.len());
+    assert!(reference
+        .iter()
+        .all(|v| v.rule_id == "V11" && v.level == ViolationLevel::Info));
+    assert!(reference.iter().all(|v| {
+        v.location.path.as_ref() == Path::new("01_core/contracts")
+            && (v.location.line, v.location.column) == (0, 0)
+    }));
+
+    let mut canonical_names = pending.to_vec();
+    canonical_names.sort();
+    for (violation, name) in reference.iter().zip(canonical_names) {
+        assert!(
+            violation.message.contains(name),
+            "V11 order/message mismatch for {name:?}: {}",
+            violation.message
         );
     }
 }

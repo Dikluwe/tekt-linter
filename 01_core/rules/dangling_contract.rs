@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/dangling-contract.md
-//! @prompt-hash d698d818
+//! @prompt-hash 0dd35453
 //! @layer L1
 //! @updated 2026-03-23
 
@@ -24,13 +24,19 @@ pub fn check_dangling_contracts<'a>(
     index: &ProjectIndex<'a>,
     level: ViolationLevel,
 ) -> Vec<Violation<'a>> {
-    index
+    let mut pending: Vec<_> = index
         .all_declared_traits
         .iter()
         .filter(|t| {
             !index.all_implemented_traits.contains(*t)
                 && !index.all_blanket_impl_traits.contains(*t)
         })
+        .copied()
+        .collect();
+    pending.sort_unstable();
+
+    pending
+        .into_iter()
         .map(|trait_name| Violation {
             rule_id: "V11".to_string(),
             level: level.clone(),
@@ -56,10 +62,17 @@ mod tests {
     use super::*;
     use crate::entities::project_index::ProjectIndex;
 
-    fn index_with(declared: &[&'static str], implemented: &[&'static str]) -> ProjectIndex<'static> {
+    fn index_with(
+        declared: &[&'static str],
+        implemented: &[&'static str],
+    ) -> ProjectIndex<'static> {
         let mut index = ProjectIndex::new();
-        for t in declared { index.all_declared_traits.insert(t); }
-        for t in implemented { index.all_implemented_traits.insert(t); }
+        for t in declared {
+            index.all_declared_traits.insert(t);
+        }
+        for t in implemented {
+            index.all_implemented_traits.insert(t);
+        }
         index
     }
 
@@ -69,7 +82,9 @@ mod tests {
         blanket: &[&'static str],
     ) -> ProjectIndex<'static> {
         let mut index = index_with(declared, implemented);
-        for t in blanket { index.all_blanket_impl_traits.insert(t); }
+        for t in blanket {
+            index.all_blanket_impl_traits.insert(t);
+        }
         index
     }
 
@@ -91,7 +106,10 @@ mod tests {
 
     #[test]
     fn all_implemented_returns_empty() {
-        let index = index_with(&["FileProvider", "LanguageParser"], &["FileProvider", "LanguageParser"]);
+        let index = index_with(
+            &["FileProvider", "LanguageParser"],
+            &["FileProvider", "LanguageParser"],
+        );
         assert!(check_dangling_contracts(&index, ViolationLevel::Error).is_empty());
     }
 
@@ -120,7 +138,40 @@ mod tests {
     #[test]
     fn multiple_dangling_traits_produce_one_violation_each() {
         let index = index_with(&["TraitA", "TraitB", "TraitC"], &[]);
-        assert_eq!(check_dangling_contracts(&index, ViolationLevel::Error).len(), 3);
+        assert_eq!(
+            check_dangling_contracts(&index, ViolationLevel::Error).len(),
+            3
+        );
+    }
+
+    #[test]
+    fn dangling_traits_are_ordered_by_native_string_order() {
+        let index = index_with(&["zeta", "Árvore", "Trait", "trait", "A\u{301}"], &[]);
+        let violations = check_dangling_contracts(&index, ViolationLevel::Error);
+        let names: Vec<_> = violations
+            .iter()
+            .map(|violation| {
+                violation
+                    .message
+                    .split_once("trait '")
+                    .unwrap()
+                    .1
+                    .split_once('\'')
+                    .unwrap()
+                    .0
+            })
+            .collect();
+        assert_eq!(names, vec!["A\u{301}", "Trait", "trait", "zeta", "Árvore"]);
+    }
+
+    #[test]
+    fn insertion_order_does_not_change_complete_violation_vector() {
+        let forward = index_with(&["Gamma", "Alpha", "Beta"], &[]);
+        let reverse = index_with(&["Beta", "Alpha", "Gamma"], &[]);
+        assert_eq!(
+            check_dangling_contracts(&forward, ViolationLevel::Warning),
+            check_dangling_contracts(&reverse, ViolationLevel::Warning)
+        );
     }
 
     #[test]
@@ -150,11 +201,7 @@ mod tests {
     #[test]
     fn blanket_impl_only_for_unrelated_trait_still_violations_others() {
         // Blanket impl satisfaz TrackedWorld, mas FileProvider continua dangling.
-        let index = index_with_blanket(
-            &["TrackedWorld", "FileProvider"],
-            &[],
-            &["TrackedWorld"],
-        );
+        let index = index_with_blanket(&["TrackedWorld", "FileProvider"], &[], &["TrackedWorld"]);
         let violations = check_dangling_contracts(&index, ViolationLevel::Error);
         assert_eq!(violations.len(), 1);
         assert!(violations[0].message.contains("FileProvider"));
