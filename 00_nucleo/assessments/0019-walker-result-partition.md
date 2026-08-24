@@ -1,6 +1,6 @@
 # Assessment 0019 — partição de resultados do walker
 
-**Estado:** RESSELADO APÓS SPEC-GAP; AGUARDA GATE CEGO
+**Estado:** READY WITH RESIDUAL AUDIT
 **Data:** 2026-08-24
 **Passo:** P0090
 **Baseline:** `40c374d572dcb0c674b807ebe498f1fb12c1b650`
@@ -15,7 +15,7 @@
 | motor/fail-fast | `00_nucleo/adr/0004-reformulação-do-motor-de-análise.md` | `33380a0bbcfb93dcdfa5ee7511d2be31bbcdfb1a4752b436726713458783a5d0` |
 | protocolo segregado | `00_nucleo/prompts/segregated-materialization.md` | `366fd0855c6b04e533f4f4a477a73d7e5ec65f24c056720c61fca906bb5299a4` |
 | ADR segregado | `00_nucleo/adr/0020-piloto-materializacao-segregada.md` | `ee1a4a7f3665674b008d127373ed23fc6762d0ff13b2ca83efe5d2ace1539d23` |
-| protocolo P0090 | `00_nucleo/tekt-linter-passo-0090-auditoria-particao-resultados-walker.md` | `eb0d4ae5e308798ba3a9ba2525d62c615a660a9f42422cb9f3bc41d70a920cd6` |
+| protocolo P0090 | `00_nucleo/tekt-linter-passo-0090-auditoria-particao-resultados-walker.md` | `33aab3ea6b768ff92fdff6e50778f1b609102820daf21e35d996d14ab43e68b3` |
 
 ## Alegações a congelar
 
@@ -56,3 +56,13 @@ prompts; os hashes acima resselam a metadata sem alterar o oráculo do gate cego
 
 Resultados válidos: `PASS`, `RED`, `SPEC-GAP`, `GATE-DEFECT`. Fechamento somente como
 `READY WITH RESIDUAL AUDIT` ou `BLOCKED`, sem merge.
+
+## Fechamento
+
+- SPEC-GAP camada/API/consumo: fechado causalmente em L1.
+- Gate cego SHA-256
+  `a64c4a50e06c72a6945ac5153399519d329014d139a206afc2b1536549c1f00f`:
+  2/2 PASS.
+- RED API ausente: fechado em `77927bf`; L4 perdeu o loop e somente chama L1.
+- Suíte, hashes, auto-lint e `diff --check`: PASS.
+- Adversário D: `READY WITH RESIDUAL AUDIT`.
