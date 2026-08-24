@@ -1,7 +1,7 @@
 # Passo operacional 0088 — saneamento arquitetural e auditoria segregada V21
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** planejado; não executado
+> **Estado:** fechado — `READY WITH RESIDUAL AUDIT`
 > **Branch:** `codex/plan-v21-segregated-audit`
 > **Base:** `master@f27433d`
 > **Predecessor:** P0087
@@ -177,3 +177,9 @@ residuais conhecidos; não autorizam refactor ou escrita transversal neste lote.
 
 Nenhum merge, instalação, release ou push pertence ao P0088. Após fechamento, eventual
 merge deve ocorrer em ação separada.
+
+## Fechamento
+
+Executado em 2026-08-24. Assessment 0017, gates B1/B2, saneamento L0, separação
+L1/L3/L4, RED adversarial de confinamento atômico e respectivos gate-defects foram
+fechados. Evidência e residuais estão em `relatorio-p0088-triagem-v21.md`.

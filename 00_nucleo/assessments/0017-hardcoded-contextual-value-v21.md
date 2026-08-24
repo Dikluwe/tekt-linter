@@ -1,6 +1,6 @@
 # Assessment 0017 — HardcodedContextualValue V21
 
-**Estado:** CONGELADO PARA TRIAGEM SEGREGADA
+**Estado:** READY WITH RESIDUAL AUDIT
 **Data:** 2026-08-24
 **Passo:** P0088
 **Baseline:** `ccca54941e4c2043f1e4557abcd09c08697a3a8b`
@@ -16,7 +16,7 @@
 | arquitetura/wiring | `00_nucleo/prompts/linter-core.md` | `ed44ffdda0a323df26a25cef40c0acb46bd692db6fdaef861a20a509adeb7029` |
 | diagnóstico | `00_nucleo/prompts/violation-types.md` | `b50d90505e311a1aa99d3c80988f3f7996fe7974d71579543f86c0553a4dc314` |
 | distinção V16/V21 | `00_nucleo/adr/0017-v16-v21-diferenca-categorica.md` | `79f406654aacf3693616232a4fdbb911e359486d089ffde841af5375625104dd` |
-| protocolo | `00_nucleo/tekt-linter-passo-0088-triagem-v21.md` | `b1df39f121022b2b6d8a0a47f9e1c25202af055a4b9f50cea6c7c0839997b3a1` |
+| protocolo | `00_nucleo/tekt-linter-passo-0088-triagem-v21.md` | `9bd09fd5566805e7bc9cb012b49d7cbefadb961e8f7704b88ea1ec2fe8b2e9e6` |
 
 ## Natureza e bloqueio inicial
 
@@ -64,3 +64,12 @@ produção só pode mudar depois de gates cegos congelados contra estes hashes.
 
 Resultados possíveis: `PASS`, `RED`, `SPEC-GAP`, `GATE-DEFECT`. O lote fecha somente com
 `READY WITH RESIDUAL AUDIT` ou `BLOCKED`, relatório P0088 e nenhum merge.
+
+## Fechamento
+
+- B1 L1: 9/9 PASS.
+- B2 L3: 9/9 PASS, incluindo troca concorrente por symlink e remoção/recriação.
+- RED de I/O em L1 e RED-D1 TOCTOU: fechados causalmente.
+- GATE-DEFECT-D1/D2: fechados antes do veredito final.
+- Suíte workspace, 83 fixtures e regressão V22: PASS.
+- Veredito adversarial final: `READY WITH RESIDUAL AUDIT`.
