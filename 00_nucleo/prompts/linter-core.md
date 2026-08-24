@@ -1,5 +1,5 @@
 # Prompt: Crystalline Linter (crystalline-lint)
-Hash do Código: 54c7ce55
+Hash do Código: 93abcbeb
 
 **Camada**: L1 → L4 (sistema completo)
 **Criado em**: 2025-03-13
@@ -694,6 +694,11 @@ O subcomando `refine` compara dois snapshots explícitos sob contrato finito e p
 `Preserved`, `Violated(Witness)` ou `Unknown(reason)`. L1 contém o comparador puro; L3
 lê JSON/TOML; L2 apresenta texto/SARIF; L4 apenas compõe. Exit codes 0/1/2,
 respectivamente. A Etapa A não lê Git, não executa comandos e não usa SMT.
+
+A Etapa B1 adiciona `snapshot`: L3 executa queries tree-sitter Rust declaradas e escreve
+`ArtifactFacts` v1 deterministicamente; L1 decide cardinalidade/ausência; L2 traduz
+argumentos e sucesso; L4 compõe. Paths relativos e symlinks permanecem confinados à
+raiz. Git, wrapper e SMT continuam fora de escopo.
 
 ## Histórico de Revisões
 

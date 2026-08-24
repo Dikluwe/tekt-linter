@@ -98,6 +98,15 @@ crystalline-lint refine \
   --format text # ou sarif
 ```
 
+Snapshots podem ser gerados deterministicamente por queries Rust explícitas:
+
+```bash
+crystalline-lint snapshot . \
+  --contract refinement-self.toml \
+  --artifact-id working-tree \
+  --output working-tree.refinement.json
+```
+
 Consulte [USAGE.md](USAGE.md) para os formatos de snapshot e contrato.
 
 **Sobre níveis Fatal (V0, V8, V10):** a ausência de violações garante

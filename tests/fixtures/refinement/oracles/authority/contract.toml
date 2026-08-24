@@ -1,0 +1,19 @@
+id = "math-style-authority"
+
+[[observable]]
+key = "decision.proxy-owner"
+language = "rust"
+file = "state.rs"
+query = '''
+(const_item
+  name: (identifier) @_name
+  value: (string_literal) @value
+  (#eq? @_name "PROXY_OWNER"))
+'''
+capture = "value"
+cardinality = "one"
+on_missing = "absent"
+
+[[relation]]
+kind = "must-not-invent"
+target = "decision.proxy-owner"

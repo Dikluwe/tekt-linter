@@ -13,6 +13,10 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
   `Preserved`, `Violated(Witness)` e `Unknown(reason)`, saída texto/SARIF e exit codes
   distintos. Primeira etapa sem Git, execução de comandos, SMT ou análise
   interprocedural.
+- **Subcomando `snapshot` (ADR-0019, Etapa B1)** — extração Rust determinística por
+  queries tree-sitter declaradas no contrato, cardinalidade e ausência explícitas,
+  confinamento de paths/symlinks à raiz e escrita atômica do snapshot v1. Inclui
+  autoaplicação do linter e três oráculos históricos locais.
 
 - **V23 `ContextErasure`, V24 `SemanticFieldLoss` e V25 `DecisionOwnership`** —
   contratos declarativos de preservação semântica (ADR-0018), com fatos AST genéricos,

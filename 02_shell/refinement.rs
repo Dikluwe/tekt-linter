@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/refinement-validator.md
-//! @prompt-hash e10c5722
+//! @prompt-hash d5832752
 //! @layer L2
 //! @updated 2026-08-23
 
@@ -17,6 +17,8 @@ use crate::entities::refinement::{
 pub enum Command {
     /// Compare explicit before/after semantic snapshots under a refinement contract
     Refine(RefineArgs),
+    /// Extract a deterministic Rust-query refinement snapshot from a project
+    Snapshot(SnapshotArgs),
 }
 
 #[derive(Debug, Args)]
@@ -35,6 +37,22 @@ pub struct RefineArgs {
     pub format: RefinementOutputFormat,
 }
 
+#[derive(Debug, Args)]
+pub struct SnapshotArgs {
+    /// Project root whose files are queried
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
+    /// Refinement contract containing [[observable]] declarations
+    #[arg(long)]
+    pub contract: PathBuf,
+    /// Stable artifact identifier recorded in the snapshot
+    #[arg(long)]
+    pub artifact_id: String,
+    /// Destination refinement snapshot JSON file
+    #[arg(long)]
+    pub output: PathBuf,
+}
+
 #[derive(Debug, Clone, ValueEnum, PartialEq, Eq)]
 pub enum RefinementOutputFormat {
     Text,
@@ -47,6 +65,14 @@ pub fn exit_code(verdict: &RefinementVerdict) -> i32 {
         RefinementVerdict::Violated { .. } => 1,
         RefinementVerdict::Unknown { .. } => 2,
     }
+}
+
+pub fn format_snapshot_success(path: &std::path::Path, observable_count: usize) -> String {
+    format!(
+        "SNAPSHOT {} ({} observables)\n",
+        path.display(),
+        observable_count
+    )
 }
 
 fn value_text(value: &ObservableValue) -> String {
@@ -194,5 +220,13 @@ mod tests {
         };
         assert_eq!(exit_code(&verdict), 2);
         assert!(format_sarif(&verdict).contains("REFINEMENT_UNKNOWN"));
+    }
+
+    #[test]
+    fn snapshot_success_is_stable() {
+        assert_eq!(
+            format_snapshot_success(std::path::Path::new("facts.json"), 3),
+            "SNAPSHOT facts.json (3 observables)\n"
+        );
     }
 }
