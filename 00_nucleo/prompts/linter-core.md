@@ -443,9 +443,13 @@ do directório raiz propaga como `Err`.
 
 ---
 
-## Conversores de erro no wiring (L4)
+## Projeções de erro puras (L1) e encaminhamento no wiring (L4)
+
+Os corpos normativos abaixo vivem em `01_core/rules/infrastructure_error.rs`, causal de
+`prompts/rules/infrastructure-error.md`. L4 apenas chama essas funções; não replica a
+política de ID, severidade, mensagem, ownership ou posição.
 ```rust
-fn source_error_to_violation(err: &SourceError) -> Violation<'static> {
+pub fn source_error_to_violation(err: &SourceError) -> Violation<'static> {
     match err {
         SourceError::Unreadable { path, reason } => Violation {
             rule_id: "V0".to_string(),
@@ -460,7 +464,7 @@ fn source_error_to_violation(err: &SourceError) -> Violation<'static> {
     }
 }
 
-fn parse_error_to_violation(err: ParseError) -> Violation<'static> {
+pub fn parse_error_to_violation(err: ParseError) -> Violation<'static> {
     match err {
         ParseError::SyntaxError { path, line, column, message } => Violation {
             rule_id: "PARSE".to_string(),
