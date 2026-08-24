@@ -1,11 +1,11 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/wildcard-saturation.md
-//! @prompt-hash a5de3b49
+//! @prompt-hash c193c459
 //! @layer L1
 //! @updated 2026-08-14
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::entities::layer::Language;
 use crate::entities::rule_traits::{
@@ -36,6 +36,13 @@ pub fn check<'a, T: HasDecisionArms<'a>>(
     let mut catchall_lines = Vec::new();
 
     for expr in file.decision_exprs() {
+        catchall_lines.extend(
+            expr.arms
+                .iter()
+                .filter(|arm| arm.is_catchall)
+                .map(|arm| arm.line),
+        );
+
         // Filtro: scrutinee aberto (chamadas de método, indexação ou literal) -> ISENTO
         if matches!(
             expr.scrutinee_form,
@@ -45,20 +52,24 @@ pub fn check<'a, T: HasDecisionArms<'a>>(
         }
 
         // Enum candidato: >= 2 braços qualificados com prefixo no mesmo match
-        let mut all_prefixes = Vec::new();
+        let mut prefix_arm_counts: HashMap<&str, usize> = HashMap::new();
         for arm in &expr.arms {
-            for p in &arm.qualified_prefixes {
-                all_prefixes.push(*p);
+            let distinct_in_arm: HashSet<_> = arm
+                .qualified_prefixes
+                .iter()
+                .copied()
+                .filter(|prefix| !prefix.is_empty())
+                .collect();
+            for prefix in distinct_in_arm {
+                *prefix_arm_counts.entry(prefix).or_default() += 1;
             }
         }
-        let is_candidate_enum = all_prefixes.len() >= 2;
+        let is_candidate_enum = prefix_arm_counts.values().any(|count| *count >= 2);
 
         for arm in &expr.arms {
             if !arm.is_catchall {
                 continue;
             }
-
-            catchall_lines.push(arm.line);
 
             // Filtro de reincorporação: identifica se o identificador é usado no corpo
             if arm.bound_ident_used_in_body {
@@ -67,7 +78,10 @@ pub fn check<'a, T: HasDecisionArms<'a>>(
 
             // Filtros de barreira ruidosa (ErrorBarrier / MessageProducer):
             // panic!, unreachable!, bail!, Err(...), format!("cannot..."), etc.
-            if matches!(arm.body_form, BodyForm::ErrorBarrier | BodyForm::MessageProducer) {
+            if matches!(
+                arm.body_form,
+                BodyForm::ErrorBarrier | BodyForm::MessageProducer
+            ) {
                 continue;
             }
 
@@ -177,29 +191,30 @@ pub fn check<'a, T: HasDecisionArms<'a>>(
     }
 
     // Detecção de spans obsoletos: chaves da tabela de exceções para este arquivo que não têm catchall activo
-    for (key, _) in exceptions {
-        if let Some((f_path, line_str)) = key.split_once(':') {
-            let matches_path = path_str == f_path || path_str.ends_with(f_path) || f_path.ends_with(&*path_str);
-            if matches_path {
-                if let Ok(line_num) = line_str.parse::<usize>() {
-                    if !catchall_lines.contains(&line_num) {
-                        violations.push(Violation {
-                            rule_id: "V16".to_string(),
-                            level: ViolationLevel::Warning,
-                            message: format!(
-                                "Excepção de wildcard obsoleta: '{}' não contém braço catch-all activo.",
-                                key
-                            ),
-                            location: Location {
-                                path: Cow::Borrowed(file.path()),
-                                line: line_num,
-                                column: 0,
-                            },
-                        });
-                    }
-                }
-            }
-        }
+    let mut stale_exceptions: Vec<_> = exceptions
+        .keys()
+        .filter_map(|key| {
+            let (exception_path, line) = key.rsplit_once(':')?;
+            let line = line.parse::<usize>().ok()?;
+            (exception_path == path_str && !catchall_lines.contains(&line)).then_some((key, line))
+        })
+        .collect();
+    stale_exceptions.sort_by(|(left, _), (right, _)| left.cmp(right));
+
+    for (key, line) in stale_exceptions {
+        violations.push(Violation {
+            rule_id: "V16".to_string(),
+            level: ViolationLevel::Warning,
+            message: format!(
+                "Excepção de wildcard obsoleta: '{}' não contém braço catch-all activo.",
+                key
+            ),
+            location: Location {
+                path: Cow::Borrowed(file.path()),
+                line,
+                column: 0,
+            },
+        });
     }
 
     violations
@@ -208,10 +223,10 @@ pub fn check<'a, T: HasDecisionArms<'a>>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
     use crate::entities::layer::Layer;
     use crate::entities::rule_traits::{DecisionArm, DecisionExpr};
-    
+    use std::path::Path;
+
     struct MockFile {
         path: &'static Path,
         language: Language,
@@ -424,7 +439,10 @@ mod tests {
             exprs: vec![expr],
         };
         let mut exceptions = HashMap::new();
-        exceptions.insert("01_core/unit.rs:12".to_string(), "N16[α]: impossibilidade estrutural".to_string());
+        exceptions.insert(
+            "01_core/unit.rs:12".to_string(),
+            "N16[α]: impossibilidade estrutural".to_string(),
+        );
         let viols = check(&file, &exceptions);
         // ADR-0017: V16 nunca silencia por citação/anotação — o aviso mantém-se visível, sem erro extra de formato
         assert_eq!(viols.len(), 1);
@@ -492,7 +510,10 @@ mod tests {
             exprs: vec![expr],
         };
         let mut exceptions = HashMap::new();
-        exceptions.insert("01_core/unit.rs:12".to_string(), "N16[INVALID]: tag incorreta".to_string());
+        exceptions.insert(
+            "01_core/unit.rs:12".to_string(),
+            "N16[INVALID]: tag incorreta".to_string(),
+        );
         let viols = check(&file, &exceptions);
         assert_eq!(viols.len(), 2);
         assert!(viols[0].message.contains("Tag N16 malformada"));
