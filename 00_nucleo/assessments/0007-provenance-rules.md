@@ -1,6 +1,6 @@
 # Assessment 0007 — regras puras de proveniência V5/V6/V7
 
-**Estado:** CONGELADO PARA TRIAGEM
+**Estado:** RED CONGELADO — requer saneamento separado
 **Data:** 2026-08-24
 **Alvos:** `prompt_drift.rs`, `prompt_stale.rs`, `orphan_prompt.rs`
 
@@ -45,3 +45,22 @@ alegação e não autoriza correção automática.
 
 Se houver RED, congelar a evidência e parar antes de modificar L1. Se tudo passar,
 registrar o laudo e avançar ao próximo lote. Não fazer merge, instalação ou release.
+
+## Resultado da triagem
+
+Dois verificadores segregados convergiram sem compartilhar testes:
+
+- V5 passou a tabela de verdade, preservação literal dos hashes e do path;
+- V7 passou cardinalidade, ordem, nível injetado e identidades representacionais;
+- V6 detectou mudanças em todos os campos e ignorou corretamente mera permutação;
+- **RED:** `[f, f]` contra `[f]` produz delta vazio, pois cada ocorrência usa
+  `contains` sem consumir uma ocorrência correspondente;
+- **RED:** deltas equivalentes produzem mensagens distintas quando a ordem de
+  extração muda.
+
+Gate B: 4 PASS / 2 RED / 0 ignored. O adversário C reproduziu os mesmos dois REDs
+com probe próprio. Nenhum `SPEC-GAP` foi necessário: multiplicidade observável e
+ordem determinística foram congeladas explicitamente nas alegações 4 e 6.
+
+A parada foi cumprida: a produção L1 não foi alterada. O próximo ato é um contrato de
+saneamento que defina diferença de multiconjuntos e uma ordem total para assinaturas.
