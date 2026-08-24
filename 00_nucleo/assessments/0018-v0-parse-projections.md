@@ -9,10 +9,10 @@
 
 | Unidade | Caminho | SHA-256 |
 |---|---|---|
-| sistema/composição | `00_nucleo/prompts/linter-core.md` | `98a403245937ead3451c5255e2f8565d17154c7832cdaa59e1fcdf55aa1e8272` |
-| diagnósticos | `00_nucleo/prompts/violation-types.md` | `09c5514097cfc24e4e158e68c4c66c7d3671b448722adc9458f2691bb65e9f60` |
+| sistema/composição | `00_nucleo/prompts/linter-core.md` | `70ed01e7dd64b9da727d35b0341ee67712f0434d75543ac05697b111acee864e` |
+| diagnósticos | `00_nucleo/prompts/violation-types.md` | `b50d90505e311a1aa99d3c80988f3f7996fe7974d71579543f86c0553a4dc314` |
 | ParseError | `00_nucleo/prompts/contracts/parse-error.md` | `1f8c47cb5d0001c356c71e2df8ec0619d76dd5a439a5ba9e9b8f8d7285282645` |
-| SourceError | `00_nucleo/prompts/contracts/file-provider.md` | `cc943f84061ab88a7faa9f6c9b17ad571f1f5387a7733b8a19c5df70061bd352` |
+| SourceError | `00_nucleo/prompts/contracts/file-provider.md` | `f5ed3805807f730576bd3af99d850eacfad49b9c2c1708f10aacd04c0af2e9ce` |
 | fail-fast | `00_nucleo/adr/0004-reformulação-do-motor-de-análise.md` | `25d0571e0621b207b59d79ffd4ce6dfd31008738812a06fd82d0ac95d8d7fe3d` |
 | paths owned | `00_nucleo/adr/0005-location-owned-paths-e-cargo.toml-como-artefato-gerido.md` | `917f4a1194e3d7b2a6955b6182684ad55bf909705cbf2537b095145d22b78421` |
 | protocolo | `00_nucleo/tekt-linter-passo-0089-auditoria-v0-parse.md` | `f4bd91b4b438c0ee58e1e4d46968860d5c8f0fb3b1fc7167f5dccc8c7289d54f` |
@@ -51,6 +51,10 @@ negócio”, além de ausência de API pública black-box. Ambos foram fechados 
 projeção erro→violação é política pura L1, sob
 `prompts/rules/infrastructure-error.md`; L4 somente encaminha. `0:0` significa posição
 indisponível apenas nas modalidades explicitamente normatizadas.
+
+Após materialização, o reparador oficial atualizou somente `Hash do Código` em
+`linter-core.md` e `file-provider.md`; os hashes acima resselam essa metadata sem mudar
+as expectativas usadas pelo gate cego.
 
 ## Papéis segregados
 
