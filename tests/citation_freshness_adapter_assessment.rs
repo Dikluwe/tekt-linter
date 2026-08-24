@@ -7,7 +7,9 @@ use crystalline_lint::contracts::citation_freshness::{
 use crystalline_lint::infra::citation_freshness::FsCitationFreshnessResolver;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
+use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
@@ -151,6 +153,84 @@ fn root_and_component_symlinks_are_rejected_even_when_they_point_inside() {
         1,
         CitationFreshness::Unknown(CitationUnknownReason::Symlink),
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn concurrent_directory_to_external_symlink_swap_never_becomes_valid() {
+    use std::os::unix::fs::symlink;
+
+    let sandbox = Sandbox::new("nofollow-race");
+    let external = Sandbox::new("external-marker");
+    external.write("oracle.rs", b"EXTERNAL_VALID_MARKER\n");
+
+    let live = sandbox.root.join("switch");
+    let parked = sandbox.root.join("parked");
+    fs::create_dir(&live).unwrap();
+    // O alvo interno nunca pode produzir Valid: quando existe, sua linha é vazia.
+    fs::write(live.join("oracle.rs"), b" \n").unwrap();
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let worker_stop = Arc::clone(&stop);
+    let worker_live = live.clone();
+    let worker_parked = parked.clone();
+    let external_root = external.root.clone();
+    let swapper = thread::spawn(move || {
+        while !worker_stop.load(Ordering::Relaxed) {
+            if fs::rename(&worker_live, &worker_parked).is_ok() {
+                if symlink(&external_root, &worker_live).is_ok() {
+                    thread::yield_now();
+                    let _ = fs::remove_file(&worker_live);
+                }
+                let _ = fs::rename(&worker_parked, &worker_live);
+            }
+            thread::yield_now();
+        }
+        let _ = fs::remove_file(&worker_live);
+        let _ = fs::rename(&worker_parked, &worker_live);
+    });
+
+    let resolver = sandbox.resolver(1024);
+    for attempt in 0..20_000 {
+        let state = resolver.resolve("switch/oracle.rs", 1);
+        assert_ne!(
+            state,
+            CitationFreshness::Valid,
+            "escape TOCTOU leu marcador externo na tentativa {attempt}"
+        );
+    }
+    stop.store(true, Ordering::Relaxed);
+    swapper.join().unwrap();
+}
+
+#[test]
+fn concurrent_removal_of_an_empty_target_remains_fail_closed() {
+    let sandbox = Sandbox::new("removal-race");
+    let target = sandbox.root.join("volatile.rs");
+    fs::write(&target, b"\n").unwrap();
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let worker_stop = Arc::clone(&stop);
+    let worker_target = target.clone();
+    let remover = thread::spawn(move || {
+        while !worker_stop.load(Ordering::Relaxed) {
+            let _ = fs::remove_file(&worker_target);
+            thread::yield_now();
+            let _ = fs::write(&worker_target, b"\n");
+        }
+    });
+
+    let resolver = sandbox.resolver(1024);
+    for attempt in 0..10_000 {
+        let state = resolver.resolve("volatile.rs", 1);
+        assert_ne!(
+            state,
+            CitationFreshness::Valid,
+            "remoção concorrente produziu validade na tentativa {attempt}"
+        );
+    }
+    stop.store(true, Ordering::Relaxed);
+    remover.join().unwrap();
 }
 
 #[test]
