@@ -50,19 +50,21 @@ before_ref = "<oid>"
 after_ref = "<oid>"
 ```
 
-Paths são relativos à raiz, confinados sem symlink escape. Hashes são SHA-256 sobre os
-bytes exatos. O baseline deve ser OID completo e resolver para o mesmo commit.
+Paths internos são relativos à raiz, confinados sem symlink escape. Hashes declarados
+de prompt e contrato são SHA-256 sobre os bytes exatos capturados uma única vez. O
+baseline deve ser OID completo e resolver para o mesmo commit.
 
 ## Resultado
 
 O selo JSON é determinístico, sem timestamp, e contém:
 
 - `protocol_version`;
-- hashes do manifesto, prompt e contrato;
+- hash da representação semântica canônica do manifesto e hashes exatos de prompt e
+  contrato;
 - baseline OID;
 - produtores declarados;
 - recibos ordenados por `id`, com OIDs e veredito;
-- contagens positivas/negativas/unknown;
+- objeto `counts` com contagens `positive`, `negative` e `unknown`;
 - `mutation_score` representado sem ponto flutuante ambíguo;
 - `sealed: true`.
 
@@ -77,7 +79,9 @@ publica selo parcial.
 - Oráculos resolvem refs uma vez e registram OIDs completos.
 - O manifesto e entradas nunca são reescritos.
 - Saída é atômica.
-- Ordem do TOML não altera os bytes do selo.
+- Ordem de campos e `[[oracle]]` no TOML não altera os bytes do selo. Para tornar isso
+  compatível com a proveniência, `manifest_sha256` é calculado sobre uma representação
+  semântica canônica (campos e oráculos ordenados), não sobre os bytes crus do TOML.
 - Identidade nominal não é apresentada como prova de sandbox.
 - Um negativo só é morto por `VIOLATED`.
 
