@@ -1,0 +1,15 @@
+id = "snapshot-functions"
+
+[[observable]]
+key = "functions"
+language = "rust"
+file = "sample.rs"
+query = "(function_item name: (identifier) @value)"
+capture = "value"
+cardinality = "many"
+on_missing = "unknown"
+
+[[relation]]
+kind = "preserve"
+source = "functions"
+target = "functions"

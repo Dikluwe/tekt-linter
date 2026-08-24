@@ -1,0 +1,21 @@
+# Contrato canônico mínimo para o crystalline-lint validar sua própria extração.
+id = "crystalline-refinement-verdict"
+
+[[observable]]
+key = "refinement.verdict.variants"
+language = "rust"
+file = "01_core/entities/refinement.rs"
+query = '''
+(enum_item
+  name: (type_identifier) @_name
+  body: (enum_variant_list) @value
+  (#eq? @_name "RefinementVerdict"))
+'''
+capture = "value"
+cardinality = "one"
+on_missing = "unknown"
+
+[[relation]]
+kind = "preserve"
+source = "refinement.verdict.variants"
+target = "refinement.verdict.variants"

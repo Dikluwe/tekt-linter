@@ -115,3 +115,21 @@ promoção indevida.
 
 O código do laboratório não foi promovido; a implementação foi reescrita a partir do
 ADR e do prompt vigentes.
+
+## Registro da materialização da Etapa B1
+
+Em 2026-08-24 foi adicionado `snapshot` para queries tree-sitter Rust explícitas.
+Cardinalidade, ausência, ambiguidade e sintaxe opaca permanecem distinguíveis no
+snapshot. A saída não contém timestamp, usa `BTreeMap`, ordena capturas `many` e confina
+paths inclusive após resolver symlinks.
+
+O ciclo foi executado duas vezes sobre este branch com `refinement-self.toml`: os
+snapshots foram byte-a-byte idênticos e `refine` retornou `PRESERVED`/exit 0. Três
+oráculos locais — contexto, campo e autoridade — aceitam a direção correção e rejeitam
+a regressão inversa.
+
+A comparação histórica também distinguiu os baselines corretamente: `f8a0dae`, anterior
+à Etapa A, produziu `UNKNOWN(MissingObservable)`; `18a9b6e`, primeiro commit com
+`RefinementVerdict`, refinado contra a Etapa B1 produziu `PRESERVED`. Os arquivos
+históricos foram obtidos externamente ao produto por `git archive`; o subcomando recebeu
+somente diretórios explícitos e não ganhou autoridade sobre Git.

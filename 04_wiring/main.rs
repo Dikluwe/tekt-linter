@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash c48e975e
+//! @prompt-hash 2745d75b
 //! @layer L4
 //! @updated 2026-06-09
 
@@ -36,6 +36,9 @@ use crystalline_lint::infra::prompt_snapshot_reader::FsPromptSnapshotReader;
 use crystalline_lint::infra::prompt_walker::FsPromptWalker;
 use crystalline_lint::infra::py_parser::PyParser;
 use crystalline_lint::infra::refinement_snapshot::{load_contract, load_snapshot};
+use crystalline_lint::infra::refinement_extractor::{
+    extract_snapshot, load_observable_specs, serialize_snapshot, write_snapshot_atomic,
+};
 use crystalline_lint::infra::rs_parser::RustParser;
 use crystalline_lint::infra::snapshot_writer;
 use crystalline_lint::infra::ts_parser::TsParser;
@@ -79,6 +82,32 @@ fn main() {
             RefinementOutputFormat::Sarif => println!("{}", refinement::format_sarif(&verdict)),
         }
         process::exit(refinement::exit_code(&verdict));
+    }
+
+    if let Some(RefinementCommand::Snapshot(args)) = &cli.command {
+        let specs = load_observable_specs(&args.contract).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: snapshot contract error: {error}");
+            process::exit(2);
+        });
+        let snapshot = extract_snapshot(&args.path, &args.artifact_id, &specs).unwrap_or_else(
+            |error| {
+                eprintln!("crystalline-lint: snapshot extraction error: {error}");
+                process::exit(2);
+            },
+        );
+        let content = serialize_snapshot(&snapshot).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: snapshot serialization error: {error}");
+            process::exit(2);
+        });
+        write_snapshot_atomic(&args.output, &content).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: snapshot write error: {error}");
+            process::exit(2);
+        });
+        print!(
+            "{}",
+            refinement::format_snapshot_success(&args.output, snapshot.observables.len())
+        );
+        process::exit(0);
     }
 
     // ── Arg validation ────────────────────────────────────────────────────────

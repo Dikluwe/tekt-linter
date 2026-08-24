@@ -23,7 +23,8 @@ reescrevem arquivos do projeto. Atualmente: `--fix-hashes` e
 
 ## Responsabilidades CLI
 
-O comando principal pode delegar o subcomando `refine` aos tipos e formatadores
+O comando principal pode delegar os subcomandos `refine` e `snapshot` aos tipos
+e formatadores
 definidos pelo prompt `refinement-validator.md`. `cli.rs` apenas expõe o enum delegado;
 o formato e a política 0/1/2 do refinamento não pertencem ao catálogo V0–V25.
 

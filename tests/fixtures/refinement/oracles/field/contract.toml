@@ -1,0 +1,21 @@
+id = "font-identity-variations"
+
+[[observable]]
+key = "identity.variations"
+language = "rust"
+file = "state.rs"
+query = '''
+(const_item
+  name: (identifier) @_name
+  value: (string_literal) @value
+  (#eq? @_name "VARIATIONS"))
+'''
+capture = "value"
+cardinality = "one"
+on_missing = "unknown"
+
+[[relation]]
+kind = "may-normalize"
+source = "identity.variations"
+target = "identity.variations"
+accepted_targets = ['"wght=650"']

@@ -1,0 +1,21 @@
+id = "rounded-radius-context"
+
+[[observable]]
+key = "radius.state"
+language = "rust"
+file = "state.rs"
+query = '''
+(const_item
+  name: (identifier) @_name
+  value: (string_literal) @value
+  (#eq? @_name "RADIUS_STATE"))
+'''
+capture = "value"
+cardinality = "one"
+on_missing = "unknown"
+
+[[relation]]
+kind = "may-normalize"
+source = "radius.state"
+target = "radius.state"
+accepted_targets = ['"contextual"']

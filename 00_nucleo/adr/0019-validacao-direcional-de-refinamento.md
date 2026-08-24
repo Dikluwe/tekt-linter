@@ -3,7 +3,7 @@
 **Status:** ACEITO — aprovado pelo humano em 2026-08-23
 **Data:** 2026-08-23  
 **Origem operacional:** `tekt-linter-passo-validacao-de-refinamento.md`  
-**Escopo desta revisão:** decisão arquitetural; não autoriza materialização L1–L4
+**Escopo desta revisão:** Etapas A e B1 autorizadas; Git, wrapper e SMT não autorizados
 
 ## Contexto
 
@@ -109,6 +109,17 @@ externo e nenhuma manipulação de Git.
 **Etapa B, decisão posterior:** extrair snapshots de duas revisões ou envolver um
 comando. Só entra após política de efeitos, consentimento e recuperação ser decidida.
 
+### Etapa B1 aprovada — extração explícita do working tree
+
+Em 2026-08-24 o humano autorizou apenas a primeira metade da Etapa B: gerar snapshots
+de um diretório explicitamente fornecido, sem acessar revisões Git nem executar
+comandos. A extração inicial usa queries tree-sitter Rust declaradas no contrato. O
+produto não infere observáveis por nomes e não embute contratos do projeto-oráculo.
+
+Arquivos relativos são confinados à raiz; a saída não contém timestamp e deve ser
+byte-a-byte determinística. O formato permanece v1 e registra uma versão estável do
+extrator.
+
 ### 7. Relação com V6 e V23–V25
 
 - V6 permanece drift de interface pública contra snapshot causal; não é substituída.
@@ -172,6 +183,7 @@ Gate aprovado pelo humano em 2026-08-23. A materialização fica limitada à Eta
 - nenhum código do laboratório é promovido: a solução é reescrita a partir do L0;
 - nenhum número `V*` é reservado;
 - wrapper, SMT e extração interprocedural continuam não autorizados.
+- leitura de Git continua não autorizada; B1 recebe somente um diretório explícito.
 
 ## Referências
 

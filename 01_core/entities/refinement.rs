@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/refinement-validator.md
-//! @prompt-hash e10c5722
+//! @prompt-hash d5832752
 //! @layer L1
 //! @updated 2026-08-23
 
@@ -21,6 +21,67 @@ pub enum UnknownReason {
     OpaqueConstruction,
     PartialContract,
     BudgetExhausted,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CaptureCardinality {
+    One,
+    Many,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MissingPolicy {
+    Unknown,
+    Absent,
+}
+
+fn json_string(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len() + 2);
+    escaped.push('"');
+    for ch in value.chars() {
+        match ch {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            control if control.is_control() => {
+                escaped.push_str(&format!("\\u{:04x}", control as u32));
+            }
+            other => escaped.push(other),
+        }
+    }
+    escaped.push('"');
+    escaped
+}
+
+pub fn observable_from_captures(
+    mut captures: Vec<String>,
+    cardinality: CaptureCardinality,
+    missing: MissingPolicy,
+) -> ObservableValue {
+    captures.sort();
+    captures.dedup();
+    if captures.is_empty() {
+        return match missing {
+            MissingPolicy::Unknown => ObservableValue::Unknown(UnknownReason::MissingObservable),
+            MissingPolicy::Absent => ObservableValue::Absent,
+        };
+    }
+    match cardinality {
+        CaptureCardinality::One if captures.len() == 1 => {
+            ObservableValue::Known(captures.remove(0))
+        }
+        CaptureCardinality::One => ObservableValue::Unknown(UnknownReason::AmbiguousIdentity),
+        CaptureCardinality::Many => ObservableValue::Known(format!(
+            "[{}]",
+            captures
+                .iter()
+                .map(|value| json_string(value))
+                .collect::<Vec<_>>()
+                .join(",")
+        )),
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -309,5 +370,29 @@ mod tests {
         let first = compare_refinement(&left, &values, &values);
         left.relations.reverse();
         assert_eq!(first, compare_refinement(&left, &values, &values));
+    }
+
+    #[test]
+    fn capture_policy_distinguishes_missing_ambiguous_and_many() {
+        assert_eq!(
+            observable_from_captures(vec![], CaptureCardinality::One, MissingPolicy::Absent),
+            ObservableValue::Absent
+        );
+        assert_eq!(
+            observable_from_captures(
+                vec!["b".to_string(), "a".to_string()],
+                CaptureCardinality::One,
+                MissingPolicy::Unknown
+            ),
+            ObservableValue::Unknown(UnknownReason::AmbiguousIdentity)
+        );
+        assert_eq!(
+            observable_from_captures(
+                vec!["b".to_string(), "a".to_string()],
+                CaptureCardinality::Many,
+                MissingPolicy::Unknown
+            ),
+            ObservableValue::Known("[\"a\",\"b\"]".to_string())
+        );
     }
 }

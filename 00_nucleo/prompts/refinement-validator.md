@@ -2,8 +2,8 @@
 Hash do Código: dc19bcf0
 
 > **Estado:** VIGENTE — ADR-0019 aprovado pelo humano em 2026-08-23
-> **Camadas futuras:** L1–L4  
-> **Materialização:** nenhuma; o experimento em `lab/` não conta como implementação
+> **Camadas:** L1–L4
+> **Materialização:** Etapas A e B1 no branch `codex/refinement-validator`
 
 ## Intenção
 
@@ -95,6 +95,47 @@ Formato `text` é o padrão; `sarif` também é suportado. Exit codes: `0` para
 `Preserved`, `1` quando houver `Violated`, `2` para `Unknown` sem violação ou erro de
 entrada. Não implementar leitura de commits nem execução de comandos nessa entrega.
 
+## Etapa B1 — geração de snapshots Rust
+
+O subcomando vigente é:
+
+```bash
+crystalline-lint snapshot \
+  --contract refinement.toml \
+  --artifact-id working-tree \
+  --output working-tree.refinement.json \
+  <project-root>
+```
+
+Contrato de extração:
+
+```toml
+[[observable]]
+key = "refinement.verdict.variants"
+language = "rust"
+file = "01_core/entities/refinement.rs"
+query = '''
+(enum_item
+  name: (type_identifier) @_name
+  body: (enum_variant_list) @value
+  (#eq? @_name "RefinementVerdict"))
+'''
+capture = "value"
+cardinality = "one"
+on_missing = "unknown"
+```
+
+`cardinality` aceita `one` ou `many`; `on_missing` aceita `unknown` ou `absent`.
+Em `one`, múltiplas capturas viram `Unknown(AmbiguousIdentity)`. Em `many`, textos são
+normalizados, ordenados e codificados deterministicamente como lista JSON compacta.
+Zero capturas respeita `on_missing`. Query inválida e path inseguro são erros de
+entrada; erro sintático do artefato vira `Unknown(OpaqueConstruction)`.
+
+O extrator inicial aceita apenas `language = "rust"`. O snapshot usa
+`format_version = 1`, `extractor_version = "crystalline-rust-query-v1"`, não contém
+timestamp e é escrito atomicamente. L1 recebe capturas já normalizadas e decide apenas
+cardinalidade/ausência; tree-sitter, TOML, JSON e filesystem permanecem em L3.
+
 ## Cenários RED
 
 ```text
@@ -172,3 +213,4 @@ fonte única e a apresentação deve evitar duplicidade.
 |---|---|---|
 | 2026-08-23 | Proposto | Hipótese confirmada pelo experimento descartável e ADR-0019 |
 | 2026-08-23 | Vigente | Humano aprovou materialização segura da Etapa A em branch dedicado |
+| 2026-08-24 | Vigente | Humano aprovou Etapa B1: snapshot Rust por queries explícitas, sem Git |

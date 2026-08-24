@@ -354,6 +354,21 @@ IDs duplicados falham como erro de configuração.
 
 ### Comparar snapshots por refinamento
 
+Gerar um snapshot Rust determinístico:
+
+```bash
+crystalline-lint snapshot . \
+  --contract refinement.toml \
+  --artifact-id working-tree \
+  --output working-tree.refinement.json
+```
+
+Cada `[[observable]]` do contrato declara `key`, `language = "rust"`, `file`, query
+tree-sitter, `capture`, `cardinality = "one" | "many"` e
+`on_missing = "unknown" | "absent"`. O arquivo deve ser relativo e permanecer dentro
+da raiz mesmo após resolver symlinks. Capturas múltiplas são ordenadas; o snapshot não
+contém relógio e duas extrações iguais produzem os mesmos bytes.
+
 ```bash
 crystalline-lint refine \
   --before before.refinement.json \
@@ -381,6 +396,17 @@ Contrato TOML:
 
 ```toml
 id = "font-identity"
+
+[[observable]]
+key = "style.variations"
+language = "rust"
+file = "03_infra/font.rs"
+query = '''
+(field_expression field: (field_identifier) @value)
+'''
+capture = "value"
+cardinality = "many"
+on_missing = "unknown"
 
 [[relation]]
 kind = "preserve"
