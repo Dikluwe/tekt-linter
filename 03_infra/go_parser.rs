@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash d9053635
+//! @prompt-hash b640611e
 //! @layer L3
 //! @updated 2026-08-11
 
@@ -126,6 +126,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for GoParser<R, S>
             module_decls: vec![],
             decision_exprs: vec![],
             constants: vec![],
+            semantic_observations: vec![],
             declared_traits: vec![],
             implemented_traits: vec![],
             blanket_impl_traits: vec![],

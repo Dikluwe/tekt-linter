@@ -613,6 +613,13 @@ Então retorna true
 
 ---
 
+## Observações de preservação semântica (V23–V25, ADR-0018)
+
+`ParsedFile.semantic_observations` transporta fatos mecânicos extraídos do AST sob
+contratos declarados. Cada observação contém `contract_id`, modalidade, detalhe e
+localização. Identificadores vindos da configuração são owned. V23–V25 filtram
+modalidades distintas sem reinterpretar nomes de linguagem ou domínio.
+
 ## Histórico de Revisões
 
 | Data | Motivo | Arquivos afetados |

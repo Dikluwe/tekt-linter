@@ -1,5 +1,5 @@
 # Prompt: Rule V4 - Impure Core (impure-core)
-Hash do Código: 2f08fcc2
+Hash do Código: 9460b2bf
 
 **Camada**: L1 (Core - Rules)
 **Regra**: V4

@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash d9053635
+//! @prompt-hash b640611e
 //! @layer L3
 //! @updated 2026-06-09
 
@@ -13,7 +13,15 @@ use crate::entities::layer::Layer;
 use crate::entities::violation::ViolationLevel;
 
 const LANGUAGES: &[&str] = &[
-    "rust", "python", "typescript", "c", "cpp", "zig", "go", "java", "elixir",
+    "rust",
+    "python",
+    "typescript",
+    "c",
+    "cpp",
+    "zig",
+    "go",
+    "java",
+    "elixir",
 ];
 
 fn is_language_key(key: &str) -> bool {
@@ -110,6 +118,79 @@ pub struct AnalysisConfig {
     pub lineage: LineageConfig,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct SemanticResolverConfig {
+    pub symbol: String,
+    pub context_arg: usize,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ContextSemanticContract {
+    pub id: String,
+    #[serde(default)]
+    pub language: String,
+    #[serde(default)]
+    pub scopes: Vec<String>,
+    #[serde(default)]
+    pub sources: Vec<String>,
+    #[serde(default)]
+    pub resolvers: Vec<SemanticResolverConfig>,
+    #[serde(default)]
+    pub erasing_projections: Vec<String>,
+    #[serde(default)]
+    pub sinks: Vec<String>,
+    #[serde(default)]
+    pub absolute_sources: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ProjectionSemanticContract {
+    pub id: String,
+    #[serde(default)]
+    pub language: String,
+    pub scope: String,
+    pub source: String,
+    pub destination: String,
+    #[serde(default)]
+    pub neutral_forms: Vec<String>,
+    #[serde(default = "preserve_normalization")]
+    pub normalization: String,
+}
+
+fn preserve_normalization() -> String {
+    "preserve".to_string()
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct DecisionSemanticContract {
+    pub id: String,
+    #[serde(default)]
+    pub language: String,
+    pub owner: String,
+    #[serde(default)]
+    pub consumers: Vec<String>,
+    #[serde(default)]
+    pub explicit_sources: Vec<String>,
+    #[serde(default)]
+    pub proxies: Vec<String>,
+    #[serde(default)]
+    pub duplicate_owners: Vec<String>,
+    #[serde(default)]
+    pub canonicalizers: Vec<String>,
+    #[serde(default)]
+    pub resolved_after: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct SemanticContractsConfig {
+    #[serde(default)]
+    pub context: Vec<ContextSemanticContract>,
+    #[serde(default)]
+    pub projection: Vec<ProjectionSemanticContract>,
+    #[serde(default)]
+    pub decision: Vec<DecisionSemanticContract>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct CrystallineConfig {
     #[serde(default)]
@@ -200,6 +281,10 @@ pub struct CrystallineConfig {
     /// Configuração do relatório N16 — lida de .
     #[serde(default)]
     pub n16_summary: Option<N16SummaryConfig>,
+
+    /// Contratos explícitos de preservação semântica (ADR-0018).
+    #[serde(default)]
+    pub semantic: SemanticContractsConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Default, PartialEq, Eq)]
@@ -212,7 +297,53 @@ impl CrystallineConfig {
     pub fn load(path: &Path) -> Result<Self, String> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("Cannot read {}: {}", path.display(), e))?;
-        toml::from_str(&content).map_err(|e| format!("Invalid TOML: {e}"))
+        let config: Self = toml::from_str(&content).map_err(|e| format!("Invalid TOML: {e}"))?;
+        config.validate_semantic_contracts()?;
+        Ok(config)
+    }
+
+    fn validate_semantic_contracts(&self) -> Result<(), String> {
+        let mut ids = HashSet::new();
+        for contract in &self.semantic.context {
+            if contract.id.trim().is_empty()
+                || contract.scopes.is_empty()
+                || contract.sources.is_empty()
+                || contract.resolvers.is_empty()
+                || contract.sinks.is_empty()
+            {
+                return Err("Invalid [[semantic.context]]: id, scopes, sources, resolvers and sinks are required".to_string());
+            }
+            if !ids.insert(contract.id.as_str()) {
+                return Err(format!("Duplicate semantic contract id `{}`", contract.id));
+            }
+        }
+        for contract in &self.semantic.projection {
+            if contract.id.trim().is_empty()
+                || contract.scope.trim().is_empty()
+                || contract.source.trim().is_empty()
+                || contract.destination.trim().is_empty()
+            {
+                return Err("Invalid [[semantic.projection]]: id, scope, source and destination are required".to_string());
+            }
+            if !contract.destination.starts_with("return.") {
+                return Err(format!(
+                    "Unsupported semantic projection destination `{}`",
+                    contract.destination
+                ));
+            }
+            if !ids.insert(contract.id.as_str()) {
+                return Err(format!("Duplicate semantic contract id `{}`", contract.id));
+            }
+        }
+        for contract in &self.semantic.decision {
+            if contract.id.trim().is_empty() || contract.owner.trim().is_empty() {
+                return Err("Invalid [[semantic.decision]]: id and owner are required".to_string());
+            }
+            if !ids.insert(contract.id.as_str()) {
+                return Err(format!("Duplicate semantic contract id `{}`", contract.id));
+            }
+        }
+        Ok(())
     }
 
     /// Resolve o nível efectivo para uma regra.
@@ -406,10 +537,9 @@ impl Default for CrystallineConfig {
             v11_blanket_exceptions: HashMap::new(),
             check_test_imports: None,
             n16_summary: None,
+            semantic: SemanticContractsConfig::default(),
             analysis: AnalysisConfig {
-                lineage: LineageConfig {
-                    strict_directories,
-                },
+                lineage: LineageConfig { strict_directories },
             },
         }
     }
@@ -491,27 +621,54 @@ types = ["EcoString", "EcoVec"]
     #[test]
     fn level_for_returns_default_when_rules_empty() {
         let config = CrystallineConfig::default();
-        assert_eq!(config.level_for("V11", ViolationLevel::Error), ViolationLevel::Error);
-        assert_eq!(config.level_for("V7", ViolationLevel::Warning), ViolationLevel::Warning);
+        assert_eq!(
+            config.level_for("V11", ViolationLevel::Error),
+            ViolationLevel::Error
+        );
+        assert_eq!(
+            config.level_for("V7", ViolationLevel::Warning),
+            ViolationLevel::Warning
+        );
     }
 
     #[test]
     fn level_for_returns_configured_level_when_declared() {
         let mut config = CrystallineConfig::default();
-        config.rules.insert("V11".to_string(), RuleEntry { level: Some("warning".to_string()), languages: None });
-        assert_eq!(config.level_for("V11", ViolationLevel::Error), ViolationLevel::Warning);
+        config.rules.insert(
+            "V11".to_string(),
+            RuleEntry {
+                level: Some("warning".to_string()),
+                languages: None,
+            },
+        );
+        assert_eq!(
+            config.level_for("V11", ViolationLevel::Error),
+            ViolationLevel::Warning
+        );
     }
 
     #[test]
     fn level_for_unknown_rule_returns_default() {
         let config = CrystallineConfig::default();
-        assert_eq!(config.level_for("V99", ViolationLevel::Warning), ViolationLevel::Warning);
+        assert_eq!(
+            config.level_for("V99", ViolationLevel::Warning),
+            ViolationLevel::Warning
+        );
     }
     #[test]
     fn level_for_returns_info_when_configured() {
         let mut config = CrystallineConfig::default();
-        config.rules.insert("V19".to_string(), RuleEntry { level: Some("info".to_string()), languages: None });
-        assert_eq!(config.level_for("V19", ViolationLevel::Warning), ViolationLevel::Info);
+        config.rules.insert(
+            "V19".to_string(),
+            RuleEntry {
+                level: Some("info".to_string()),
+                languages: None,
+            },
+        );
+        assert_eq!(
+            config.level_for("V19", ViolationLevel::Warning),
+            ViolationLevel::Info
+        );
     }
 
     #[test]
@@ -525,8 +682,17 @@ level = "warning"
 "01_core/gradient.rs:221" = "hub intencional"
 "#;
         let config: CrystallineConfig = toml::from_str(toml).unwrap();
-        assert_eq!(config.rules.get("V16").unwrap().languages.as_ref().unwrap(), &vec!["rust"]);
-        assert_eq!(config.wildcard_exceptions.get("01_core/gradient.rs:221").unwrap(), "hub intencional");
+        assert_eq!(
+            config.rules.get("V16").unwrap().languages.as_ref().unwrap(),
+            &vec!["rust"]
+        );
+        assert_eq!(
+            config
+                .wildcard_exceptions
+                .get("01_core/gradient.rs:221")
+                .unwrap(),
+            "hub intencional"
+        );
     }
 
     #[test]
@@ -566,4 +732,44 @@ modules = ["geom/strict"]
         assert_eq!(rule_cfg.strict_modules, vec!["geom/strict"]);
     }
 
+    #[test]
+    fn semantic_contracts_parse_and_validate() {
+        let toml = r#"
+[[semantic.context]]
+id = "radius"
+language = "rust"
+scopes = ["render.rs::draw"]
+sources = ["radius"]
+resolvers = [{ symbol = "resolve", context_arg = 0 }]
+sinks = ["draw"]
+"#;
+        let config: CrystallineConfig = toml::from_str(toml).unwrap();
+        assert!(config.validate_semantic_contracts().is_ok());
+        assert_eq!(config.semantic.context[0].resolvers[0].context_arg, 0);
+    }
+
+    #[test]
+    fn duplicate_semantic_ids_are_rejected() {
+        let mut config = CrystallineConfig::default();
+        config.semantic.context.push(ContextSemanticContract {
+            id: "same".into(),
+            scopes: vec!["a::f".into()],
+            sources: vec!["x".into()],
+            resolvers: vec![SemanticResolverConfig {
+                symbol: "resolve".into(),
+                context_arg: 0,
+            }],
+            sinks: vec!["sink".into()],
+            ..Default::default()
+        });
+        config.semantic.decision.push(DecisionSemanticContract {
+            id: "same".into(),
+            owner: "a::owner".into(),
+            ..Default::default()
+        });
+        assert!(config
+            .validate_semantic_contracts()
+            .unwrap_err()
+            .contains("Duplicate"));
+    }
 }

@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/impure-core.md
-//! @prompt-hash b902068d
+//! @prompt-hash ace9c302
 //! @layer L1
 //! @updated 2026-03-14
 

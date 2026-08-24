@@ -181,6 +181,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for PyParser<R, S>
             module_decls: vec![],
             decision_exprs: vec![],
             constants: vec![],
+            semantic_observations: vec![],
         })
     }
 }

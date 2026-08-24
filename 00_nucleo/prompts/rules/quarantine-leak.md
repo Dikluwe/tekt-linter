@@ -1,5 +1,5 @@
 # Prompt: Rule V10 - Quarantine Leak (quarantine-leak)
-Hash do Código: f828409d
+Hash do Código: e87a8a77
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V10

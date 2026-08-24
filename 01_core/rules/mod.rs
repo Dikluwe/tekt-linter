@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash d9053635
+//! @prompt-hash b640611e
 //! @layer L1
 //! @updated 2026-03-22
 
@@ -26,3 +26,6 @@ pub mod or_pattern_alternatives;
 pub mod deep_pattern_nesting;
 pub mod unsourced_constant;
 pub mod provenance_inventory;
+pub mod context_erasure;
+pub mod semantic_field_loss;
+pub mod decision_ownership;

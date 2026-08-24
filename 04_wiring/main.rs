@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash d9053635
+//! @prompt-hash b640611e
 //! @layer L4
 //! @updated 2026-06-09
 
@@ -18,41 +18,39 @@ use crystalline_lint::contracts::prompt_provider::PromptProvider;
 use crystalline_lint::contracts::prompt_reader::PromptReader;
 use crystalline_lint::contracts::prompt_snapshot_reader::PromptSnapshotReader;
 use crystalline_lint::entities::l1_allowed_external::{L1AllowedExternal, L1AllowedExternalSet};
+use crystalline_lint::entities::layer::Language;
 use crystalline_lint::entities::parsed_file::{ParsedFile, PublicInterface, WiringConfig};
 use crystalline_lint::entities::project_index::{LocalIndex, ProjectIndex};
 use crystalline_lint::entities::violation::{Location, Violation, ViolationLevel};
+use crystalline_lint::infra::c_parser::CParser;
 use crystalline_lint::infra::config::CrystallineConfig;
+use crystalline_lint::infra::cpp_parser::CppParser;
 use crystalline_lint::infra::crate_registry::CrateRegistry;
+use crystalline_lint::infra::elixir_parser::ElixirParser;
+use crystalline_lint::infra::go_parser::GoParser;
 use crystalline_lint::infra::hash_writer;
+use crystalline_lint::infra::java_parser::JavaParser;
 use crystalline_lint::infra::prompt_reader::FsPromptReader;
 use crystalline_lint::infra::prompt_snapshot_reader::FsPromptSnapshotReader;
 use crystalline_lint::infra::prompt_walker::FsPromptWalker;
-use crystalline_lint::entities::layer::Language;
 use crystalline_lint::infra::py_parser::PyParser;
-use crystalline_lint::infra::c_parser::CParser;
-use crystalline_lint::infra::cpp_parser::CppParser;
 use crystalline_lint::infra::rs_parser::RustParser;
-use crystalline_lint::infra::ts_parser::TsParser;
-use crystalline_lint::infra::zig_parser::ZigParser;
-use crystalline_lint::infra::go_parser::GoParser;
-use crystalline_lint::infra::java_parser::JavaParser;
-use crystalline_lint::infra::elixir_parser::ElixirParser;
 use crystalline_lint::infra::snapshot_writer;
+use crystalline_lint::infra::ts_parser::TsParser;
 use crystalline_lint::infra::walker::FileWalker;
-use std::collections::HashMap;
-use crystalline_lint::rules::{
-    provenance_inventory,
-    unsourced_constant,
-    alien_file, compound_guard, dangling_contract, deep_pattern_nesting,
-    external_type_in_contract, forbidden_import, impure_core, multi_prompt_header,
-    mutable_state_core, or_pattern_alternatives, orphan_prompt, prompt_drift,
-    prompt_header, prompt_stale, pub_leak, quarantine_leak, range_pattern, test_file,
-    wildcard_saturation, wiring_logic_leak,
-};
+use crystalline_lint::infra::zig_parser::ZigParser;
 use crystalline_lint::rules::pub_leak::L1Ports;
+use crystalline_lint::rules::{
+    alien_file, compound_guard, context_erasure, dangling_contract, decision_ownership,
+    deep_pattern_nesting, external_type_in_contract, forbidden_import, impure_core,
+    multi_prompt_header, mutable_state_core, or_pattern_alternatives, orphan_prompt, prompt_drift,
+    prompt_header, prompt_stale, provenance_inventory, pub_leak, quarantine_leak, range_pattern,
+    semantic_field_loss, test_file, unsourced_constant, wildcard_saturation, wiring_logic_leak,
+};
 use crystalline_lint::shell::cli::{validate_args, Cli, EnabledChecks, OutputFormat};
 use crystalline_lint::shell::fix_hashes::{self, HashRewriter};
 use crystalline_lint::shell::update_snapshot::{self, SnapshotRewriter};
+use std::collections::HashMap;
 
 fn main() {
     let cli = Cli::parse();
@@ -109,22 +107,30 @@ fn main() {
 
     // ── WiringConfig for V12 ──────────────────────────────────────────────────
     let v21_config = config.v21_rule_config();
+    let semantic_levels = [
+        config.level_for("V23", ViolationLevel::Warning),
+        config.level_for("V24", ViolationLevel::Warning),
+        config.level_for("V25", ViolationLevel::Warning),
+    ];
 
     let wiring_config = WiringConfig {
-        allow_adapter_structs: config.wiring_exceptions.allow_adapter_structs.unwrap_or(true),
+        allow_adapter_structs: config
+            .wiring_exceptions
+            .allow_adapter_structs
+            .unwrap_or(true),
     };
 
     // ── L1AllowedExternalSet for V14 (por linguagem) ────────────────────────
     let l1_allowed = L1AllowedExternalSet {
-        rust:       L1AllowedExternal::for_rust(config.l1_allowed_for_language("rust")),
-        python:     L1AllowedExternal::for_python(config.l1_allowed_for_language("python")),
+        rust: L1AllowedExternal::for_rust(config.l1_allowed_for_language("rust")),
+        python: L1AllowedExternal::for_python(config.l1_allowed_for_language("python")),
         typescript: L1AllowedExternal::for_typescript(config.l1_allowed_for_language("typescript")),
-        c:          L1AllowedExternal::for_c(config.l1_allowed_for_language("c")),
-        cpp:        L1AllowedExternal::for_cpp(config.l1_allowed_for_language("cpp")),
-        zig:        L1AllowedExternal::for_zig(config.l1_allowed_for_language("zig")),
-        go:         L1AllowedExternal::for_go(config.l1_allowed_for_language("go")),
-        java:       L1AllowedExternal::for_java(config.l1_allowed_for_language("java")),
-        elixir:     L1AllowedExternal::for_elixir(config.l1_allowed_for_language("elixir")),
+        c: L1AllowedExternal::for_c(config.l1_allowed_for_language("c")),
+        cpp: L1AllowedExternal::for_cpp(config.l1_allowed_for_language("cpp")),
+        zig: L1AllowedExternal::for_zig(config.l1_allowed_for_language("zig")),
+        go: L1AllowedExternal::for_go(config.l1_allowed_for_language("go")),
+        java: L1AllowedExternal::for_java(config.l1_allowed_for_language("java")),
+        elixir: L1AllowedExternal::for_elixir(config.l1_allowed_for_language("elixir")),
     };
 
     // ── Crate registry (membro→camada + deps) para classificação ciente (0052) ─
@@ -133,11 +139,13 @@ fn main() {
 
     // ── Instantiate L3 components ─────────────────────────────────────────────
     let shared_prompt_reader = std::sync::Arc::new(
-        crystalline_lint::infra::prompt_reader::CachedPromptReader::new(
-            FsPromptReader { nucleo_root: nucleo_root.clone() }
-        )
+        crystalline_lint::infra::prompt_reader::CachedPromptReader::new(FsPromptReader {
+            nucleo_root: nucleo_root.clone(),
+        }),
     );
-    let shared_snapshot_reader = FsPromptSnapshotReader { nucleo_root: nucleo_root.clone() };
+    let shared_snapshot_reader = FsPromptSnapshotReader {
+        nucleo_root: nucleo_root.clone(),
+    };
 
     let parser = MultiParser {
         rust: RustParser::new(
@@ -202,8 +210,21 @@ fn main() {
     // source_files so it outlives them — required for V7's check_orphans.
     let (source_files, source_errors) = collect_walker_results(walker.files());
 
-    let (mut all_violations, all_parsed, project_index) =
-        run_pipeline(&source_files, &source_errors, &parser, &enabled, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false), &config.wildcard_exceptions, &v21_config, Some(&cli.path));
+    let (mut all_violations, all_parsed, project_index) = run_pipeline(
+        &source_files,
+        &source_errors,
+        &parser,
+        &enabled,
+        &l1_ports,
+        &wiring_config,
+        &l1_allowed,
+        &config.analysis.lineage.strict_directories,
+        config.check_test_imports.unwrap_or(false),
+        &config.wildcard_exceptions,
+        &v21_config,
+        &semantic_levels,
+        Some(&cli.path),
+    );
 
     // ── --emit-resolution (instrumentação 0058, fora do selo de veredito) ──────
     // Despeja a resolução de todo import (incl. Unknown) e sai — não roda regras.
@@ -224,7 +245,7 @@ fn main() {
     }
 
     // ── V7/V8/V11 post-reduce ─────────────────────────────────────────────────
-    let v7_level  = config.level_for("V7",  ViolationLevel::Warning);
+    let v7_level = config.level_for("V7", ViolationLevel::Warning);
     let v11_level = config.level_for("V11", ViolationLevel::Error);
 
     if enabled.v7 {
@@ -236,10 +257,16 @@ fn main() {
         all_violations.extend(alien_file::check_aliens(&project_index));
     }
     if enabled.v11 {
-        all_violations.extend(dangling_contract::check_dangling_contracts(&project_index, v11_level));
+        all_violations.extend(dangling_contract::check_dangling_contracts(
+            &project_index,
+            v11_level,
+        ));
     }
     if enabled.v22 {
-        all_violations.extend(provenance_inventory::check_inventory(&all_parsed, &v21_config));
+        all_violations.extend(provenance_inventory::check_inventory(
+            &all_parsed,
+            &v21_config,
+        ));
     }
 
     // ── Ordenação determinística ───────────────────────────────────────────────
@@ -248,7 +275,9 @@ fn main() {
 
     // ── --fix-hashes branch ───────────────────────────────────────────────────
     if cli.fix_hashes {
-        let rewriter = L3HashRewriter { nucleo_root: nucleo_root.clone() };
+        let rewriter = L3HashRewriter {
+            nucleo_root: nucleo_root.clone(),
+        };
         let entries = fix_hashes::plan(&all_violations, &rewriter);
 
         if cli.dry_run {
@@ -322,17 +351,55 @@ fn main() {
             let rewalker = FileWalker::new(cli.path.clone(), config.clone());
             let (re_files, re_errors) = collect_walker_results(rewalker.files());
             let v5_only = EnabledChecks {
-                v1: false, v2: false, v3: false, v4: false, v5: true, v6: false,
-                v7: false, v8: false, v9: false, v10: false, v11: false, v12: false,
-                v13: false, v14: false, v15: false, v16: false, v17: false, v18: false,
-                v19: false, v20: false, v21: false, v22: false,
+                v1: false,
+                v2: false,
+                v3: false,
+                v4: false,
+                v5: true,
+                v6: false,
+                v7: false,
+                v8: false,
+                v9: false,
+                v10: false,
+                v11: false,
+                v12: false,
+                v13: false,
+                v14: false,
+                v15: false,
+                v16: false,
+                v17: false,
+                v18: false,
+                v19: false,
+                v20: false,
+                v21: false,
+                v22: false,
+                v23: false,
+                v24: false,
+                v25: false,
             };
-            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v5_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false), &config.wildcard_exceptions, &v21_config, Some(&cli.path));
+            let (violations, _, _) = run_pipeline(
+                &re_files,
+                &re_errors,
+                &reparser,
+                &v5_only,
+                &l1_ports,
+                &wiring_config,
+                &l1_allowed,
+                &config.analysis.lineage.strict_directories,
+                config.check_test_imports.unwrap_or(false),
+                &config.wildcard_exceptions,
+                &v21_config,
+                &semantic_levels,
+                Some(&cli.path),
+            );
             violations.iter().filter(|v| v.rule_id == "V5").count()
         };
 
         if !cli.quiet {
-            print!("{}", fix_hashes::format_results(&results, unfixable, remaining_v5));
+            print!(
+                "{}",
+                fix_hashes::format_results(&results, unfixable, remaining_v5)
+            );
         }
 
         if remaining_v5 > 0 {
@@ -343,7 +410,9 @@ fn main() {
 
     // ── --update-snapshot branch ──────────────────────────────────────────────
     if cli.update_snapshot {
-        let rewriter = L3SnapshotWriter { nucleo_root: nucleo_root.clone() };
+        let rewriter = L3SnapshotWriter {
+            nucleo_root: nucleo_root.clone(),
+        };
         let entries = update_snapshot::plan(&all_violations, &all_parsed, &rewriter);
 
         if cli.dry_run {
@@ -416,17 +485,55 @@ fn main() {
             let rewalker = FileWalker::new(cli.path.clone(), config.clone());
             let (re_files, re_errors) = collect_walker_results(rewalker.files());
             let v6_only = EnabledChecks {
-                v1: false, v2: false, v3: false, v4: false, v5: false, v6: true,
-                v7: false, v8: false, v9: false, v10: false, v11: false, v12: false,
-                v13: false, v14: false, v15: false, v16: false, v17: false, v18: false,
-                v19: false, v20: false, v21: false, v22: false,
+                v1: false,
+                v2: false,
+                v3: false,
+                v4: false,
+                v5: false,
+                v6: true,
+                v7: false,
+                v8: false,
+                v9: false,
+                v10: false,
+                v11: false,
+                v12: false,
+                v13: false,
+                v14: false,
+                v15: false,
+                v16: false,
+                v17: false,
+                v18: false,
+                v19: false,
+                v20: false,
+                v21: false,
+                v22: false,
+                v23: false,
+                v24: false,
+                v25: false,
             };
-            let (violations, _, _) = run_pipeline(&re_files, &re_errors, &reparser, &v6_only, &l1_ports, &wiring_config, &l1_allowed, &config.analysis.lineage.strict_directories, config.check_test_imports.unwrap_or(false), &config.wildcard_exceptions, &v21_config, Some(&cli.path));
+            let (violations, _, _) = run_pipeline(
+                &re_files,
+                &re_errors,
+                &reparser,
+                &v6_only,
+                &l1_ports,
+                &wiring_config,
+                &l1_allowed,
+                &config.analysis.lineage.strict_directories,
+                config.check_test_imports.unwrap_or(false),
+                &config.wildcard_exceptions,
+                &v21_config,
+                &semantic_levels,
+                Some(&cli.path),
+            );
             violations.iter().filter(|v| v.rule_id == "V6").count()
         };
 
         if !cli.quiet {
-            print!("{}", update_snapshot::format_results(&results, remaining_v6));
+            print!(
+                "{}",
+                update_snapshot::format_results(&results, remaining_v6)
+            );
         }
 
         if remaining_v6 > 0 {
@@ -465,29 +572,56 @@ fn main() {
 /// Selecciona parser por `file.language`. Linguagem não suportada →
 /// `ParseError::UnsupportedLanguage`. Zero lógica de negócio — pura composição.
 struct MultiParser {
-    rust: RustParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
-    ts:   TsParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
-    py:   PyParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
-    c:    CParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
-    cpp:  CppParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
-    zig:  ZigParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
-    go:   GoParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
-    java: JavaParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
-    elixir: ElixirParser<std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>, FsPromptSnapshotReader>,
+    rust: RustParser<
+        std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>,
+        FsPromptSnapshotReader,
+    >,
+    ts: TsParser<
+        std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>,
+        FsPromptSnapshotReader,
+    >,
+    py: PyParser<
+        std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>,
+        FsPromptSnapshotReader,
+    >,
+    c: CParser<
+        std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>,
+        FsPromptSnapshotReader,
+    >,
+    cpp: CppParser<
+        std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>,
+        FsPromptSnapshotReader,
+    >,
+    zig: ZigParser<
+        std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>,
+        FsPromptSnapshotReader,
+    >,
+    go: GoParser<
+        std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>,
+        FsPromptSnapshotReader,
+    >,
+    java: JavaParser<
+        std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>,
+        FsPromptSnapshotReader,
+    >,
+    elixir: ElixirParser<
+        std::sync::Arc<crystalline_lint::infra::prompt_reader::CachedPromptReader<FsPromptReader>>,
+        FsPromptSnapshotReader,
+    >,
 }
 
 impl LanguageParser for MultiParser {
     fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
         match file.language {
-            Language::Rust       => self.rust.parse(file),
+            Language::Rust => self.rust.parse(file),
             Language::TypeScript => self.ts.parse(file),
-            Language::Python     => self.py.parse(file),
-            Language::C          => self.c.parse(file),
-            Language::Cpp        => self.cpp.parse(file),
-            Language::Zig        => self.zig.parse(file),
-            Language::Go         => self.go.parse(file),
-            Language::Java       => self.java.parse(file),
-            Language::Elixir     => self.elixir.parse(file),
+            Language::Python => self.py.parse(file),
+            Language::C => self.c.parse(file),
+            Language::Cpp => self.cpp.parse(file),
+            Language::Zig => self.zig.parse(file),
+            Language::Go => self.go.parse(file),
+            Language::Java => self.java.parse(file),
+            Language::Elixir => self.elixir.parse(file),
             _ => Err(ParseError::UnsupportedLanguage {
                 path: file.path.clone(),
                 language: file.language.clone(),
@@ -495,7 +629,6 @@ impl LanguageParser for MultiParser {
         }
     }
 }
-
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -527,7 +660,10 @@ impl HashRewriter for L3HashRewriter {
 
     fn compute_hash(&self, prompt_path: &str) -> Option<String> {
         // Reuse hash calculation logic from FsPromptReader (with size limits)
-        FsPromptReader { nucleo_root: self.nucleo_root.clone() }.read_hash(prompt_path)
+        FsPromptReader {
+            nucleo_root: self.nucleo_root.clone(),
+        }
+        .read_hash(prompt_path)
     }
 
     fn compute_source_hash(&self, source_path: &Path) -> Option<String> {
@@ -552,8 +688,10 @@ struct L3SnapshotWriter {
 
 impl SnapshotRewriter for L3SnapshotWriter {
     fn serialize_snapshot(&self, interface: &PublicInterface<'_>) -> String {
-        FsPromptSnapshotReader { nucleo_root: self.nucleo_root.clone() }
-            .serialize_snapshot(interface)
+        FsPromptSnapshotReader {
+            nucleo_root: self.nucleo_root.clone(),
+        }
+        .serialize_snapshot(interface)
     }
 
     fn write_snapshot(&self, prompt_path: &str, snapshot: &str) -> Result<(), String> {
@@ -590,24 +728,40 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
     check_test_imports: bool,
     wildcard_exceptions: &HashMap<String, String>,
     v21_config: &crystalline_lint::rules::unsourced_constant::V21RuleConfig,
+    semantic_levels: &[ViolationLevel; 3],
     project_root: Option<&Path>,
 ) -> (Vec<Violation<'a>>, Vec<ParsedFile<'a>>, ProjectIndex<'a>) {
     // Fase Map ─────────────────────────────────────────────────────────────────
 
     // V0: unreadable files — Fatal, never silenced
-    let error_map = source_errors
-        .par_iter()
-        .map(|err| -> (Vec<Violation<'a>>, Option<ParsedFile<'a>>, LocalIndex<'a>) {
-            (vec![source_error_to_violation(err)], None, LocalIndex::from_source_error())
-        });
+    let error_map = source_errors.par_iter().map(
+        |err| -> (Vec<Violation<'a>>, Option<ParsedFile<'a>>, LocalIndex<'a>) {
+            (
+                vec![source_error_to_violation(err)],
+                None,
+                LocalIndex::from_source_error(),
+            )
+        },
+    );
 
     // V1–V20 per file
-    let file_map = source_files
-        .par_iter()
-        .map(|source_file| -> (Vec<Violation<'a>>, Option<ParsedFile<'a>>, LocalIndex<'a>) {
+    let file_map = source_files.par_iter().map(
+        |source_file| -> (Vec<Violation<'a>>, Option<ParsedFile<'a>>, LocalIndex<'a>) {
             match parser.parse(source_file) {
                 Ok(parsed) => {
-                    let violations = run_checks(&parsed, enabled, l1_ports, wiring_config, l1_allowed, strict_dirs, check_test_imports, wildcard_exceptions, v21_config, project_root);
+                    let violations = run_checks(
+                        &parsed,
+                        enabled,
+                        l1_ports,
+                        wiring_config,
+                        l1_allowed,
+                        strict_dirs,
+                        check_test_imports,
+                        wildcard_exceptions,
+                        v21_config,
+                        semantic_levels,
+                        project_root,
+                    );
                     let local = LocalIndex::from_parsed(&parsed);
                     (violations, Some(parsed), local)
                 }
@@ -617,7 +771,8 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
                     LocalIndex::from_parse_error(),
                 ),
             }
-        });
+        },
+    );
 
     // Fase Reduce ──────────────────────────────────────────────────────────────
     //
@@ -666,28 +821,78 @@ fn run_checks<'a>(
     check_test_imports: bool,
     wildcard_exceptions: &HashMap<String, String>,
     v21_config: &crystalline_lint::rules::unsourced_constant::V21RuleConfig,
+    semantic_levels: &[ViolationLevel; 3],
     project_root: Option<&Path>,
 ) -> Vec<Violation<'a>> {
     let mut violations = Vec::new();
     let l1_allowed_lang = l1_allowed.for_language(&file.language);
-    if enabled.v1  { violations.extend(prompt_header::check(file, strict_dirs)); }
-    if enabled.v2  { violations.extend(test_file::check(file)); }
-    if enabled.v3  { violations.extend(forbidden_import::check(file, check_test_imports)); }
-    if enabled.v4  { violations.extend(impure_core::check(file)); }
-    if enabled.v5  { violations.extend(prompt_drift::check(file)); }
-    if enabled.v6  { violations.extend(prompt_stale::check(file)); }
-    if enabled.v9  { violations.extend(pub_leak::check(file, l1_ports, check_test_imports)); }
-    if enabled.v10 { violations.extend(quarantine_leak::check(file)); }
-    if enabled.v12 { violations.extend(wiring_logic_leak::check(file, wiring_config)); }
-    if enabled.v13 { violations.extend(mutable_state_core::check(file)); }
-    if enabled.v14 { violations.extend(external_type_in_contract::check(file, l1_allowed_lang, check_test_imports)); }
-    if enabled.v15 { violations.extend(multi_prompt_header::check(file)); }
-    if enabled.v16 { violations.extend(wildcard_saturation::check(file, wildcard_exceptions)); }
-    if enabled.v17 { violations.extend(compound_guard::check(file)); }
-    if enabled.v18 { violations.extend(range_pattern::check(file)); }
-    if enabled.v19 { violations.extend(or_pattern_alternatives::check(file)); }
-    if enabled.v20 { violations.extend(deep_pattern_nesting::check(file)); }
-    if enabled.v21 { violations.extend(unsourced_constant::check(file, v21_config, project_root)); }
+    if enabled.v1 {
+        violations.extend(prompt_header::check(file, strict_dirs));
+    }
+    if enabled.v2 {
+        violations.extend(test_file::check(file));
+    }
+    if enabled.v3 {
+        violations.extend(forbidden_import::check(file, check_test_imports));
+    }
+    if enabled.v4 {
+        violations.extend(impure_core::check(file));
+    }
+    if enabled.v5 {
+        violations.extend(prompt_drift::check(file));
+    }
+    if enabled.v6 {
+        violations.extend(prompt_stale::check(file));
+    }
+    if enabled.v9 {
+        violations.extend(pub_leak::check(file, l1_ports, check_test_imports));
+    }
+    if enabled.v10 {
+        violations.extend(quarantine_leak::check(file));
+    }
+    if enabled.v12 {
+        violations.extend(wiring_logic_leak::check(file, wiring_config));
+    }
+    if enabled.v13 {
+        violations.extend(mutable_state_core::check(file));
+    }
+    if enabled.v14 {
+        violations.extend(external_type_in_contract::check(
+            file,
+            l1_allowed_lang,
+            check_test_imports,
+        ));
+    }
+    if enabled.v15 {
+        violations.extend(multi_prompt_header::check(file));
+    }
+    if enabled.v16 {
+        violations.extend(wildcard_saturation::check(file, wildcard_exceptions));
+    }
+    if enabled.v17 {
+        violations.extend(compound_guard::check(file));
+    }
+    if enabled.v18 {
+        violations.extend(range_pattern::check(file));
+    }
+    if enabled.v19 {
+        violations.extend(or_pattern_alternatives::check(file));
+    }
+    if enabled.v20 {
+        violations.extend(deep_pattern_nesting::check(file));
+    }
+    if enabled.v21 {
+        violations.extend(unsourced_constant::check(file, v21_config, project_root));
+    }
+    if enabled.v23 {
+        violations.extend(context_erasure::check(file, semantic_levels[0].clone()));
+    }
+    if enabled.v24 {
+        violations.extend(semantic_field_loss::check(file, semantic_levels[1].clone()));
+    }
+    if enabled.v25 {
+        violations.extend(decision_ownership::check(file, semantic_levels[2].clone()));
+    }
     violations
 }
 
@@ -712,23 +917,40 @@ fn source_error_to_violation(err: &SourceError) -> Violation<'static> {
 /// Converts a parse error into a `Violation<'static>`.
 fn parse_error_to_violation(err: ParseError) -> Violation<'static> {
     match err {
-        ParseError::SyntaxError { path, line, column, message } => Violation {
+        ParseError::SyntaxError {
+            path,
+            line,
+            column,
+            message,
+        } => Violation {
             rule_id: "PARSE".to_string(),
             level: ViolationLevel::Error,
             message: format!("Syntax error: {message}"),
-            location: Location { path: Cow::Owned(path), line, column },
+            location: Location {
+                path: Cow::Owned(path),
+                line,
+                column,
+            },
         },
         ParseError::UnsupportedLanguage { path, language } => Violation {
             rule_id: "PARSE".to_string(),
             level: ViolationLevel::Warning,
             message: format!("Unsupported language: {language:?}"),
-            location: Location { path: Cow::Owned(path), line: 0, column: 0 },
+            location: Location {
+                path: Cow::Owned(path),
+                line: 0,
+                column: 0,
+            },
         },
         ParseError::EmptySource { path } => Violation {
             rule_id: "PARSE".to_string(),
             level: ViolationLevel::Warning,
             message: "Empty source file skipped".to_string(),
-            location: Location { path: Cow::Owned(path), line: 0, column: 0 },
+            location: Location {
+                path: Cow::Owned(path),
+                line: 0,
+                column: 0,
+            },
         },
     }
 }

@@ -8,6 +8,12 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 ### Added
 
+- **V23 `ContextErasure`, V24 `SemanticFieldLoss` e V25 `DecisionOwnership`** —
+  contratos declarativos de preservação semântica (ADR-0018), com fatos AST genéricos,
+  seleção isolada, níveis configuráveis e catálogo SARIF. Sem contratos em
+  `crystalline.toml`, as regras permanecem silenciosas. Escopo inicial Rust e fluxo
+  intraprocedural limitado.
+
 - **V15 `MultiPromptHeader`** — arquivo `.rs` em L1–L4 com 2+ linhas
   `//! @prompt` no doc-header passa a ser **erro bloqueante de lint**.
   A regra de linhagem é um ficheiro, um prompt; com multi-`@prompt` o

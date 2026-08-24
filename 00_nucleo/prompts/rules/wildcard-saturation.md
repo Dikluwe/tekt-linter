@@ -1,5 +1,5 @@
 # Prompt L0 — Regra V16 `WildcardSaturation` (e família V17–V20: decisões mecânicas)
-Hash do Código: cdc0e043
+Hash do Código: d133f82e
 
 > Causalidade: este prompt é a origem de `01_core/rules/wildcard_saturation.rs`,
 > do trait `HasDecisionArms` em `01_core/entities/rule_traits.rs` e da extracção

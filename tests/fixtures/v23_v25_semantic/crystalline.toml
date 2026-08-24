@@ -1,0 +1,42 @@
+[layers]
+L0 = "00_nucleo"
+L1 = "01_core"
+L2 = "02_shell"
+L3 = "03_infra"
+L4 = "04_wiring"
+lab = "lab"
+
+[[semantic.context]]
+id = "rounded-radius"
+language = "rust"
+scopes = ["03_infra/semantic.rs::rounded"]
+sources = ["radii.*"]
+resolvers = [{ symbol = "resolve_pt", context_arg = 0 }]
+erasing_projections = ["abs"]
+sinks = ["rounded_rect"]
+absolute_sources = []
+
+[[semantic.projection]]
+id = "font-identity"
+language = "rust"
+scope = "03_infra/semantic.rs::font_identity"
+source = "style.variations"
+destination = "return.2"
+neutral_forms = ["default"]
+normalization = "preserve"
+
+[[semantic.decision]]
+id = "ssty-eligibility"
+language = "rust"
+owner = "03_infra/semantic.rs::ssty_owner"
+duplicate_owners = ["03_infra/semantic.rs::ssty_duplicate"]
+consumers = ["03_infra/semantic.rs::math_consumer"]
+explicit_sources = ["style.math"]
+proxies = ["contains(\"math\")"]
+canonicalizers = ["map_glyph"]
+resolved_after = ["03_infra/semantic.rs::downstream"]
+
+[rules]
+V23 = { level = "warning", languages = ["rust"] }
+V24 = { level = "warning", languages = ["rust"] }
+V25 = { level = "warning", languages = ["rust"] }

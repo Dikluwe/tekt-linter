@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/rust.md
-//! @prompt-hash a86e705a
+//! @prompt-hash dd76b81b
 //! @layer L3
 //! @updated 2026-06-09
 
@@ -19,8 +19,11 @@ use crate::entities::parsed_file::{
     Declaration, DeclarationKind, FunctionSignature, Import, ImportKind, ModuleDecl, ParsedFile,
     PromptHeader, PublicInterface, StaticDeclaration, Token, TokenKind, TypeKind, TypeSignature,
 };
-use crate::entities::rule_traits::{BodyForm, Citation, CitationKind, ConstantKind, DecisionArm, DecisionExpr, ScrutineeForm, SourceConstant};
-use crate::infra::config::CrystallineConfig;
+use crate::entities::rule_traits::{
+    BodyForm, Citation, CitationKind, ConstantKind, DecisionArm, DecisionExpr, ScrutineeForm,
+    SemanticObservation, SemanticObservationKind, SourceConstant,
+};
+use crate::infra::config::{CrystallineConfig, SemanticContractsConfig};
 use crate::infra::crate_registry::{CrateRegistry, MemberCrate};
 
 // ── RustParser ────────────────────────────────────────────────────────────────
@@ -40,14 +43,21 @@ impl<R: PromptReader, S: PromptSnapshotReader> RustParser<R, S> {
         config: CrystallineConfig,
         registry: CrateRegistry,
     ) -> Self {
-        Self { prompt_reader, snapshot_reader, config, registry }
+        Self {
+            prompt_reader,
+            snapshot_reader,
+            config,
+            registry,
+        }
     }
 }
 
 impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, S> {
     fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
         if file.content.is_empty() {
-            return Err(ParseError::EmptySource { path: file.path.clone() });
+            return Err(ParseError::EmptySource {
+                path: file.path.clone(),
+            });
         }
 
         if file.language != Language::Rust {
@@ -123,13 +133,12 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
             .and_then(|h| self.snapshot_reader.read_snapshot(h.prompt_path));
 
         // ── Declared traits (V11) ──────────────────────────────────────────
-        let declared_traits = if file.layer == Layer::L1
-            && path_contains_segment(file.path.as_path(), "contracts")
-        {
-            extract_declared_traits(root, source)
-        } else {
-            vec![]
-        };
+        let declared_traits =
+            if file.layer == Layer::L1 && path_contains_segment(file.path.as_path(), "contracts") {
+                extract_declared_traits(root, source)
+            } else {
+                vec![]
+            };
 
         // ── Implemented traits (V11) ───────────────────────────────────────
         let implemented_traits = if matches!(file.layer, Layer::L2 | Layer::L3) {
@@ -160,6 +169,10 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
         // ── Source constants (V21 — ADR-0016 / unsourced-constant.md) ────────
         let constants = extract_constants(root, source);
 
+        // ── Semantic preservation observations (V23–V25 — ADR-0018) ───────
+        let semantic_observations =
+            extract_semantic_observations(root, source, file.path.as_path(), &self.config.semantic);
+
         Ok(ParsedFile {
             path: file.path.as_path(),
             layer: file.layer.clone(),
@@ -180,6 +193,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
             module_decls,
             decision_exprs,
             constants,
+            semantic_observations,
         })
     }
 }
@@ -257,7 +271,16 @@ fn extract_imports<'a>(
     // segmento contra os imports já coletados: um crate visto por `use` E por caminho
     // inline não pode virar duas arestas (secção C). `seen` parte dos `use` emitidos.
     let mut seen: HashSet<String> = imports.iter().map(|i| first_segment(i.path)).collect();
-    collect_path_refs(root, source, config, registry, owner, false, &mut seen, &mut imports);
+    collect_path_refs(
+        root,
+        source,
+        config,
+        registry,
+        owner,
+        false,
+        &mut seen,
+        &mut imports,
+    );
 
     imports
 }
@@ -326,13 +349,24 @@ fn collect_path_refs<'a>(
         // (`a::b` dentro de `a::b::c`) reincidem no mesmo 1º segmento → dedup os absorve.
         "scoped_identifier" | "scoped_type_identifier" => {
             let line = node.start_position().row + 1;
-            try_emit_path_ref(node_text(node, source), line, config, registry, owner, cfg_test, seen, imports);
+            try_emit_path_ref(
+                node_text(node, source),
+                line,
+                config,
+                registry,
+                owner,
+                cfg_test,
+                seen,
+                imports,
+            );
         }
         // Parte B — atributo/macro: conteúdo vem como `token_tree`; varrer por
         // sequências `ident :: ident`. Limite honesto: caminhos gerados DENTRO do
         // corpo de uma macro que a grammar não estrutura ficam invisíveis (residual).
         "token_tree" => {
-            scan_token_tree(node, source, config, registry, owner, cfg_test, seen, imports);
+            scan_token_tree(
+                node, source, config, registry, owner, cfg_test, seen, imports,
+            );
         }
         _ => {}
     }
@@ -340,7 +374,9 @@ fn collect_path_refs<'a>(
     // O escopo de teste de cada filho é decidido pelos atributos `#[cfg(test)]`
     // irmãos (0061), não herdado em bloco — ver `for_each_child_in_test_scope`.
     for_each_child_in_test_scope(node, source, cfg_test, |child, child_cfg| {
-        collect_path_refs(child, source, config, registry, owner, child_cfg, seen, imports);
+        collect_path_refs(
+            child, source, config, registry, owner, child_cfg, seen, imports,
+        );
     });
 }
 
@@ -379,7 +415,14 @@ fn try_emit_path_ref<'a>(
     if let ImportClass::Resolved(target_layer) = classify_import(path, config, registry, owner) {
         let target_subdir = resolve_subdir(path, config, &target_layer);
         seen.insert(key);
-        imports.push(Import { path, line, kind: ImportKind::Direct, target_layer, target_subdir, is_test_origin: cfg_test });
+        imports.push(Import {
+            path,
+            line,
+            kind: ImportKind::Direct,
+            target_layer,
+            target_subdir,
+            is_test_origin: cfg_test,
+        });
     }
 }
 
@@ -414,7 +457,16 @@ fn scan_token_tree<'a>(
         let prev_is_colon = i > 0 && node.child(i - 1).map(|c| c.kind() == "::").unwrap_or(false);
         if next_is_colon && !prev_is_colon {
             let line = child.start_position().row + 1;
-            try_emit_path_ref(node_text(child, source), line, config, registry, owner, cfg_test, seen, imports);
+            try_emit_path_ref(
+                node_text(child, source),
+                line,
+                config,
+                registry,
+                owner,
+                cfg_test,
+                seen,
+                imports,
+            );
         }
     }
 }
@@ -443,9 +495,18 @@ fn collect_imports<'a>(
             };
             // Item local (ex.: `use EnumLocal::*`) não é import inter-crate/externo
             // — não emitir Import. O falso positivo do V14 (`Kind`) some sem tocar a regra.
-            if let ImportClass::Resolved(target_layer) = classify_import(path, config, registry, owner) {
+            if let ImportClass::Resolved(target_layer) =
+                classify_import(path, config, registry, owner)
+            {
                 let target_subdir = resolve_subdir(path, config, &target_layer);
-                imports.push(Import { path, line, kind, target_layer, target_subdir, is_test_origin: cfg_test });
+                imports.push(Import {
+                    path,
+                    line,
+                    kind,
+                    target_layer,
+                    target_subdir,
+                    is_test_origin: cfg_test,
+                });
             }
         }
         "extern_crate_declaration" => {
@@ -455,9 +516,18 @@ fn collect_imports<'a>(
                 .trim_start_matches("extern crate ")
                 .trim_end_matches(';')
                 .trim();
-            if let ImportClass::Resolved(target_layer) = classify_import(path, config, registry, owner) {
+            if let ImportClass::Resolved(target_layer) =
+                classify_import(path, config, registry, owner)
+            {
                 let target_subdir = resolve_subdir(path, config, &target_layer);
-                imports.push(Import { path, line, kind: ImportKind::Direct, target_layer, target_subdir, is_test_origin: cfg_test });
+                imports.push(Import {
+                    path,
+                    line,
+                    kind: ImportKind::Direct,
+                    target_layer,
+                    target_subdir,
+                    is_test_origin: cfg_test,
+                });
             }
         }
         _ => {}
@@ -554,7 +624,11 @@ fn classify_import(
     if let Some(o) = owner {
         if o.name == seg {
             let by_module = module_layer(p, config);
-            let layer = if by_module == Layer::Unknown { o.layer.clone() } else { by_module };
+            let layer = if by_module == Layer::Unknown {
+                o.layer.clone()
+            } else {
+                by_module
+            };
             return ImportClass::Resolved(layer);
         }
     }
@@ -661,7 +735,11 @@ fn extract_public_interface<'a>(root: Node, source: &'a [u8]) -> PublicInterface
         }
     }
 
-    PublicInterface { functions, types, reexports }
+    PublicInterface {
+        functions,
+        types,
+        reexports,
+    }
 }
 
 fn is_pub_item(node: Node, source: &[u8]) -> bool {
@@ -679,7 +757,9 @@ fn is_pub_item(node: Node, source: &[u8]) -> bool {
 }
 
 fn extract_fn_sig<'a>(node: Node, source: &'a [u8]) -> Option<FunctionSignature<'a>> {
-    let name = node.child_by_field_name("name").map(|n| node_text(n, source))?;
+    let name = node
+        .child_by_field_name("name")
+        .map(|n| node_text(n, source))?;
 
     let params = node
         .child_by_field_name("parameters")
@@ -690,7 +770,11 @@ fn extract_fn_sig<'a>(node: Node, source: &'a [u8]) -> Option<FunctionSignature<
         .child_by_field_name("return_type")
         .map(|rt| node_text(rt, source).trim_start_matches("->").trim());
 
-    Some(FunctionSignature { name, params, return_type })
+    Some(FunctionSignature {
+        name,
+        params,
+        return_type,
+    })
 }
 
 fn extract_param_types<'a>(params_node: Node, source: &'a [u8]) -> Vec<&'a str> {
@@ -707,12 +791,10 @@ fn extract_param_types<'a>(params_node: Node, source: &'a [u8]) -> Vec<&'a str> 
     result
 }
 
-fn extract_type_sig<'a>(
-    node: Node,
-    source: &'a [u8],
-    kind: TypeKind,
-) -> Option<TypeSignature<'a>> {
-    let name = node.child_by_field_name("name").map(|n| node_text(n, source))?;
+fn extract_type_sig<'a>(node: Node, source: &'a [u8], kind: TypeKind) -> Option<TypeSignature<'a>> {
+    let name = node
+        .child_by_field_name("name")
+        .map(|n| node_text(n, source))?;
 
     let members = match &kind {
         TypeKind::Struct => node
@@ -732,7 +814,11 @@ fn extract_type_sig<'a>(
         TypeKind::Class | TypeKind::Interface | TypeKind::TypeAlias => vec![],
     };
 
-    Some(TypeSignature { name, kind, members })
+    Some(TypeSignature {
+        name,
+        kind,
+        members,
+    })
 }
 
 fn extract_named_children<'a>(body: Node, source: &'a [u8], item_kind: &str) -> Vec<&'a str> {
@@ -844,8 +930,7 @@ fn has_impl_with_functions(node: Node, _source: &[u8]) -> bool {
                 if child.kind() == "declaration_list" {
                     for j in 0..child.child_count() {
                         if let Some(item) = child.child(j) {
-                            if item.kind() == "function_item"
-                                && node_has_child_kind(item, "block")
+                            if item.kind() == "function_item" && node_has_child_kind(item, "block")
                             {
                                 return true;
                             }
@@ -869,7 +954,8 @@ fn has_impl_with_functions(node: Node, _source: &[u8]) -> bool {
 
 /// Returns true if any component of `path` equals `segment` exactly.
 fn path_contains_segment(path: &std::path::Path, segment: &str) -> bool {
-    path.components().any(|c| c.as_os_str().to_str().unwrap_or("") == segment)
+    path.components()
+        .any(|c| c.as_os_str().to_str().unwrap_or("") == segment)
 }
 
 /// Returns the last `::` segment of a trait path, stripping generic params.
@@ -1058,7 +1144,12 @@ fn extract_static_declarations<'a>(root: Node, source: &'a [u8]) -> Vec<StaticDe
                     .unwrap_or("");
                 let line = node.start_position().row + 1;
                 if !name.is_empty() {
-                    decls.push(StaticDeclaration { name, type_text, is_mut, line });
+                    decls.push(StaticDeclaration {
+                        name,
+                        type_text,
+                        is_mut,
+                        line,
+                    });
                 }
             }
         }
@@ -1094,7 +1185,11 @@ fn collect_module_decls<'a>(
             .trim_end_matches(';')
             .trim();
         if !name.is_empty() {
-            decls.push(ModuleDecl { name, target_layer: file_layer.clone(), line });
+            decls.push(ModuleDecl {
+                name,
+                target_layer: file_layer.clone(),
+                line,
+            });
         }
     }
 
@@ -1147,7 +1242,6 @@ fn find_first_error_pos(node: Node) -> (usize, usize) {
     (1, 0) // linha 1 como fallback mínimo — nunca reportar linha 0
 }
 
-
 // ── Decision Expressions Extraction (ADR-0016) ────────────────────────────────
 
 fn extract_decision_exprs<'a>(root: Node, source: &'a [u8]) -> Vec<DecisionExpr<'a>> {
@@ -1177,7 +1271,11 @@ fn parse_match_expression<'a>(node: Node, source: &'a [u8]) -> Option<DecisionEx
     for child in node.children(&mut cursor) {
         if child.kind() == "match_block" {
             block_node = Some(child);
-        } else if child.kind() != "match" && child.is_named() && scrutinee_node.is_none() && block_node.is_none() {
+        } else if child.kind() != "match"
+            && child.is_named()
+            && scrutinee_node.is_none()
+            && block_node.is_none()
+        {
             scrutinee_node = Some(child);
         }
     }
@@ -1185,7 +1283,10 @@ fn parse_match_expression<'a>(node: Node, source: &'a [u8]) -> Option<DecisionEx
     let scrutinee = scrutinee_node?;
     let block = block_node?;
 
-    let snippet_scrutinee = std::str::from_utf8(&source[scrutinee.start_byte()..scrutinee.end_byte()]).ok()?.trim();
+    let snippet_scrutinee =
+        std::str::from_utf8(&source[scrutinee.start_byte()..scrutinee.end_byte()])
+            .ok()?
+            .trim();
     let scrutinee_form = classify_scrutinee(scrutinee, source);
     let span_pos = node.start_position();
 
@@ -1224,9 +1325,8 @@ fn classify_scrutinee(node: Node, _source: &[u8]) -> ScrutineeForm {
         "index_expression" => ScrutineeForm::Index,
         "tuple_expression" => ScrutineeForm::Tuple,
         "identifier" | "scoped_identifier" => ScrutineeForm::Path,
-        "integer_literal" | "float_literal" | "string_literal" | "char_literal" | "boolean_literal" => {
-            ScrutineeForm::Literal
-        }
+        "integer_literal" | "float_literal" | "string_literal" | "char_literal"
+        | "boolean_literal" => ScrutineeForm::Literal,
         _ => ScrutineeForm::Other,
     }
 }
@@ -1282,7 +1382,12 @@ fn parse_match_arm<'a>(node: Node, source: &'a [u8]) -> Option<DecisionArm<'a>> 
     };
 
     let mut qualified_prefixes = Vec::new();
-    extract_prefixes_from_pattern(match_pattern, pattern_end_byte, source, &mut qualified_prefixes);
+    extract_prefixes_from_pattern(
+        match_pattern,
+        pattern_end_byte,
+        source,
+        &mut qualified_prefixes,
+    );
 
     let has_guard = has_if;
     let guard_is_compound = if let Some(g) = guard_node {
@@ -1328,7 +1433,8 @@ fn check_is_catchall(match_pattern: Node, limit_byte: usize, source: &[u8]) -> b
         match child.kind() {
             "_" => return true,
             "identifier" => {
-                let name = std::str::from_utf8(&source[child.start_byte()..child.end_byte()]).unwrap_or("");
+                let name = std::str::from_utf8(&source[child.start_byte()..child.end_byte()])
+                    .unwrap_or("");
                 // In Rust, uppercase identifiers are likely unit struct patterns; lowercase/single ident are catchalls
                 if !name.is_empty() {
                     return true;
@@ -1340,7 +1446,11 @@ fn check_is_catchall(match_pattern: Node, limit_byte: usize, source: &[u8]) -> b
     false
 }
 
-fn get_catchall_ident<'a>(match_pattern: Node, limit_byte: usize, source: &'a [u8]) -> Option<&'a str> {
+fn get_catchall_ident<'a>(
+    match_pattern: Node,
+    limit_byte: usize,
+    source: &'a [u8],
+) -> Option<&'a str> {
     let mut cursor = match_pattern.walk();
     for child in match_pattern.children(&mut cursor) {
         if child.end_byte() > limit_byte {
@@ -1373,7 +1483,12 @@ fn has_ident_in_node(node: Node, ident: &str, source: &[u8]) -> bool {
     false
 }
 
-fn extract_prefixes_from_pattern<'a>(node: Node, limit_byte: usize, source: &'a [u8], prefixes: &mut Vec<&'a str>) {
+fn extract_prefixes_from_pattern<'a>(
+    node: Node,
+    limit_byte: usize,
+    source: &'a [u8],
+    prefixes: &mut Vec<&'a str>,
+) {
     if node.start_byte() >= limit_byte {
         return;
     }
@@ -1438,11 +1553,19 @@ fn measure_pattern_depth(node: Node, limit_byte: usize) -> u8 {
         return 0;
     }
     match node.kind() {
-        "tuple_struct_pattern" | "struct_pattern" | "tuple_pattern" | "slice_pattern" | "reference_pattern" => {
+        "tuple_struct_pattern"
+        | "struct_pattern"
+        | "tuple_pattern"
+        | "slice_pattern"
+        | "reference_pattern" => {
             let mut max_child_depth = 0;
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
-                if child.is_named() && child.kind() != "type_identifier" && child.kind() != "identifier" && child.kind() != "scoped_identifier" {
+                if child.is_named()
+                    && child.kind() != "type_identifier"
+                    && child.kind() != "identifier"
+                    && child.kind() != "scoped_identifier"
+                {
                     let d = measure_pattern_depth(child, limit_byte);
                     if d > max_child_depth {
                         max_child_depth = d;
@@ -1500,7 +1623,9 @@ fn count_or_alternatives(node: Node, limit_byte: usize) -> u16 {
 }
 
 fn classify_body(node: Node, source: &[u8]) -> BodyForm {
-    let text = std::str::from_utf8(&source[node.start_byte()..node.end_byte()]).unwrap_or("").trim();
+    let text = std::str::from_utf8(&source[node.start_byte()..node.end_byte()])
+        .unwrap_or("")
+        .trim();
 
     // Check for error barriers across expressions
     if text.starts_with("return Err")
@@ -1524,9 +1649,7 @@ fn classify_body(node: Node, source: &[u8]) -> BodyForm {
                 "panic" | "unreachable" | "bail" | "todo" | "unimplemented" | "compile_error" => {
                     BodyForm::ErrorBarrier
                 }
-                "format" | "format_args" | "write" | "writeln" => {
-                    BodyForm::MessageProducer
-                }
+                "format" | "format_args" | "write" | "writeln" => BodyForm::MessageProducer,
                 "vec" => {
                     let clean = text.replace(' ', "");
                     if clean == "vec![]" || clean == "vec!()" {
@@ -1566,7 +1689,12 @@ fn classify_body(node: Node, source: &[u8]) -> BodyForm {
         "identifier" => {
             if text == "None" {
                 BodyForm::LiteralNeutral
-            } else if text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+            } else if text
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false)
+            {
                 BodyForm::EnumPath
             } else {
                 BodyForm::Other
@@ -1634,7 +1762,10 @@ fn classify_body(node: Node, source: &[u8]) -> BodyForm {
             } else {
                 let last = named_children.last().unwrap();
                 let last_form = classify_body(*last, source);
-                if matches!(last_form, BodyForm::ErrorBarrier | BodyForm::MessageProducer) {
+                if matches!(
+                    last_form,
+                    BodyForm::ErrorBarrier | BodyForm::MessageProducer
+                ) {
                     last_form
                 } else {
                     BodyForm::Other
@@ -1669,7 +1800,8 @@ fn get_macro_name(node: Node, source: &[u8]) -> String {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "identifier" || child.kind() == "scoped_identifier" {
-            let raw = std::str::from_utf8(&source[child.start_byte()..child.end_byte()]).unwrap_or("");
+            let raw =
+                std::str::from_utf8(&source[child.start_byte()..child.end_byte()]).unwrap_or("");
             if let Some(idx) = raw.rfind("::") {
                 return raw[idx + 2..].to_string();
             }
@@ -1679,12 +1811,367 @@ fn get_macro_name(node: Node, source: &[u8]) -> String {
     String::new()
 }
 
+// ── Semantic preservation observations (V23–V25 — ADR-0018) ─────────────────
+
+fn extract_semantic_observations(
+    root: Node,
+    source: &[u8],
+    path: &std::path::Path,
+    contracts: &SemanticContractsConfig,
+) -> Vec<SemanticObservation> {
+    if contracts.context.is_empty()
+        && contracts.projection.is_empty()
+        && contracts.decision.is_empty()
+    {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    collect_semantic_functions(root, source, path, contracts, &mut out);
+    out
+}
+
+fn collect_semantic_functions(
+    node: Node,
+    source: &[u8],
+    path: &std::path::Path,
+    contracts: &SemanticContractsConfig,
+    out: &mut Vec<SemanticObservation>,
+) {
+    if node.kind() == "function_item" {
+        analyze_semantic_function(node, source, path, contracts, out);
+        return;
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        collect_semantic_functions(child, source, path, contracts, out);
+    }
+}
+
+fn analyze_semantic_function(
+    function: Node,
+    source: &[u8],
+    path: &std::path::Path,
+    contracts: &SemanticContractsConfig,
+    out: &mut Vec<SemanticObservation>,
+) {
+    let Some(name_node) = function.child_by_field_name("name") else {
+        return;
+    };
+    let Ok(name) = name_node.utf8_text(source) else {
+        return;
+    };
+    let path_text = path.to_string_lossy().replace('\\', "/");
+    let scope = format!("{path_text}::{name}");
+    let Some(body) = function.child_by_field_name("body") else {
+        return;
+    };
+    let body_text = body.utf8_text(source).unwrap_or("");
+
+    for contract in &contracts.context {
+        if !rust_contract(&contract.language)
+            || !contract
+                .scopes
+                .iter()
+                .any(|candidate| scope_matches(candidate, &scope))
+        {
+            continue;
+        }
+        let sink_present = contract
+            .sinks
+            .iter()
+            .any(|sink| sink == name || body_text.contains(sink) || sink == "$return");
+        if sink_present {
+            collect_context_observations(body, source, contract, out);
+        }
+    }
+
+    for contract in &contracts.projection {
+        if !rust_contract(&contract.language)
+            || !scope_matches(&contract.scope, &scope)
+            || contract.normalization != "preserve"
+        {
+            continue;
+        }
+        if let Some(slot) = contract
+            .destination
+            .strip_prefix("return.")
+            .and_then(|value| value.parse::<usize>().ok())
+        {
+            collect_projection_observations(body, source, contract, slot, out);
+        }
+    }
+
+    for contract in &contracts.decision {
+        if !rust_contract(&contract.language) {
+            continue;
+        }
+        if contract
+            .duplicate_owners
+            .iter()
+            .any(|candidate| scope_matches(candidate, &scope))
+        {
+            out.push(SemanticObservation {
+                contract_id: contract.id.clone(),
+                kind: SemanticObservationKind::DuplicateDecisionOwner,
+                detail: format!(
+                    "segundo owner `{scope}`; owner canônico `{}`",
+                    contract.owner
+                ),
+                line: function.start_position().row + 1,
+                column: function.start_position().column,
+            });
+        }
+        if contract
+            .consumers
+            .iter()
+            .any(|candidate| scope_matches(candidate, &scope))
+        {
+            collect_proxy_observations(body, source, contract, out);
+        }
+        if contract
+            .resolved_after
+            .iter()
+            .any(|candidate| scope_matches(candidate, &scope))
+        {
+            collect_canonicalizer_observations(body, source, contract, out);
+        }
+    }
+}
+
+fn rust_contract(language: &str) -> bool {
+    language.is_empty() || language.eq_ignore_ascii_case("rust")
+}
+
+fn scope_matches(pattern: &str, scope: &str) -> bool {
+    let pattern = pattern.replace('\\', "/");
+    if let Some(prefix) = pattern.strip_suffix("::*") {
+        return scope.contains(prefix);
+    }
+    scope == pattern || scope.ends_with(&pattern)
+}
+
+fn selector_matches(pattern: &str, value: &str) -> bool {
+    if let Some(prefix) = pattern.strip_suffix(".*") {
+        value == prefix || value.starts_with(&format!("{prefix}."))
+    } else {
+        value == pattern || value.starts_with(&format!("{pattern}."))
+    }
+}
+
+fn is_zero_context(text: &str) -> bool {
+    let normalized = text
+        .trim()
+        .trim_end_matches(|c: char| c.is_ascii_alphabetic() || c == '_');
+    normalized
+        .parse::<f64>()
+        .map(|value| value == 0.0)
+        .unwrap_or(false)
+}
+
+fn collect_context_observations(
+    node: Node,
+    source: &[u8],
+    contract: &crate::infra::config::ContextSemanticContract,
+    out: &mut Vec<SemanticObservation>,
+) {
+    if node.kind() == "call_expression" {
+        if let (Some(function), Some(arguments)) = (
+            node.child_by_field_name("function"),
+            node.child_by_field_name("arguments"),
+        ) {
+            let function_text = function.utf8_text(source).unwrap_or("");
+            let receiver = function
+                .child_by_field_name("value")
+                .and_then(|value| value.utf8_text(source).ok())
+                .unwrap_or("");
+            for resolver in &contract.resolvers {
+                let symbol_match = function_text == resolver.symbol
+                    || function_text.ends_with(&format!(".{}", resolver.symbol))
+                    || function_text.ends_with(&format!("::{}", resolver.symbol));
+                let source_match = contract
+                    .sources
+                    .iter()
+                    .any(|source_pattern| selector_matches(source_pattern, receiver));
+                let absolute = contract
+                    .absolute_sources
+                    .iter()
+                    .any(|source_pattern| selector_matches(source_pattern, receiver));
+                if symbol_match && source_match && !absolute {
+                    if let Some(argument) = arguments.named_child(resolver.context_arg) {
+                        let arg_text = argument.utf8_text(source).unwrap_or("");
+                        if is_zero_context(arg_text) {
+                            out.push(SemanticObservation {
+                                contract_id: contract.id.clone(),
+                                kind: SemanticObservationKind::ContextNeutralArgument,
+                                detail: format!(
+                                    "`{receiver}` resolvido por `{}` com contexto `{arg_text}`",
+                                    resolver.symbol
+                                ),
+                                line: node.start_position().row + 1,
+                                column: node.start_position().column,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    } else if node.kind() == "field_expression" {
+        if let (Some(value), Some(field)) = (
+            node.child_by_field_name("value"),
+            node.child_by_field_name("field"),
+        ) {
+            let receiver = value.utf8_text(source).unwrap_or("");
+            let field_text = field.utf8_text(source).unwrap_or("");
+            let source_match = contract
+                .sources
+                .iter()
+                .any(|source_pattern| selector_matches(source_pattern, receiver));
+            if source_match
+                && contract
+                    .erasing_projections
+                    .iter()
+                    .any(|projection| projection == field_text)
+            {
+                out.push(SemanticObservation {
+                    contract_id: contract.id.clone(),
+                    kind: SemanticObservationKind::ContextErasingProjection,
+                    detail: format!("projeção `{field_text}` apaga contexto de `{receiver}`"),
+                    line: node.start_position().row + 1,
+                    column: node.start_position().column,
+                });
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        collect_context_observations(child, source, contract, out);
+    }
+}
+
+fn collect_projection_observations(
+    node: Node,
+    source: &[u8],
+    contract: &crate::infra::config::ProjectionSemanticContract,
+    slot: usize,
+    out: &mut Vec<SemanticObservation>,
+) {
+    if node.kind() == "tuple_expression" {
+        if let Some(destination) = node.named_child(slot) {
+            let text = destination.utf8_text(source).unwrap_or("");
+            let depends_on_source = text.contains(&contract.source);
+            let neutral = contract
+                .neutral_forms
+                .iter()
+                .any(|form| match form.as_str() {
+                    "default" => text.contains("default()"),
+                    "none" => text.trim() == "None",
+                    "zero" => is_zero_context(text),
+                    other => text.trim() == other,
+                });
+            if neutral && !depends_on_source {
+                out.push(SemanticObservation {
+                    contract_id: contract.id.clone(),
+                    kind: SemanticObservationKind::NeutralProjectionDestination,
+                    detail: format!(
+                        "`{}` não alcança `{}`; destino neutro `{}`",
+                        contract.source,
+                        contract.destination,
+                        text.trim()
+                    ),
+                    line: destination.start_position().row + 1,
+                    column: destination.start_position().column,
+                });
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        collect_projection_observations(child, source, contract, slot, out);
+    }
+}
+
+fn collect_proxy_observations(
+    node: Node,
+    source: &[u8],
+    contract: &crate::infra::config::DecisionSemanticContract,
+    out: &mut Vec<SemanticObservation>,
+) {
+    if node.kind() == "binary_expression" {
+        let text = node.utf8_text(source).unwrap_or("");
+        let explicit = contract
+            .explicit_sources
+            .iter()
+            .any(|value| text.contains(value));
+        let proxy = contract
+            .proxies
+            .iter()
+            .find(|value| text.contains(value.as_str()));
+        if text.contains("||") && explicit {
+            if let Some(proxy) = proxy {
+                out.push(SemanticObservation {
+                    contract_id: contract.id.clone(),
+                    kind: SemanticObservationKind::DecisionProxyReentry,
+                    detail: format!("consumidor recombina decisão explícita com proxy `{proxy}`"),
+                    line: node.start_position().row + 1,
+                    column: node.start_position().column,
+                });
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        collect_proxy_observations(child, source, contract, out);
+    }
+}
+
+fn collect_canonicalizer_observations(
+    node: Node,
+    source: &[u8],
+    contract: &crate::infra::config::DecisionSemanticContract,
+    out: &mut Vec<SemanticObservation>,
+) {
+    if node.kind() == "call_expression" {
+        if let Some(function) = node.child_by_field_name("function") {
+            let text = function.utf8_text(source).unwrap_or("");
+            if let Some(symbol) = contract
+                .canonicalizers
+                .iter()
+                .find(|symbol| text == symbol.as_str() || text.ends_with(&format!("::{}", symbol)))
+            {
+                out.push(SemanticObservation {
+                    contract_id: contract.id.clone(),
+                    kind: SemanticObservationKind::CanonicalizerReentry,
+                    detail: format!("canonicalizador `{symbol}` reexecutado após marco resolvido"),
+                    line: node.start_position().row + 1,
+                    column: node.start_position().column,
+                });
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        collect_canonicalizer_observations(child, source, contract, out);
+    }
+}
+
 // ── Source Constants Extraction (V21/V22 — Passo 0066) ─────────────────────────
 
 fn extract_constants<'a>(root: Node, source: &'a [u8]) -> Vec<SourceConstant<'a>> {
     let citations = extract_citations(source);
     let mut constants = Vec::new();
-    collect_constants(root, source, &citations, false, None, false, false, false, None, None, &mut constants);
+    collect_constants(
+        root,
+        source,
+        &citations,
+        false,
+        None,
+        false,
+        false,
+        false,
+        None,
+        None,
+        &mut constants,
+    );
     constants
 }
 
@@ -1705,56 +2192,96 @@ fn extract_citations<'a>(source: &'a [u8]) -> std::collections::HashMap<usize, C
             if let Some(idx_ref) = c_trimmed.find("ref:") {
                 let rest = c_trimmed[idx_ref + 4..].trim();
                 if let Some((path, line_part)) = rest.split_once(':') {
-                    let line_digits: String = line_part.chars().take_while(|c| c.is_ascii_digit()).collect();
+                    let line_digits: String = line_part
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit())
+                        .collect();
                     if let Ok(l) = line_digits.parse::<usize>() {
-                        citations.insert(line_num, Citation {
-                            kind: CitationKind::Ref { path: path.trim(), line: l },
-                            raw: trimmed,
-                            line: line_num,
-                        });
+                        citations.insert(
+                            line_num,
+                            Citation {
+                                kind: CitationKind::Ref {
+                                    path: path.trim(),
+                                    line: l,
+                                },
+                                raw: trimmed,
+                                line: line_num,
+                            },
+                        );
                         continue;
                     }
                 }
             }
             if let Some(idx_spec) = c_trimmed.find("spec:") {
                 let rest = c_trimmed[idx_spec + 5..].trim();
-                citations.insert(line_num, Citation {
-                    kind: CitationKind::Spec(rest),
-                    raw: trimmed,
-                    line: line_num,
-                });
+                citations.insert(
+                    line_num,
+                    Citation {
+                        kind: CitationKind::Spec(rest),
+                        raw: trimmed,
+                        line: line_num,
+                    },
+                );
                 continue;
             }
             if let Some(idx_rat) = c_trimmed.find("rationale:") {
                 let rest = c_trimmed[idx_rat + 10..].trim();
-                citations.insert(line_num, Citation {
-                    kind: CitationKind::Rationale(rest),
-                    raw: trimmed,
-                    line: line_num,
-                });
+                citations.insert(
+                    line_num,
+                    Citation {
+                        kind: CitationKind::Rationale(rest),
+                        raw: trimmed,
+                        line: line_num,
+                    },
+                );
                 continue;
             }
 
             // 2. Detecção de file:line em qualquer ponto do comentário
             // Tokens separados por espaços, parênteses, colchetes, vírgulas, travessão
             let mut found_ref = false;
-            for token in c_trimmed.split(|c: char| c.is_whitespace() || c == '(' || c == ')' || c == '[' || c == ']' || c == '—' || c == ',' || c == '|' || c == ';') {
+            for token in c_trimmed.split(|c: char| {
+                c.is_whitespace()
+                    || c == '('
+                    || c == ')'
+                    || c == '['
+                    || c == ']'
+                    || c == '—'
+                    || c == ','
+                    || c == '|'
+                    || c == ';'
+            }) {
                 if token.is_empty() {
                     continue;
                 }
                 if let Some((path, line_part)) = token.split_once(':') {
-                    let line_digits: String = line_part.chars().take_while(|c| c.is_ascii_digit()).collect();
+                    let line_digits: String = line_part
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit())
+                        .collect();
                     if let Ok(l) = line_digits.parse::<usize>() {
-                        let exts = [".rs", ".md", ".typ", ".toml", ".c", ".h", ".cpp", ".py", ".ts", ".txt", ".js"];
+                        let exts = [
+                            ".rs", ".md", ".typ", ".toml", ".c", ".h", ".cpp", ".py", ".ts",
+                            ".txt", ".js",
+                        ];
                         let has_ext = exts.iter().any(|ext| path.ends_with(ext));
                         let has_slash = path.contains('/');
-                        let is_known_stem = path.contains("resolve") || path.contains("container") || path.contains("layout") || path.contains("math");
+                        let is_known_stem = path.contains("resolve")
+                            || path.contains("container")
+                            || path.contains("layout")
+                            || path.contains("math");
                         if has_ext || has_slash || is_known_stem {
-                            citations.insert(line_num, Citation {
-                                kind: CitationKind::Ref { path: path.trim(), line: l },
-                                raw: trimmed,
-                                line: line_num,
-                            });
+                            citations.insert(
+                                line_num,
+                                Citation {
+                                    kind: CitationKind::Ref {
+                                        path: path.trim(),
+                                        line: l,
+                                    },
+                                    raw: trimmed,
+                                    line: line_num,
+                                },
+                            );
                             found_ref = true;
                             break;
                         }
@@ -1771,11 +2298,14 @@ fn extract_citations<'a>(source: &'a [u8]) -> std::collections::HashMap<usize, C
                 w.starts_with('P') && w.len() >= 2 && w[1..].chars().all(|c| c.is_ascii_digit())
             });
             if contains_step {
-                citations.insert(line_num, Citation {
-                    kind: CitationKind::Spec(c_trimmed),
-                    raw: trimmed,
-                    line: line_num,
-                });
+                citations.insert(
+                    line_num,
+                    Citation {
+                        kind: CitationKind::Spec(c_trimmed),
+                        raw: trimmed,
+                        line: line_num,
+                    },
+                );
             }
         }
     }
@@ -1919,18 +2449,68 @@ fn collect_constants<'a>(
 
             if let (Some(_operator), Some(l_node), Some(r_node)) = (op, left, right) {
                 // Checa se um dos lados é literal numérico e o outro é identificador/campo
-                let l_is_lit = l_node.kind() == "integer_literal" || l_node.kind() == "float_literal";
-                let r_is_lit = r_node.kind() == "integer_literal" || r_node.kind() == "float_literal";
+                let l_is_lit =
+                    l_node.kind() == "integer_literal" || l_node.kind() == "float_literal";
+                let r_is_lit =
+                    r_node.kind() == "integer_literal" || r_node.kind() == "float_literal";
 
                 if l_is_lit && !r_is_lit {
                     let var_name = node_text(r_node, source).trim().to_string();
-                    collect_constants(l_node, source, citations, cfg_test, fn_return_type, in_fn_body, in_pattern, in_data_table, current_sink.clone(), Some(var_name), acc);
-                    collect_constants(r_node, source, citations, cfg_test, fn_return_type, in_fn_body, in_pattern, in_data_table, current_sink.clone(), None, acc);
+                    collect_constants(
+                        l_node,
+                        source,
+                        citations,
+                        cfg_test,
+                        fn_return_type,
+                        in_fn_body,
+                        in_pattern,
+                        in_data_table,
+                        current_sink.clone(),
+                        Some(var_name),
+                        acc,
+                    );
+                    collect_constants(
+                        r_node,
+                        source,
+                        citations,
+                        cfg_test,
+                        fn_return_type,
+                        in_fn_body,
+                        in_pattern,
+                        in_data_table,
+                        current_sink.clone(),
+                        None,
+                        acc,
+                    );
                     return;
                 } else if r_is_lit && !l_is_lit {
                     let var_name = node_text(l_node, source).trim().to_string();
-                    collect_constants(l_node, source, citations, cfg_test, fn_return_type, in_fn_body, in_pattern, in_data_table, current_sink.clone(), None, acc);
-                    collect_constants(r_node, source, citations, cfg_test, fn_return_type, in_fn_body, in_pattern, in_data_table, current_sink.clone(), Some(var_name), acc);
+                    collect_constants(
+                        l_node,
+                        source,
+                        citations,
+                        cfg_test,
+                        fn_return_type,
+                        in_fn_body,
+                        in_pattern,
+                        in_data_table,
+                        current_sink.clone(),
+                        None,
+                        acc,
+                    );
+                    collect_constants(
+                        r_node,
+                        source,
+                        citations,
+                        cfg_test,
+                        fn_return_type,
+                        in_fn_body,
+                        in_pattern,
+                        in_data_table,
+                        current_sink.clone(),
+                        Some(var_name),
+                        acc,
+                    );
                     return;
                 }
             }
@@ -1942,7 +2522,9 @@ fn collect_constants<'a>(
             for child in node.children(&mut cursor) {
                 if child.kind() == "-" {
                     has_minus = true;
-                } else if has_minus && (child.kind() == "integer_literal" || child.kind() == "float_literal") {
+                } else if has_minus
+                    && (child.kind() == "integer_literal" || child.kind() == "float_literal")
+                {
                     literal_child = Some(child);
                 }
             }
@@ -2161,14 +2743,22 @@ mod tests {
 
     struct NullPromptReader;
     impl PromptReader for NullPromptReader {
-        fn read_hash(&self, _: &str) -> Option<String> { None }
-        fn exists(&self, _: &str) -> bool { false }
+        fn read_hash(&self, _: &str) -> Option<String> {
+            None
+        }
+        fn exists(&self, _: &str) -> bool {
+            false
+        }
     }
 
     struct NullSnapshotReader;
     impl PromptSnapshotReader for NullSnapshotReader {
-        fn read_snapshot(&self, _: &str) -> Option<PublicInterface<'static>> { None }
-        fn serialize_snapshot(&self, _: &PublicInterface<'_>) -> String { String::new() }
+        fn read_snapshot(&self, _: &str) -> Option<PublicInterface<'static>> {
+            None
+        }
+        fn serialize_snapshot(&self, _: &PublicInterface<'_>) -> String {
+            String::new()
+        }
     }
 
     fn make_parser() -> RustParser<NullPromptReader, NullSnapshotReader> {
@@ -2176,6 +2766,19 @@ mod tests {
             NullPromptReader,
             NullSnapshotReader,
             CrystallineConfig::default(),
+            CrateRegistry::empty(),
+        )
+    }
+
+    fn make_semantic_parser(
+        semantic: crate::infra::config::SemanticContractsConfig,
+    ) -> RustParser<NullPromptReader, NullSnapshotReader> {
+        let mut config = CrystallineConfig::default();
+        config.semantic = semantic;
+        RustParser::new(
+            NullPromptReader,
+            NullSnapshotReader,
+            config,
             CrateRegistry::empty(),
         )
     }
@@ -2234,10 +2837,127 @@ mod tests {
     }
 
     #[test]
+    fn v23_extracts_context_erasure_but_not_legitimate_resolution() {
+        use crate::infra::config::{
+            ContextSemanticContract, SemanticContractsConfig, SemanticResolverConfig,
+        };
+        let semantic = SemanticContractsConfig {
+            context: vec![ContextSemanticContract {
+                id: "radius".into(),
+                language: "rust".into(),
+                scopes: vec!["01_core/foo.rs::draw".into()],
+                sources: vec!["contextual_radius".into(), "absolute_radius".into()],
+                resolvers: vec![SemanticResolverConfig {
+                    symbol: "resolve_pt".into(),
+                    context_arg: 0,
+                }],
+                erasing_projections: vec!["abs".into()],
+                sinks: vec!["rounded_rect".into()],
+                absolute_sources: vec!["absolute_radius".into()],
+            }],
+            ..Default::default()
+        };
+        let parser = make_semantic_parser(semantic);
+        let file = source_file(
+            "fn draw(contextual_radius: Length, absolute_radius: Length, style: Style) {\n\
+            let a = contextual_radius.resolve_pt(0.0); rounded_rect(a);\n\
+            let b = contextual_radius.abs.0; rounded_rect(b);\n\
+            let c = absolute_radius.resolve_pt(0.0); rounded_rect(c);\n\
+            let d = contextual_radius.resolve_pt(style.size.val()); rounded_rect(d);\n\
+            let zero = 0.0; consume(zero);\n\
+        }",
+        );
+        let parsed = parser.parse(&file).unwrap();
+        assert_eq!(parsed.semantic_observations.len(), 2);
+        assert!(parsed
+            .semantic_observations
+            .iter()
+            .any(|o| o.kind == SemanticObservationKind::ContextNeutralArgument));
+        assert!(parsed
+            .semantic_observations
+            .iter()
+            .any(|o| o.kind == SemanticObservationKind::ContextErasingProjection));
+    }
+
+    #[test]
+    fn v24_distinguishes_lost_preserved_and_authorized_fields() {
+        use crate::infra::config::{ProjectionSemanticContract, SemanticContractsConfig};
+        let semantic = SemanticContractsConfig {
+            projection: vec![
+                ProjectionSemanticContract {
+                    id: "font-id".into(),
+                    language: "rust".into(),
+                    scope: "01_core/foo.rs::lost".into(),
+                    source: "style.variations".into(),
+                    destination: "return.2".into(),
+                    neutral_forms: vec!["default".into()],
+                    normalization: "preserve".into(),
+                },
+                ProjectionSemanticContract {
+                    id: "font-id-preserved".into(),
+                    language: "rust".into(),
+                    scope: "01_core/foo.rs::kept".into(),
+                    source: "style.variations".into(),
+                    destination: "return.2".into(),
+                    neutral_forms: vec!["default".into()],
+                    normalization: "preserve".into(),
+                },
+                ProjectionSemanticContract {
+                    id: "normalized".into(),
+                    language: "rust".into(),
+                    scope: "01_core/foo.rs::normalized".into(),
+                    source: "style.variations".into(),
+                    destination: "return.2".into(),
+                    neutral_forms: vec!["default".into()],
+                    normalization: "drop-to-default".into(),
+                },
+            ],
+            ..Default::default()
+        };
+        let parser = make_semantic_parser(semantic);
+        let file = source_file("fn lost(style: &Style) -> Option<(A,B,V)> { Some((a(), b(), V::default())) }\n\
+            fn kept(style: &Style) -> Option<(A,B,V)> { Some((a(), b(), style.variations.clone().unwrap_or_default())) }\n\
+            fn normalized(style: &Style) -> Option<(A,B,V)> { Some((a(), b(), V::default())) }");
+        let parsed = parser.parse(&file).unwrap();
+        assert_eq!(parsed.semantic_observations.len(), 1);
+        assert_eq!(parsed.semantic_observations[0].contract_id, "font-id");
+    }
+
+    #[test]
+    fn v25_extracts_duplicate_proxy_and_canonicalizer_reentry() {
+        use crate::infra::config::{DecisionSemanticContract, SemanticContractsConfig};
+        let semantic = SemanticContractsConfig {
+            decision: vec![DecisionSemanticContract {
+                id: "math".into(),
+                language: "rust".into(),
+                owner: "01_core/foo.rs::owner".into(),
+                consumers: vec!["01_core/foo.rs::consumer".into()],
+                explicit_sources: vec!["style.math".into()],
+                proxies: vec!["contains(\"math\")".into()],
+                duplicate_owners: vec!["01_core/foo.rs::duplicate".into()],
+                canonicalizers: vec!["map_glyph".into()],
+                resolved_after: vec!["01_core/foo.rs::downstream".into()],
+            }],
+            ..Default::default()
+        };
+        let parser = make_semantic_parser(semantic);
+        let file = source_file("fn owner(style: &Style) -> bool { style.math }\n\
+            fn duplicate(text: &str) -> bool { text.len() == 1 }\n\
+            fn consumer(style: &Style, name: &str) -> bool { style.math || name.contains(\"math\") }\n\
+            fn downstream(g: Glyph) -> Glyph { map_glyph(g) }\n\
+            fn legitimate(style: &Style) -> bool { owner(style) }");
+        let parsed = parser.parse(&file).unwrap();
+        assert_eq!(parsed.semantic_observations.len(), 3);
+    }
+
+    #[test]
     fn returns_empty_source_error() {
         let parser = make_parser();
         let file = source_file("");
-        assert!(matches!(parser.parse(&file), Err(ParseError::EmptySource { .. })));
+        assert!(matches!(
+            parser.parse(&file),
+            Err(ParseError::EmptySource { .. })
+        ));
     }
 
     #[test]
@@ -2245,7 +2965,10 @@ mod tests {
         let parser = make_parser();
         let mut file = source_file("fn main() {}");
         file.language = Language::TypeScript;
-        assert!(matches!(parser.parse(&file), Err(ParseError::UnsupportedLanguage { .. })));
+        assert!(matches!(
+            parser.parse(&file),
+            Err(ParseError::UnsupportedLanguage { .. })
+        ));
     }
 
     #[test]
@@ -2347,9 +3070,18 @@ fn main() {}
     fn resolves_crate_import_layer() {
         let config = CrystallineConfig::default();
         let reg = CrateRegistry::empty();
-        assert_eq!(classify_layer("crate::entities::layer::Layer", &config, &reg, None), Some(Layer::L1));
-        assert_eq!(classify_layer("crate::shell::cli::Cli", &config, &reg, None), Some(Layer::L2));
-        assert_eq!(classify_layer("crate::infra::walker::FileWalker", &config, &reg, None), Some(Layer::L3));
+        assert_eq!(
+            classify_layer("crate::entities::layer::Layer", &config, &reg, None),
+            Some(Layer::L1)
+        );
+        assert_eq!(
+            classify_layer("crate::shell::cli::Cli", &config, &reg, None),
+            Some(Layer::L2)
+        );
+        assert_eq!(
+            classify_layer("crate::infra::walker::FileWalker", &config, &reg, None),
+            Some(Layer::L3)
+        );
     }
 
     #[test]
@@ -2357,8 +3089,14 @@ fn main() {}
         // Sem owner (registro vazio) → comportamento legado: tudo não-crate vira Unknown.
         let config = CrystallineConfig::default();
         let reg = CrateRegistry::empty();
-        assert_eq!(classify_layer("reqwest::Client", &config, &reg, None), Some(Layer::Unknown));
-        assert_eq!(classify_layer("std::fs::read", &config, &reg, None), Some(Layer::Unknown));
+        assert_eq!(
+            classify_layer("reqwest::Client", &config, &reg, None),
+            Some(Layer::Unknown)
+        );
+        assert_eq!(
+            classify_layer("std::fs::read", &config, &reg, None),
+            Some(Layer::Unknown)
+        );
     }
 
     // ── Classificação ciente de dependências (0052) ──────────────────────────
@@ -2390,7 +3128,10 @@ fn main() {}
         let config = CrystallineConfig::default();
         let reg = case_registry();
         let owner = reg.owner_of(Path::new("/proj/infra/src/x.rs"));
-        assert_eq!(classify_layer("proj_wiring::Algo", &config, &reg, owner), Some(Layer::L4));
+        assert_eq!(
+            classify_layer("proj_wiring::Algo", &config, &reg, owner),
+            Some(Layer::L4)
+        );
     }
 
     #[test]
@@ -2399,7 +3140,10 @@ fn main() {}
         let config = CrystallineConfig::default();
         let reg = case_registry();
         let owner = reg.owner_of(Path::new("/proj/core/src/x.rs"));
-        assert_eq!(classify_layer("proj_shared::X", &config, &reg, owner), Some(Layer::L1));
+        assert_eq!(
+            classify_layer("proj_shared::X", &config, &reg, owner),
+            Some(Layer::L1)
+        );
     }
 
     #[test]
@@ -2408,7 +3152,10 @@ fn main() {}
         let config = CrystallineConfig::default();
         let reg = case_registry();
         let owner = reg.owner_of(Path::new("/proj/core/src/x.rs"));
-        assert_eq!(classify_layer("serde::Serialize", &config, &reg, owner), Some(Layer::Unknown));
+        assert_eq!(
+            classify_layer("serde::Serialize", &config, &reg, owner),
+            Some(Layer::Unknown)
+        );
     }
 
     #[test]
@@ -2437,7 +3184,10 @@ fn main() {}
         let config = CrystallineConfig::default();
         let reg = case_registry();
         let owner = reg.owner_of(Path::new("/proj/core/src/x.rs"));
-        assert_eq!(classify_layer("crate::shell::cli::X", &config, &reg, owner), Some(Layer::L2));
+        assert_eq!(
+            classify_layer("crate::shell::cli::X", &config, &reg, owner),
+            Some(Layer::L2)
+        );
     }
 
     #[test]
@@ -2446,7 +3196,10 @@ fn main() {}
         let config = CrystallineConfig::default();
         let reg = case_registry();
         let owner = reg.owner_of(Path::new("/proj/core/src/x.rs"));
-        assert_eq!(classify_layer("proj_core::shell::X", &config, &reg, owner), Some(Layer::L2));
+        assert_eq!(
+            classify_layer("proj_core::shell::X", &config, &reg, owner),
+            Some(Layer::L2)
+        );
     }
 
     #[test]
@@ -2457,7 +3210,10 @@ fn main() {}
         let config = CrystallineConfig::default();
         let reg = case_registry();
         let owner = reg.owner_of(Path::new("/proj/core/src/x.rs"));
-        assert_eq!(classify_layer("proj_core::filtrar_stdlib", &config, &reg, owner), Some(Layer::L1));
+        assert_eq!(
+            classify_layer("proj_core::filtrar_stdlib", &config, &reg, owner),
+            Some(Layer::L1)
+        );
     }
 
     #[test]
@@ -2465,7 +3221,10 @@ fn main() {}
         // Não-regressão: registro vazio (owner None) → `use EnumLocal::*` vira Unknown (legado), não Skip.
         let config = CrystallineConfig::default();
         let reg = CrateRegistry::empty();
-        assert_eq!(classify_layer("EnumLocal::*", &config, &reg, None), Some(Layer::Unknown));
+        assert_eq!(
+            classify_layer("EnumLocal::*", &config, &reg, None),
+            Some(Layer::Unknown)
+        );
     }
 
     // ── V9 cross-crate (resolve_subdir ciente) ───────────────────────────────
@@ -2484,15 +3243,24 @@ fn main() {}
     fn v9_cross_crate_two_segment_import_has_no_subdir() {
         // `proj_core::Thing` (2 segmentos) usa a API da raiz, não uma porta → sem subdir.
         let config = CrystallineConfig::default();
-        assert_eq!(resolve_subdir("proj_core::Thing", &config, &Layer::L1), None);
+        assert_eq!(
+            resolve_subdir("proj_core::Thing", &config, &Layer::L1),
+            None
+        );
     }
 
     #[test]
     fn v9_intra_crate_subdir_preserved() {
         // Legado: crate::entities::X (entities→L1) → Some("entities"); crate::shell::X → None.
         let config = CrystallineConfig::default();
-        assert_eq!(resolve_subdir("crate::entities::Layer", &config, &Layer::L1), Some("entities"));
-        assert_eq!(resolve_subdir("crate::shell::cli::X", &config, &Layer::L2), None);
+        assert_eq!(
+            resolve_subdir("crate::entities::Layer", &config, &Layer::L1),
+            Some("entities")
+        );
+        assert_eq!(
+            resolve_subdir("crate::shell::cli::X", &config, &Layer::L2),
+            None
+        );
     }
 
     // ── End-to-end via parse() ───────────────────────────────────────────────
@@ -2501,9 +3269,16 @@ fn main() {}
     fn parse_emits_cross_crate_member_import_with_target_layer() {
         let reg = case_registry();
         let parser = make_parser_with_registry(reg);
-        let file = source_file_at("/proj/infra/src/x.rs", Layer::L3, "use proj_wiring::Algo;\nfn f() {}");
+        let file = source_file_at(
+            "/proj/infra/src/x.rs",
+            Layer::L3,
+            "use proj_wiring::Algo;\nfn f() {}",
+        );
         let parsed = parser.parse(&file).unwrap();
-        let imp = parsed.imports.iter().find(|i| i.path.starts_with("proj_wiring"));
+        let imp = parsed
+            .imports
+            .iter()
+            .find(|i| i.path.starts_with("proj_wiring"));
         assert_eq!(imp.map(|i| i.target_layer.clone()), Some(Layer::L4));
     }
 
@@ -2511,9 +3286,16 @@ fn main() {}
     fn parse_skips_local_type_import() {
         let reg = case_registry();
         let parser = make_parser_with_registry(reg);
-        let file = source_file_at("/proj/core/src/x.rs", Layer::L1, "use EnumLocal::*;\nfn f() {}");
+        let file = source_file_at(
+            "/proj/core/src/x.rs",
+            Layer::L1,
+            "use EnumLocal::*;\nfn f() {}",
+        );
         let parsed = parser.parse(&file).unwrap();
-        assert!(parsed.imports.iter().all(|i| !i.path.starts_with("EnumLocal")));
+        assert!(parsed
+            .imports
+            .iter()
+            .all(|i| !i.path.starts_with("EnumLocal")));
     }
 
     // ── path-ref cross-crate fora do `use` (cego #2, 0060) ───────────────────
@@ -2592,7 +3374,10 @@ fn main() {}
             "fn f() { let _x = super::Algo; }",
         );
         let parsed = parser.parse(&file).unwrap();
-        assert!(parsed.imports.iter().all(|i| first_segment(i.path) != "super"));
+        assert!(parsed
+            .imports
+            .iter()
+            .all(|i| first_segment(i.path) != "super"));
     }
 
     #[test]
@@ -2605,7 +3390,10 @@ fn main() {}
             "fn f() { let _x = std::cmp::max(1, 2); }",
         );
         let parsed = parser.parse(&file).unwrap();
-        assert!(parsed.imports.iter().all(|i| first_segment(i.path) != "std"));
+        assert!(parsed
+            .imports
+            .iter()
+            .all(|i| first_segment(i.path) != "std"));
     }
 
     #[test]
@@ -2618,7 +3406,11 @@ fn main() {}
             "use proj_wiring::A;\nfn f() { proj_wiring::go(); }",
         );
         let parsed = parser.parse(&file).unwrap();
-        let n = parsed.imports.iter().filter(|i| first_segment(i.path) == "proj_wiring").count();
+        let n = parsed
+            .imports
+            .iter()
+            .filter(|i| first_segment(i.path) == "proj_wiring")
+            .count();
         assert_eq!(n, 1, "uso + path-ref do mesmo crate = uma aresta");
     }
 
@@ -2632,7 +3424,11 @@ fn main() {}
             "fn f() { proj_wiring::a(); proj_wiring::b(); }",
         );
         let parsed = parser.parse(&file).unwrap();
-        let n = parsed.imports.iter().filter(|i| first_segment(i.path) == "proj_wiring").count();
+        let n = parsed
+            .imports
+            .iter()
+            .filter(|i| first_segment(i.path) == "proj_wiring")
+            .count();
         assert_eq!(n, 1, "dois path-refs ao mesmo crate = uma aresta");
     }
 
@@ -2667,7 +3463,10 @@ fn main() {}
         );
         let parsed = parser.parse(&file).unwrap();
         let imp = import_to(&parsed, "proj_wiring").expect("path-ref de teste coletado");
-        assert!(imp.is_test_origin, "path-ref sob #[cfg(test)] é test-origin");
+        assert!(
+            imp.is_test_origin,
+            "path-ref sob #[cfg(test)] é test-origin"
+        );
     }
 
     #[test]
@@ -2681,7 +3480,10 @@ fn main() {}
         );
         let parsed = parser.parse(&file).unwrap();
         let imp = import_to(&parsed, "proj_wiring").expect("import coletado");
-        assert!(imp.is_test_origin, "use sob #![cfg(test)] interno é test-origin");
+        assert!(
+            imp.is_test_origin,
+            "use sob #![cfg(test)] interno é test-origin"
+        );
     }
 
     #[test]
@@ -2713,7 +3515,10 @@ fn main() {}
         let prod = import_to(&parsed, "proj_wiring").expect("import de produção coletado");
         assert!(!prod.is_test_origin, "use de produção NÃO é test-origin");
         let test = import_to(&parsed, "proj_shared").expect("import de teste coletado");
-        assert!(test.is_test_origin, "use sob #[cfg(test)] mod É test-origin");
+        assert!(
+            test.is_test_origin,
+            "use sob #[cfg(test)] mod É test-origin"
+        );
     }
 
     #[test]
@@ -2798,9 +3603,8 @@ fn main() {}
     #[test]
     fn implemented_traits_empty_for_l1() {
         let parser = make_parser();
-        let mut file = source_file(
-            "impl HasImports for ParsedFile { fn layer(&self) -> u8 { 0 } }",
-        );
+        let mut file =
+            source_file("impl HasImports for ParsedFile { fn layer(&self) -> u8 { 0 } }");
         file.path = PathBuf::from("01_core/entities/parsed_file.rs");
         file.layer = Layer::L1;
         let parsed = parser.parse(&file).unwrap();
@@ -2834,7 +3638,11 @@ fn main() {}
         file.path = PathBuf::from("04_wiring/main.rs");
         file.layer = Layer::L4;
         let parsed = parser.parse(&file).unwrap();
-        let kinds: Vec<_> = parsed.declarations.iter().map(|d| (&d.kind, d.name)).collect();
+        let kinds: Vec<_> = parsed
+            .declarations
+            .iter()
+            .map(|d| (&d.kind, d.name))
+            .collect();
         assert!(kinds.contains(&(&DeclarationKind::Struct, "OutputRewriter")));
         assert!(kinds.contains(&(&DeclarationKind::Impl, "OutputRewriter")));
         assert!(kinds.contains(&(&DeclarationKind::Enum, "OutputMode")));
@@ -2849,7 +3657,10 @@ fn main() {}
         file.path = PathBuf::from("03_infra/walker.rs");
         file.layer = Layer::L3;
         let parsed = parser.parse(&file).unwrap();
-        assert!(parsed.declarations.iter().any(|d| d.kind == DeclarationKind::Struct && d.name == "FileWalker"));
+        assert!(parsed
+            .declarations
+            .iter()
+            .any(|d| d.kind == DeclarationKind::Struct && d.name == "FileWalker"));
     }
 
     #[test]
@@ -2863,15 +3674,32 @@ fn main() {}
         file.layer = Layer::L4;
         let parsed = parser.parse(&file).unwrap();
         // Only Struct captured — the impl Trait for ... must be absent
-        assert_eq!(parsed.declarations.iter().filter(|d| d.kind == DeclarationKind::Impl).count(), 0);
-        assert_eq!(parsed.declarations.iter().filter(|d| d.kind == DeclarationKind::Struct).count(), 1);
+        assert_eq!(
+            parsed
+                .declarations
+                .iter()
+                .filter(|d| d.kind == DeclarationKind::Impl)
+                .count(),
+            0
+        );
+        assert_eq!(
+            parsed
+                .declarations
+                .iter()
+                .filter(|d| d.kind == DeclarationKind::Struct)
+                .count(),
+            1
+        );
     }
 
     // ── trait_last_segment unit tests ─────────────────────────────────────
 
     #[test]
     fn trait_last_segment_strips_prefix() {
-        assert_eq!(trait_last_segment("crate::contracts::FileProvider"), "FileProvider");
+        assert_eq!(
+            trait_last_segment("crate::contracts::FileProvider"),
+            "FileProvider"
+        );
     }
 
     #[test]
@@ -2926,7 +3754,10 @@ fn main() {}
         let file = source_file("use crate::entities::{Layer, Language};\nfn foo() {}");
         let parsed = parser.parse(&file).unwrap();
         let imp = parsed.imports.iter().find(|i| i.path.contains("entities"));
-        assert!(imp.is_some(), "should have import for crate::entities::{{...}}");
+        assert!(
+            imp.is_some(),
+            "should have import for crate::entities::{{...}}"
+        );
         assert_eq!(imp.unwrap().kind, ImportKind::Named);
     }
 
@@ -2948,7 +3779,10 @@ fn main() {}
         let file = source_file("mod helpers;\nfn bar() {}");
         let parsed = parser.parse(&file).unwrap();
         let in_imports = parsed.imports.iter().any(|i| i.path.contains("helpers"));
-        assert!(!in_imports, "mod declaration must NOT appear in imports after ADR-0013");
+        assert!(
+            !in_imports,
+            "mod declaration must NOT appear in imports after ADR-0013"
+        );
     }
 
     // ── module_decls (ADR-0013) ───────────────────────────────────────────
@@ -3018,7 +3852,10 @@ fn main() {}
             "use std::sync::Mutex;\nstatic CACHE: Mutex<u32> = Mutex::new(0);\nfn foo() {}",
         );
         let parsed = parser.parse(&file).unwrap();
-        let s = parsed.static_declarations.iter().find(|s| s.name == "CACHE");
+        let s = parsed
+            .static_declarations
+            .iter()
+            .find(|s| s.name == "CACHE");
         assert!(s.is_some());
         let s = s.unwrap();
         assert!(!s.is_mut);
@@ -3030,7 +3867,10 @@ fn main() {}
         let parser = make_parser();
         let file = source_file("static RULE_ID: &str = \"V13\";\nfn foo() {}");
         let parsed = parser.parse(&file).unwrap();
-        let s = parsed.static_declarations.iter().find(|s| s.name == "RULE_ID");
+        let s = parsed
+            .static_declarations
+            .iter()
+            .find(|s| s.name == "RULE_ID");
         assert!(s.is_some());
         let s = s.unwrap();
         assert!(!s.is_mut);
@@ -3082,9 +3922,7 @@ fn main() {}
     fn blanket_impl_multi_bound_detected() {
         // impl<T: A + B> Contract for T — padrão 2 (~25%)
         let parser = make_parser();
-        let mut file = source_file(
-            "impl<T: Alpha + Beta> MyContract for T { fn run(&self) {} }",
-        );
+        let mut file = source_file("impl<T: Alpha + Beta> MyContract for T { fn run(&self) {} }");
         file.path = PathBuf::from("02_shell/adapters.rs");
         file.layer = Layer::L2;
         let parsed = parser.parse(&file).unwrap();
@@ -3098,9 +3936,8 @@ fn main() {}
     fn blanket_impl_where_clause_detected() {
         // impl<T> Contract for T where T: Bound — padrão 3 (~10%)
         let parser = make_parser();
-        let mut file = source_file(
-            "impl<T> WhereContract for T where T: SomeBound { fn exec(&self) {} }",
-        );
+        let mut file =
+            source_file("impl<T> WhereContract for T where T: SomeBound { fn exec(&self) {} }");
         file.path = PathBuf::from("03_infra/where_adapter.rs");
         file.layer = Layer::L3;
         let parsed = parser.parse(&file).unwrap();
@@ -3114,9 +3951,7 @@ fn main() {}
     fn blanket_impl_empty_for_l1() {
         // blanket impls agora são coletados em L1, L2 e L3 (ajuste para TrackedWorld)
         let parser = make_parser();
-        let mut file = source_file(
-            "impl<T: World> TrackedWorld for T { fn method(&self) {} }",
-        );
+        let mut file = source_file("impl<T: World> TrackedWorld for T { fn method(&self) {} }");
         file.path = PathBuf::from("01_core/entities/foo.rs");
         file.layer = Layer::L1;
         let parsed = parser.parse(&file).unwrap();
@@ -3138,8 +3973,6 @@ fn main() {}
         assert!(!parsed.blanket_impl_traits.contains(&"FileProvider"));
     }
 
-    
-    
     // ── V16–V20 Decision Expressions Unit Tests (Phase B) ──────────────────
 
     #[test]
@@ -3225,11 +4058,23 @@ fn main() {}
         let file = source_file(code);
         let parsed = parser.parse(&file).unwrap();
         assert!(parsed.constants.len() >= 5);
-        let const_item = parsed.constants.iter().find(|c| c.kind == ConstantKind::ItemDefinition).unwrap();
+        let const_item = parsed
+            .constants
+            .iter()
+            .find(|c| c.kind == ConstantKind::ItemDefinition)
+            .unwrap();
         assert!(const_item.citation.is_some());
-        let neg_item = parsed.constants.iter().find(|c| c.kind == ConstantKind::NegativeLiteral).unwrap();
+        let neg_item = parsed
+            .constants
+            .iter()
+            .find(|c| c.kind == ConstantKind::NegativeLiteral)
+            .unwrap();
         assert_eq!(neg_item.snippet, "-0.5");
-        let fmt_item = parsed.constants.iter().find(|c| c.kind == ConstantKind::FormatString).unwrap();
+        let fmt_item = parsed
+            .constants
+            .iter()
+            .find(|c| c.kind == ConstantKind::FormatString)
+            .unwrap();
         assert_eq!(fmt_item.snippet, "\"{:.3}\"");
     }
 
@@ -3253,8 +4098,15 @@ fn main() {}
         assert!(parsed.constants.len() >= 4);
 
         // Literal 0.9 (linha 5) associado ao comentário da linha 3 (2 linhas acima)
-        let lit_09 = parsed.constants.iter().find(|c| c.snippet == "0.9").unwrap();
-        assert!(lit_09.citation.is_some(), "P813 container.rs:342 deve ser reconhecido como citação");
+        let lit_09 = parsed
+            .constants
+            .iter()
+            .find(|c| c.snippet == "0.9")
+            .unwrap();
+        assert!(
+            lit_09.citation.is_some(),
+            "P813 container.rs:342 deve ser reconhecido como citação"
+        );
         if let Some(ref c) = lit_09.citation {
             if let CitationKind::Ref { path, line } = c.kind {
                 assert_eq!(path, "lab/typst-original/src/layout/container.rs");
@@ -3265,8 +4117,15 @@ fn main() {}
         }
 
         // Literal 0.85 associado ao comentário vanilla resolve.rs:1173
-        let lit_085 = parsed.constants.iter().find(|c| c.snippet == "0.85").unwrap();
-        assert!(lit_085.citation.is_some(), "vanilla resolve.rs:1173 deve ser reconhecido como citação");
+        let lit_085 = parsed
+            .constants
+            .iter()
+            .find(|c| c.snippet == "0.85")
+            .unwrap();
+        assert!(
+            lit_085.citation.is_some(),
+            "vanilla resolve.rs:1173 deve ser reconhecido como citação"
+        );
         if let Some(ref c) = lit_085.citation {
             if let CitationKind::Ref { path, line } = c.kind {
                 assert_eq!(path, "resolve.rs");

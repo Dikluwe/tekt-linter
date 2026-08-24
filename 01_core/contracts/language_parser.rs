@@ -54,6 +54,7 @@ mod tests {
             module_decls: vec![],
             decision_exprs: vec![],
             constants: vec![],
+            semantic_observations: vec![],
         }
     }
 

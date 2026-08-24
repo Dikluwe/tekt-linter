@@ -34,7 +34,10 @@ pub struct Cli {
     /// Comma-separated list of checks to run (e.g. v1,v2,...,v12)
     /// V11 (dangling-contract) is opt-in — not included in the default because
     /// rule_traits in L1/contracts/ are implemented by ParsedFile (L1), not L2/L3.
-    #[arg(long, default_value = "v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15,v16,v17,v18,v19,v20,v21")]
+    #[arg(
+        long,
+        default_value = "v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15,v16,v17,v18,v19,v20,v21,v23,v24,v25"
+    )]
     pub checks: String,
 
     /// Disable V5 drift detection
@@ -124,6 +127,9 @@ pub struct EnabledChecks {
     pub v20: bool,
     pub v21: bool,
     pub v22: bool,
+    pub v23: bool,
+    pub v24: bool,
+    pub v25: bool,
 }
 
 impl EnabledChecks {
@@ -134,20 +140,18 @@ impl EnabledChecks {
             .filter(|s| !s.is_empty())
             .collect();
 
-        let has = |id: &str| -> bool {
-            tokens.contains("all") || tokens.contains(id)
-        };
+        let has = |id: &str| -> bool { tokens.contains("all") || tokens.contains(id) };
 
         Self {
-            v1:  has("v1"),
-            v2:  has("v2"),
-            v3:  has("v3"),
-            v4:  has("v4"),
-            v5:  has("v5") && !no_drift,
-            v6:  has("v6") && !no_stale,
-            v7:  has("v7"),
-            v8:  has("v8"),
-            v9:  has("v9"),
+            v1: has("v1"),
+            v2: has("v2"),
+            v3: has("v3"),
+            v4: has("v4"),
+            v5: has("v5") && !no_drift,
+            v6: has("v6") && !no_stale,
+            v7: has("v7"),
+            v8: has("v8"),
+            v9: has("v9"),
             v10: has("v10"),
             v11: has("v11"),
             v12: has("v12"),
@@ -161,6 +165,9 @@ impl EnabledChecks {
             v20: has("v20"),
             v21: has("v21"),
             v22: has("v22"),
+            v23: has("v23"),
+            v24: has("v24"),
+            v25: has("v25"),
         }
     }
 }
@@ -324,38 +331,166 @@ fn sarif_level(level: &ViolationLevel) -> &'static str {
 
 fn sarif_rules() -> Vec<serde_json::Value> {
     vec![
-        sarif_rule("V0", "UnreadableSource", "Unreadable source file — I/O error", "error"),
-        sarif_rule("V1", "MissingPromptHeader", "Missing @prompt lineage header", "error"),
-        sarif_rule("V2", "MissingTestFile", "Missing test coverage for L1 module", "error"),
-        sarif_rule("V3", "ForbiddenImport", "Import violates layer dependency direction", "error"),
-        sarif_rule("V4", "ImpureCore", "I/O operation detected in L1 core", "error"),
-        sarif_rule("V5", "PromptDrift", "Prompt hash mismatch — implementation drifted", "warning"),
-        sarif_rule("V6", "PromptStale", "Public interface changed since last prompt snapshot", "warning"),
-        sarif_rule("V7", "OrphanPrompt", "Prompt without any materialization in L1–L4", "warning"),
-        sarif_rule("V8", "AlienFile", "Source file outside all mapped layers", "error"),
-        sarif_rule("V9", "PubLeak", "Import bypasses L1 encapsulation boundary", "error"),
-        sarif_rule("V10", "QuarantineLeak", "Production code imports from lab/ quarantine", "error"),
-        sarif_rule("V11", "DanglingContract", "Contract trait without implementation in L2/L3", "error"),
-        sarif_rule("V12", "WiringLogicLeak",       "Type declaration in L4 wiring layer", "warning"),
-        sarif_rule("V13", "MutableStateInCore",    "Global mutable state in L1 core", "error"),
-        sarif_rule("V14", "ExternalTypeInContract", "Unauthorized external dependency in L1", "error"),
-        sarif_rule("V15", "MultiPromptHeader",      "Multiple @prompt headers in one file", "error"),
-        sarif_rule("V16", "WildcardSaturation",     "Catchall arm discards domain enum information", "warning"),
-        sarif_rule("V17", "CompoundGuard",          "Compound boolean logic in pattern guard", "warning"),
-        sarif_rule("V18", "RangePatternInMatch",    "Range pattern in domain match expression", "warning"),
-        sarif_rule("V19", "OrPatternAlternatives",  "Decision arm condenses multiple or-pattern alternatives", "note"),
-        sarif_rule("V20", "DeepPatternNesting",         "Pattern nesting depth exceeds threshold", "note"),
-        sarif_rule("V21", "HardcodedContextualValue",   "Hardcoded contextual scalar feeds geometric sink", "warning"),
-        sarif_rule("V22", "ProvenanceInventory",        "Module-level aggregate provenance ratio metric", "note"),
+        sarif_rule(
+            "V0",
+            "UnreadableSource",
+            "Unreadable source file — I/O error",
+            "error",
+        ),
+        sarif_rule(
+            "V1",
+            "MissingPromptHeader",
+            "Missing @prompt lineage header",
+            "error",
+        ),
+        sarif_rule(
+            "V2",
+            "MissingTestFile",
+            "Missing test coverage for L1 module",
+            "error",
+        ),
+        sarif_rule(
+            "V3",
+            "ForbiddenImport",
+            "Import violates layer dependency direction",
+            "error",
+        ),
+        sarif_rule(
+            "V4",
+            "ImpureCore",
+            "I/O operation detected in L1 core",
+            "error",
+        ),
+        sarif_rule(
+            "V5",
+            "PromptDrift",
+            "Prompt hash mismatch — implementation drifted",
+            "warning",
+        ),
+        sarif_rule(
+            "V6",
+            "PromptStale",
+            "Public interface changed since last prompt snapshot",
+            "warning",
+        ),
+        sarif_rule(
+            "V7",
+            "OrphanPrompt",
+            "Prompt without any materialization in L1–L4",
+            "warning",
+        ),
+        sarif_rule(
+            "V8",
+            "AlienFile",
+            "Source file outside all mapped layers",
+            "error",
+        ),
+        sarif_rule(
+            "V9",
+            "PubLeak",
+            "Import bypasses L1 encapsulation boundary",
+            "error",
+        ),
+        sarif_rule(
+            "V10",
+            "QuarantineLeak",
+            "Production code imports from lab/ quarantine",
+            "error",
+        ),
+        sarif_rule(
+            "V11",
+            "DanglingContract",
+            "Contract trait without implementation in L2/L3",
+            "error",
+        ),
+        sarif_rule(
+            "V12",
+            "WiringLogicLeak",
+            "Type declaration in L4 wiring layer",
+            "warning",
+        ),
+        sarif_rule(
+            "V13",
+            "MutableStateInCore",
+            "Global mutable state in L1 core",
+            "error",
+        ),
+        sarif_rule(
+            "V14",
+            "ExternalTypeInContract",
+            "Unauthorized external dependency in L1",
+            "error",
+        ),
+        sarif_rule(
+            "V15",
+            "MultiPromptHeader",
+            "Multiple @prompt headers in one file",
+            "error",
+        ),
+        sarif_rule(
+            "V16",
+            "WildcardSaturation",
+            "Catchall arm discards domain enum information",
+            "warning",
+        ),
+        sarif_rule(
+            "V17",
+            "CompoundGuard",
+            "Compound boolean logic in pattern guard",
+            "warning",
+        ),
+        sarif_rule(
+            "V18",
+            "RangePatternInMatch",
+            "Range pattern in domain match expression",
+            "warning",
+        ),
+        sarif_rule(
+            "V19",
+            "OrPatternAlternatives",
+            "Decision arm condenses multiple or-pattern alternatives",
+            "note",
+        ),
+        sarif_rule(
+            "V20",
+            "DeepPatternNesting",
+            "Pattern nesting depth exceeds threshold",
+            "note",
+        ),
+        sarif_rule(
+            "V21",
+            "HardcodedContextualValue",
+            "Hardcoded contextual scalar feeds geometric sink",
+            "warning",
+        ),
+        sarif_rule(
+            "V22",
+            "ProvenanceInventory",
+            "Module-level aggregate provenance ratio metric",
+            "note",
+        ),
+        sarif_rule(
+            "V23",
+            "ContextErasure",
+            "Required semantic context is erased before a declared sink",
+            "warning",
+        ),
+        sarif_rule(
+            "V24",
+            "SemanticFieldLoss",
+            "Required identity field is replaced by a neutral value",
+            "warning",
+        ),
+        sarif_rule(
+            "V25",
+            "DecisionOwnership",
+            "Semantic decision is recomposed outside its declared owner",
+            "warning",
+        ),
     ]
 }
 
-fn sarif_rule(
-    id: &str,
-    name: &str,
-    description: &str,
-    level: &str,
-) -> serde_json::Value {
+fn sarif_rule(id: &str, name: &str, description: &str, level: &str) -> serde_json::Value {
     json!({
         "id": id,
         "name": name,
@@ -423,7 +558,11 @@ mod tests {
             rule_id: rule_id.to_string(),
             level,
             message: "test".to_string(),
-            location: Location { path: Cow::Borrowed(Path::new(path)), line, column: 0 },
+            location: Location {
+                path: Cow::Borrowed(Path::new(path)),
+                line,
+                column: 0,
+            },
         }
     }
 
@@ -433,15 +572,15 @@ mod tests {
     fn violations_sorted_fatal_first_then_path_then_line() {
         let mut v = vec![
             make_violation_at("V3", ViolationLevel::Warning, "b.rs", 1),
-            make_violation_at("V0", ViolationLevel::Fatal,   "a.rs", 5),
-            make_violation_at("V2", ViolationLevel::Error,   "a.rs", 2),
+            make_violation_at("V0", ViolationLevel::Fatal, "a.rs", 5),
+            make_violation_at("V2", ViolationLevel::Error, "a.rs", 2),
             make_violation_at("V1", ViolationLevel::Warning, "a.rs", 1),
         ];
         sort_violations(&mut v);
         assert_eq!(v[0].level, ViolationLevel::Fatal);
         assert_eq!(v[1].level, ViolationLevel::Error);
         assert_eq!(v[2].level, ViolationLevel::Warning);
-        assert_eq!(v[2].location.line, 1);   // a.rs:1 antes de b.rs:1
+        assert_eq!(v[2].location.line, 1); // a.rs:1 antes de b.rs:1
         assert_eq!(v[3].location.path.as_ref(), Path::new("b.rs"));
     }
 
@@ -521,31 +660,49 @@ mod tests {
 
     #[test]
     fn dry_run_without_fix_hashes_is_error() {
-        let cli = Cli { dry_run: true, ..base_cli() };
+        let cli = Cli {
+            dry_run: true,
+            ..base_cli()
+        };
         assert!(validate_args(&cli).is_err());
     }
 
     #[test]
     fn dry_run_with_fix_hashes_is_ok() {
-        let cli = Cli { fix_hashes: true, dry_run: true, ..base_cli() };
+        let cli = Cli {
+            fix_hashes: true,
+            dry_run: true,
+            ..base_cli()
+        };
         assert!(validate_args(&cli).is_ok());
     }
 
     #[test]
     fn dry_run_with_update_snapshot_is_ok() {
-        let cli = Cli { update_snapshot: true, dry_run: true, ..base_cli() };
+        let cli = Cli {
+            update_snapshot: true,
+            dry_run: true,
+            ..base_cli()
+        };
         assert!(validate_args(&cli).is_ok());
     }
 
     #[test]
     fn fix_hashes_alone_is_ok() {
-        let cli = Cli { fix_hashes: true, ..base_cli() };
+        let cli = Cli {
+            fix_hashes: true,
+            ..base_cli()
+        };
         assert!(validate_args(&cli).is_ok());
     }
 
     #[test]
     fn fix_hashes_and_update_snapshot_is_error() {
-        let cli = Cli { fix_hashes: true, update_snapshot: true, ..base_cli() };
+        let cli = Cli {
+            fix_hashes: true,
+            update_snapshot: true,
+            ..base_cli()
+        };
         assert!(validate_args(&cli).is_err());
     }
 
@@ -639,6 +796,9 @@ mod tests {
         assert!(checks.v20);
         assert!(checks.v21);
         assert!(checks.v22);
+        assert!(checks.v23);
+        assert!(checks.v24);
+        assert!(checks.v25);
     }
 
     #[test]
@@ -710,12 +870,19 @@ mod tests {
     }
 
     #[test]
-    fn sarif_driver_rules_has_23_entries() {
-        // SARIF driver.rules deve conter exatamente 23 entradas (V0 a V22)
+    fn sarif_driver_rules_has_26_entries() {
+        // SARIF driver.rules contém V0–V25.
         let out = format_sarif(&[]);
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let rules = parsed["runs"][0]["tool"]["driver"]["rules"].as_array().unwrap();
-        assert_eq!(rules.len(), 23, "expected 23 rules (V0 to V22), got {}", rules.len());
+        let rules = parsed["runs"][0]["tool"]["driver"]["rules"]
+            .as_array()
+            .unwrap();
+        assert_eq!(
+            rules.len(),
+            26,
+            "expected 26 rules (V0 to V25), got {}",
+            rules.len()
+        );
     }
 
     #[test]
@@ -738,6 +905,19 @@ mod tests {
         assert!(checks.v21);
         assert!(!checks.v1);
     }
+
+    #[test]
+    fn semantic_checks_are_isolated() {
+        let v23 = EnabledChecks::from_cli("v23", false, false);
+        assert!(v23.v23);
+        assert!(!v23.v24 && !v23.v25);
+        let v24 = EnabledChecks::from_cli("v24", false, false);
+        assert!(v24.v24);
+        assert!(!v24.v23 && !v24.v25);
+        let v25 = EnabledChecks::from_cli("v25", false, false);
+        assert!(v25.v25);
+        assert!(!v25.v23 && !v25.v24);
+    }
     #[test]
     fn sarif_info_mapped_to_note() {
         let v = vec![make_violation("V19", ViolationLevel::Info)];
@@ -753,5 +933,4 @@ mod tests {
         assert!(!should_fail(&v, &FailLevel::Warning));
         assert!(!should_fail(&v, &FailLevel::Error));
     }
-
 }
