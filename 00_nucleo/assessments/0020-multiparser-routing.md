@@ -103,6 +103,22 @@ O L0 foi então saneado, antes de qualquer leitura da produção:
 Com os hashes acima resselados, G1–G4 ficam normativamente fechados. B1 e B2 podem ser
 materializados cegamente; a produção continua proibida até o congelamento desses gates.
 
+## Gate B congelado — primeiro RED
+
+O verificador B validou os nove hashes atuais e criou
+`tests/multiparser_routing_assessment.rs`, SHA-256
+`91a34c57415cfa6128f5c0257e63d97b75315b669cef7f62ed431a7175c21e3a`, sem ler
+produção, testes anteriores, lab, relatórios ou histórico.
+
+- `parser_slot`, `ParserSlot` e `ParserSet` ausentes: `RED` de produção congelado.
+- construção do retorno `Ok(ParsedFile)`: `SPEC-GAP` adicional, pois o schema de
+  `ParsedFile` no L0 autorizado omite sete campos exigidos pelo tipo materializado.
+- parsers reais não foram usados; `rustfmt --check` dirigido passou.
+
+O gate permanece congelado. O schema L0 deve ser reconciliado e resselado antes de
+ajustar apenas o fixture `Ok`; nenhuma informação dessa reconciliação pode alterar o
+oráculo de roteamento já materializado.
+
 ## Papéis e precedência
 
 - A: lê somente este Assessment e L0 hash-pinned; valida ou agrava os gaps.
