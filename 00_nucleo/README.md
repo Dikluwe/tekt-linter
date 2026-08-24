@@ -53,6 +53,7 @@ número de passo.
 | Validação de refinamento | ADR-0019/L0 vigentes; Etapas A e B1 materializadas no branch dedicado | validar e manter Git/wrapper/SMT fora de escopo |
 | Extração de snapshots | Etapa B1 autorizada e materializada no branch de refinamento | absorver em ADR-0019/L0; sem iniciar sequência numérica |
 | Refinamento entre revisões | Etapa B2 aprovada e materializada no branch dedicado | backend Git batch; absorver em ADR-0019/L0 sem numeração de passo |
+| P0071 — fechamento do refinamento entre revisões | gate local concluído; parada antes de integração | matriz externa pendente; merge/instalação exigem decisão humana |
 
 P0070 já foi absorvido pelos artefatos causais correspondentes e deixou de ser fonte
 necessária. O passo descritivo de validação de refinamento é apenas uma proposta; ele
