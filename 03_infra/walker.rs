@@ -27,36 +27,59 @@ impl FileWalker {
 impl FileProvider for FileWalker {
     fn files(&self) -> impl Iterator<Item = Result<SourceFile, SourceError>> {
         let root = self.root.clone();
-        // Build two sets once (O(1) lookup) before the iterator.
-        // Separate from config clone so filter_entry can capture them by move.
-        let excluded_dirs: HashSet<String> =
-            self.config.excluded.values().cloned().collect();
+        let excluded_dirs: HashSet<String> = self.config.excluded.values().cloned().collect();
         let excluded_files: HashSet<String> =
             self.config.excluded_files.values().cloned().collect();
         let config = self.config.clone();
-        // root is moved into filter_entry; root2 is moved into map.
         let root2 = root.clone();
 
-        WalkDir::new(&root)
+        let mut results: Vec<Result<SourceFile, SourceError>> = WalkDir::new(&root)
+            .follow_links(false)
             .into_iter()
-            .filter_entry(move |e| {
-                !is_ignored(e.path(), &root, &excluded_dirs, &excluded_files)
-            })
-            .filter_map(|entry| entry.ok())
-            .filter(|e| e.file_type().is_file())
-            .filter(|e| language_for_path(e.path()).is_some())
-            .map(move |entry| {
-                let path = entry.path().to_path_buf();
-                let language = language_for_path(&path).expect("filtered above");
-                let layer = resolve_file_layer(&path, &root2, &config);
-                let has_adjacent_test = check_adjacent_test(&path);
-
-                match std::fs::read_to_string(&path) {
-                    Ok(content) => Ok(SourceFile { path, content, language, layer, has_adjacent_test }),
-                    Err(e) => Err(SourceError::Unreadable { path, reason: e.to_string() }),
+            .filter_entry(move |e| !is_ignored(e.path(), &root, &excluded_dirs, &excluded_files))
+            .filter_map(move |entry| match entry {
+                Err(error) => Some(Err(SourceError::Unreadable {
+                    path: error.path().unwrap_or(&root2).to_path_buf(),
+                    reason: error.to_string(),
+                })),
+                Ok(entry) => {
+                    if !entry.file_type().is_file() {
+                        return None;
+                    }
+                    let path = entry.path().to_path_buf();
+                    let language = language_for_path(&path)?;
+                    let layer = resolve_file_layer(&path, &root2, &config);
+                    let has_adjacent_test = check_adjacent_test(&path);
+                    Some(match std::fs::read_to_string(&path) {
+                        Ok(content) => Ok(SourceFile {
+                            path,
+                            content,
+                            language,
+                            layer,
+                            has_adjacent_test,
+                        }),
+                        Err(error) => Err(SourceError::Unreadable {
+                            path,
+                            reason: error.to_string(),
+                        }),
+                    })
                 }
             })
+            .collect();
+        sort_results(&mut results);
+        results.into_iter()
     }
+}
+
+fn result_path(result: &Result<SourceFile, SourceError>) -> &Path {
+    match result {
+        Ok(file) => &file.path,
+        Err(error) => error.path(),
+    }
+}
+
+fn sort_results(results: &mut [Result<SourceFile, SourceError>]) {
+    results.sort_by(|left, right| result_path(left).cmp(result_path(right)));
 }
 
 /// Retorna true se o path deve ser ignorado.
@@ -140,6 +163,12 @@ pub fn resolve_file_layer(path: &Path, root: &Path, config: &CrystallineConfig) 
 /// - TypeScript: `<stem>.test.ts`, `<stem>.spec.ts`, `<stem>.test.tsx`, `<stem>.spec.tsx`
 /// - Python:     `<stem>_test.py` or `test_<stem>.py`
 /// - Zig:        `<stem>_test.zig`
+fn is_regular_file(path: PathBuf) -> bool {
+    std::fs::symlink_metadata(path)
+        .map(|metadata| metadata.file_type().is_file())
+        .unwrap_or(false)
+}
+
 fn check_adjacent_test(path: &Path) -> bool {
     let stem = match path.file_stem().and_then(|s| s.to_str()) {
         Some(s) => s,
@@ -152,51 +181,73 @@ fn check_adjacent_test(path: &Path) -> bool {
 
     match path.extension().and_then(|e| e.to_str()) {
         Some("rs") => {
-            if stem.ends_with("_test") { return false; }
-            dir.join(format!("{}_test.rs", stem)).exists()
+            if stem.ends_with("_test") {
+                return false;
+            }
+            is_regular_file(dir.join(format!("{}_test.rs", stem)))
         }
         Some("go") => {
-            if stem.ends_with("_test") { return true; }
-            dir.join(format!("{}_test.go", stem)).exists()
+            if stem.ends_with("_test") {
+                return true;
+            }
+            is_regular_file(dir.join(format!("{}_test.go", stem)))
         }
         Some("ts") | Some("tsx") => {
-            if stem.contains(".test") || stem.contains(".spec") { return false; }
-            dir.join(format!("{}.test.ts",  stem)).exists()
-                || dir.join(format!("{}.spec.ts",  stem)).exists()
-                || dir.join(format!("{}.test.tsx", stem)).exists()
-                || dir.join(format!("{}.spec.tsx", stem)).exists()
+            if stem.contains(".test") || stem.contains(".spec") {
+                return false;
+            }
+            is_regular_file(dir.join(format!("{}.test.ts", stem)))
+                || is_regular_file(dir.join(format!("{}.spec.ts", stem)))
+                || is_regular_file(dir.join(format!("{}.test.tsx", stem)))
+                || is_regular_file(dir.join(format!("{}.spec.tsx", stem)))
         }
         Some("py") => {
-            if stem.ends_with("_test") || stem.starts_with("test_") { return false; }
-            dir.join(format!("{}_test.py", stem)).exists()
-                || dir.join(format!("test_{}.py", stem)).exists()
+            if stem.ends_with("_test") || stem.starts_with("test_") {
+                return false;
+            }
+            is_regular_file(dir.join(format!("{}_test.py", stem)))
+                || is_regular_file(dir.join(format!("test_{}.py", stem)))
         }
         Some("zig") => {
-            if stem.ends_with("_test") { return false; }
-            dir.join(format!("{}_test.zig", stem)).exists()
+            if stem.ends_with("_test") {
+                return false;
+            }
+            is_regular_file(dir.join(format!("{}_test.zig", stem)))
         }
         Some("c") => {
-            if stem.ends_with("_test") || stem.starts_with("test_") { return false; }
-            dir.join(format!("{}_test.c", stem)).exists()
-                || dir.join(format!("test_{}.c", stem)).exists()
+            if stem.ends_with("_test") || stem.starts_with("test_") {
+                return false;
+            }
+            is_regular_file(dir.join(format!("{}_test.c", stem)))
+                || is_regular_file(dir.join(format!("test_{}.c", stem)))
         }
         Some("cpp") | Some("cc") | Some("cxx") => {
-            if stem.ends_with("_test") || stem.starts_with("test_") { return false; }
-            dir.join(format!("{}_test.cpp", stem)).exists()
-                || dir.join(format!("{}_test.cc", stem)).exists()
-                || dir.join(format!("test_{}.cpp", stem)).exists()
-                || dir.join(format!("test_{}.cc", stem)).exists()
+            if stem.ends_with("_test") || stem.starts_with("test_") {
+                return false;
+            }
+            is_regular_file(dir.join(format!("{}_test.cpp", stem)))
+                || is_regular_file(dir.join(format!("{}_test.cc", stem)))
+                || is_regular_file(dir.join(format!("test_{}.cpp", stem)))
+                || is_regular_file(dir.join(format!("test_{}.cc", stem)))
         }
         Some("java") => {
-            if stem.ends_with("Test") || stem.ends_with("Tests") || stem.starts_with("Test") || stem.ends_with("_test") { return true; }
-            dir.join(format!("{}Test.java", stem)).exists()
-                || dir.join(format!("{}_test.java", stem)).exists()
-                || dir.join(format!("Test{}.java", stem)).exists()
+            if stem.ends_with("Test")
+                || stem.ends_with("Tests")
+                || stem.starts_with("Test")
+                || stem.ends_with("_test")
+            {
+                return true;
+            }
+            is_regular_file(dir.join(format!("{}Test.java", stem)))
+                || is_regular_file(dir.join(format!("{}_test.java", stem)))
+                || is_regular_file(dir.join(format!("Test{}.java", stem)))
         }
         Some("ex") | Some("exs") => {
-            if stem.ends_with("_test") { return true; }
-            dir.join(format!("{}_test.exs", stem)).exists()
-                || dir.join(format!("{}_test.ex", stem)).exists()
+            if stem.ends_with("_test") {
+                return true;
+            }
+            is_regular_file(dir.join(format!("{}_test.exs", stem)))
+                || is_regular_file(dir.join(format!("{}_test.ex", stem)))
         }
         _ => false,
     }
@@ -256,7 +307,10 @@ mod tests {
         let files = collect_ok(&walker);
         // Agora target/debug/build.rs deve aparecer com Layer::Unknown
         assert_eq!(files.len(), 2);
-        let target_file = files.iter().find(|f| f.path.to_str().unwrap().contains("target")).unwrap();
+        let target_file = files
+            .iter()
+            .find(|f| f.path.to_str().unwrap().contains("target"))
+            .unwrap();
         assert_eq!(target_file.layer, Layer::Unknown);
     }
 
@@ -389,7 +443,9 @@ mod tests {
         write_file(dir.path(), "lib.rs", "pub mod foo;");
         write_file(dir.path(), "01_core/foo.rs", "fn foo() {}");
         let mut config = CrystallineConfig::default();
-        config.excluded_files.insert("crate_root".to_string(), "lib.rs".to_string());
+        config
+            .excluded_files
+            .insert("crate_root".to_string(), "lib.rs".to_string());
         let walker = FileWalker::new(dir.path().to_path_buf(), config);
         let files = collect_ok(&walker);
         assert_eq!(files.len(), 1);
@@ -405,10 +461,61 @@ mod tests {
         write_file(dir.path(), "lib.rs", "pub mod foo;");
         write_file(dir.path(), "01_core/lib.rs", "pub mod bar;");
         let mut config = CrystallineConfig::default();
-        config.excluded_files.insert("crate_root".to_string(), "lib.rs".to_string());
+        config
+            .excluded_files
+            .insert("crate_root".to_string(), "lib.rs".to_string());
         let walker = FileWalker::new(dir.path().to_path_buf(), config);
         let files = collect_ok(&walker);
         assert_eq!(files.len(), 1);
         assert!(files[0].path.to_str().unwrap().contains("01_core"));
+    }
+
+    #[test]
+    fn walker_results_are_sorted_and_errors_remain_observable() {
+        let file = |path: &str| SourceFile {
+            path: PathBuf::from(path),
+            content: String::new(),
+            language: Language::Rust,
+            layer: Layer::Unknown,
+            has_adjacent_test: false,
+        };
+        let mut results = vec![
+            Ok(file("z.rs")),
+            Err(SourceError::Unreadable {
+                path: PathBuf::from("m.rs"),
+                reason: "walk failure".to_string(),
+            }),
+            Ok(file("a.rs")),
+        ];
+        sort_results(&mut results);
+        assert_eq!(
+            results.iter().map(result_path).collect::<Vec<_>>(),
+            vec![Path::new("a.rs"), Path::new("m.rs"), Path::new("z.rs")]
+        );
+        assert!(matches!(results[1], Err(SourceError::Unreadable { .. })));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinks_are_neither_sources_nor_adjacent_tests() {
+        use std::os::unix::fs::symlink;
+        let root = setup_project();
+        let external = setup_project();
+        write_file(root.path(), "01_core/main.rs", "fn main() {}");
+        write_file(external.path(), "outside.rs", "fn outside() {}");
+        symlink(
+            external.path().join("outside.rs"),
+            root.path().join("01_core/main_test.rs"),
+        )
+        .unwrap();
+        symlink(external.path(), root.path().join("linked")).unwrap();
+
+        assert!(!check_adjacent_test(&root.path().join("01_core/main.rs")));
+        let files = collect_ok(&FileWalker::new(
+            root.path().to_path_buf(),
+            CrystallineConfig::default(),
+        ));
+        assert_eq!(files.len(), 1);
+        assert!(files[0].path.ends_with("main.rs"));
     }
 }
