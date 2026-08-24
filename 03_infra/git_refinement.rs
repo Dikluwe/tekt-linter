@@ -18,6 +18,7 @@ const MAX_PATHS: usize = 512;
 const MAX_BLOB_BYTES: usize = 4 * 1024 * 1024;
 const MAX_TOTAL_BYTES: usize = 32 * 1024 * 1024;
 const GIT_TIMEOUT: Duration = Duration::from_secs(10);
+const BLOB_BUDGET_ERROR: &str = "refinement Git blob budget exhausted";
 
 #[derive(Clone, Debug)]
 enum TreeEntry {
@@ -58,7 +59,15 @@ fn checked(output: Output, operation: &str) -> Result<Vec<u8>, String> {
     Err(format!("git {operation} failed: {}", detail.trim()))
 }
 
-fn collect_output(mut child: Child, operation: &str) -> Result<Output, String> {
+fn collect_output(child: Child, operation: &str) -> Result<Output, String> {
+    collect_output_with_timeout(child, operation, GIT_TIMEOUT)
+}
+
+fn collect_output_with_timeout(
+    mut child: Child,
+    operation: &str,
+    timeout: Duration,
+) -> Result<Output, String> {
     let mut stdout = child.stdout.take().ok_or("cannot capture git stdout")?;
     let mut stderr = child.stderr.take().ok_or("cannot capture git stderr")?;
     let stdout_reader = thread::spawn(move || {
@@ -73,7 +82,7 @@ fn collect_output(mut child: Child, operation: &str) -> Result<Output, String> {
     let status: ExitStatus = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
-            Ok(None) if started.elapsed() < GIT_TIMEOUT => {
+            Ok(None) if started.elapsed() < timeout => {
                 thread::sleep(Duration::from_millis(10));
             }
             Ok(None) => {
@@ -219,7 +228,7 @@ fn read_blobs(
         }
         let size: usize = fields[2].parse().map_err(|_| "invalid git blob size")?;
         if size > MAX_BLOB_BYTES || total.saturating_add(size) > MAX_TOTAL_BYTES {
-            return Err("refinement Git blob budget exhausted".to_string());
+            return Err(BLOB_BUDGET_ERROR.to_string());
         }
         let start = newline + 1;
         let end = start.checked_add(size).ok_or("git blob size overflow")?;
@@ -246,7 +255,22 @@ pub fn extract_revision_snapshot(
             TreeEntry::Missing | TreeEntry::Unsupported => None,
         })
         .collect();
-    let blobs = read_blobs(repository, &oids)?;
+    let blobs = match read_blobs(repository, &oids) {
+        Ok(blobs) => blobs,
+        Err(error) if error == BLOB_BUDGET_ERROR => {
+            let mut snapshot = extract_snapshot_from_content(oid, specs, |_| Ok(None))?;
+            for spec in specs {
+                if matches!(entries.get(&spec.file), Some(TreeEntry::Blob(_))) {
+                    snapshot.observables.insert(
+                        spec.key.clone(),
+                        ObservableValue::Unknown(UnknownReason::BudgetExhausted),
+                    );
+                }
+            }
+            return Ok(snapshot);
+        }
+        Err(error) => return Err(error),
+    };
     let mut snapshot = extract_snapshot_from_content(oid, specs, |path| {
         Ok(entries
             .get(path)
@@ -266,4 +290,31 @@ pub fn extract_revision_snapshot(
         }
     }
     Ok(snapshot)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn timeout_kills_a_blocked_process() {
+        let mut command = Command::new("sh");
+        command
+            .args(["-c", "sleep 5"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let child = command.spawn().unwrap();
+        let started = Instant::now();
+        let error =
+            collect_output_with_timeout(child, "fixture", Duration::from_millis(30)).unwrap_err();
+        assert!(error.contains("exceeded"));
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn option_like_ref_is_not_treated_as_an_option() {
+        let error = resolve_commit(Path::new("."), "--help").unwrap_err();
+        assert!(error.contains("rev-parse failed"));
+    }
 }
