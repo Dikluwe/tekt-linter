@@ -91,6 +91,10 @@ V21 L1 não lê filesystem. `check` recebe `CitationFreshnessResolver`, porta ca
 única V21 Warning `CitationFreshnessUnknown`. Ambos preservam path, linha e razão e nunca
 são promovidos por strict module.
 
+Os diagnósticos usam `rule_id == "V21"`. A mensagem de stale contém literalmente
+`StaleCitation`, o path, a linha e o `Debug` da razão; a mensagem de unknown contém
+literalmente `CitationFreshnessUnknown`, o path, a linha e o `Debug` da razão.
+
 `Spec(payload)` e `Rationale(payload)` silenciam somente com `payload.trim()` não vazio;
 vazio/whitespace equivale a ausência de proveniência. O parser associa citações na linha
 alvo ou nas três linhas anteriores, inclusive; posteriores não associam. Havendo várias,

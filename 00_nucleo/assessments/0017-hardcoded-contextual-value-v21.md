@@ -10,10 +10,11 @@
 
 | Unidade | Caminho | SHA-256 |
 |---|---|---|
-| V21 | `00_nucleo/prompts/unsourced-constant.md` | `e179f9d134956c3bdaae8f57938d25096b2f4bc95bc85bdb246845ec4d9ed05a` |
-| IR | `00_nucleo/prompts/contracts/rule-traits.md` | `53c622749e5447385b6bc47a7c4410a21d4b6d27ae459f2d307e3742a863c2c1` |
-| porta de frescura | `00_nucleo/prompts/contracts/citation-freshness.md` | `7b2e4f285dada19b500d3d653bde3d12ff1fa0f05d1d6a34039deff70e7efb5c` |
+| V21 | `00_nucleo/prompts/unsourced-constant.md` | `6fe0f1ed9b59b206be628b292bc507f8eb50227d2ececb01236181b4bc7dba91` |
+| IR | `00_nucleo/prompts/contracts/rule-traits.md` | `cdba18365badfb56288480f683451914d88b0df07201acc43ee8334d22289ba3` |
+| porta de frescura | `00_nucleo/prompts/contracts/citation-freshness.md` | `5a68af8d6b2d5a679c56d03bcc266b6bf442c36f1fe97007ea7ee69f6e8743f0` |
 | arquitetura/wiring | `00_nucleo/prompts/linter-core.md` | `ed44ffdda0a323df26a25cef40c0acb46bd692db6fdaef861a20a509adeb7029` |
+| diagnóstico | `00_nucleo/prompts/violation-types.md` | `b50d90505e311a1aa99d3c80988f3f7996fe7974d71579543f86c0553a4dc314` |
 | distinção V16/V21 | `00_nucleo/adr/0017-v16-v21-diferenca-categorica.md` | `79f406654aacf3693616232a4fdbb911e359486d089ffde841af5375625104dd` |
 | protocolo | `00_nucleo/tekt-linter-passo-0088-triagem-v21.md` | `b1df39f121022b2b6d8a0a47f9e1c25202af055a4b9f50cea6c7c0839997b3a1` |
 
