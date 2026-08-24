@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/pub-leak.md
-//! @prompt-hash f58edb9c
+//! @prompt-hash 2feec98f
 //! @layer L1
 //! @updated 2026-06-09
 

@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/crate-registry.md
-//! @prompt-hash b4ca6455
+//! @prompt-hash 16a8ac3b
 //! @layer L3
 //! @updated 2026-06-06
 

@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/orphan-prompt.md
-//! @prompt-hash 0549fdf9
+//! @prompt-hash ab86b440
 //! @layer L1
 //! @updated 2026-03-23
 
@@ -52,14 +52,17 @@ pub fn check_orphans<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
+    use std::collections::BTreeSet;
 
     use crate::contracts::prompt_provider::{AllPrompts, PromptEntry};
     use crate::entities::project_index::ProjectIndex;
 
     fn make_all_prompts(paths: &[&'static str]) -> AllPrompts<'static> {
         AllPrompts {
-            entries: paths.iter().map(|p| PromptEntry { relative_path: p }).collect(),
+            entries: paths
+                .iter()
+                .map(|p| PromptEntry { relative_path: p })
+                .collect(),
         }
     }
 
@@ -99,10 +102,7 @@ mod tests {
 
     #[test]
     fn partial_orphans_returns_only_unreferenced() {
-        let all = make_all_prompts(&[
-            "00_nucleo/prompts/a.md",
-            "00_nucleo/prompts/b.md",
-        ]);
+        let all = make_all_prompts(&["00_nucleo/prompts/a.md", "00_nucleo/prompts/b.md"]);
         let index = make_index(&["00_nucleo/prompts/a.md"]);
         let violations = check_orphans(&index, &all, ViolationLevel::Warning);
         assert_eq!(violations.len(), 1);
@@ -123,7 +123,9 @@ mod tests {
     // vazio não produz violações.
     #[test]
     fn empty_all_prompts_returns_no_violations() {
-        let all = AllPrompts { entries: HashSet::new() };
+        let all = AllPrompts {
+            entries: BTreeSet::new(),
+        };
         let index = make_index(&[]);
         assert!(check_orphans(&index, &all, ViolationLevel::Warning).is_empty());
     }

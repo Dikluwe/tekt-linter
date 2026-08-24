@@ -1,5 +1,5 @@
 # Prompt — V23 `ContextErasure`
-Hash do Código: aab8d523
+Hash do Código: 5087e2a9
 
 **Status:** VIGENTE; ADR-0018 aceito em 2026-08-23  
 **Camada futura:** L1, com fatos AST produzidos por L3  

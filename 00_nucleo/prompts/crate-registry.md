@@ -1,5 +1,5 @@
 # Prompt: Registro de membros do workspace e classificação de import ciente de dependências
-Hash do Código: e53ee416
+Hash do Código: b9bc7525
 
 **Camada**: L3 (infra — I/O sobre `Cargo.toml`)
 **Materializa**: `03_infra/crate_registry.rs` + alterações em `03_infra/rs_parser.rs`

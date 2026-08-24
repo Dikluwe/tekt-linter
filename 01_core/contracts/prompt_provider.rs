@@ -1,10 +1,10 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/prompt-provider.md
-//! @prompt-hash a7847848
+//! @prompt-hash 56c1e27b
 //! @layer L1
 //! @updated 2026-03-15
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use thiserror::Error;
@@ -14,7 +14,7 @@ use thiserror::Error;
 /// Um prompt descoberto em 00_nucleo/prompts/.
 /// Carrega apenas o path relativo à raiz do projeto —
 /// suficiente para comparação com @prompt headers.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PromptEntry<'a> {
     /// Path relativo à raiz do projeto.
     /// Exemplo: "00_nucleo/prompts/rules/forbidden-import.md"
@@ -30,7 +30,7 @@ pub struct PromptEntry<'a> {
 /// Imutável durante toda a execução — seguro para acesso concorrente.
 #[derive(Debug)]
 pub struct AllPrompts<'a> {
-    pub entries: HashSet<PromptEntry<'a>>,
+    pub entries: BTreeSet<PromptEntry<'a>>,
 }
 
 impl<'a> AllPrompts<'a> {
@@ -87,7 +87,10 @@ mod tests {
 
     fn make_all_prompts(paths: &[&'static str]) -> AllPrompts<'static> {
         AllPrompts {
-            entries: paths.iter().map(|p| PromptEntry { relative_path: p }).collect(),
+            entries: paths
+                .iter()
+                .map(|p| PromptEntry { relative_path: p })
+                .collect(),
         }
     }
 
@@ -111,7 +114,9 @@ mod tests {
 
     #[test]
     fn is_empty_true_for_empty_set() {
-        let ap = AllPrompts { entries: HashSet::new() };
+        let ap = AllPrompts {
+            entries: BTreeSet::new(),
+        };
         assert!(ap.is_empty());
     }
 
@@ -122,7 +127,9 @@ mod tests {
     impl PromptProvider for MockProvider {
         fn scan<'a>(&'a self) -> Result<AllPrompts<'a>, PromptScanError> {
             Ok(AllPrompts {
-                entries: self.result.iter()
+                entries: self
+                    .result
+                    .iter()
                     .map(|p| PromptEntry { relative_path: p })
                     .collect(),
             })

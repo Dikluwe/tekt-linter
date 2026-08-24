@@ -1,5 +1,5 @@
 # Prompt: Rule V6 - Prompt Stale (prompt-stale)
-Hash do Código: faa2925d
+Hash do Código: 13b21556
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V6

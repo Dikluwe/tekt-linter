@@ -1,0 +1,242 @@
+use std::collections::HashSet;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Barrier};
+use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crystalline_lint::contracts::prompt_provider::PromptProvider;
+use crystalline_lint::contracts::prompt_reader::PromptReader;
+use crystalline_lint::contracts::prompt_snapshot_reader::PromptSnapshotReader;
+use crystalline_lint::infra::hash_writer::{compute_source_hash, write_hash, write_prompt_meta};
+use crystalline_lint::infra::prompt_reader::FsPromptReader;
+use crystalline_lint::infra::prompt_snapshot_reader::{extract_snapshot_json, FsPromptSnapshotReader};
+use crystalline_lint::infra::prompt_walker::FsPromptWalker;
+
+fn temp(label: &str) -> PathBuf {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    std::env::temp_dir().join(format!("p0074-{label}-{}-{stamp}", std::process::id()))
+}
+
+const SNAPSHOT: &str = "<!-- crystalline-snapshot: {\"functions\":[],\"types\":[],\"reexports\":[]} -->";
+
+#[cfg(unix)]
+fn probe_confinement_and_walker_root() {
+    use std::os::unix::fs::symlink;
+
+    let real = temp("real-root");
+    let facade = temp("root-link");
+    fs::create_dir_all(real.join("00_nucleo/prompts")).unwrap();
+    fs::write(
+        real.join("00_nucleo/prompts/p.md"),
+        format!("# P\nHash do Código: deadbeef\n\n## Interface Snapshot\n{SNAPSHOT}\n"),
+    )
+    .unwrap();
+    let outside_file = real.join("outside.md");
+    fs::write(&outside_file, "# Outside\nHash do Código: deadbeef\n").unwrap();
+    symlink(&outside_file, real.join("00_nucleo/prompts/final-link.md")).unwrap();
+    fs::create_dir_all(real.join("external-dir")).unwrap();
+    fs::write(real.join("external-dir/nested.md"), "# Nested\nHash do Código: deadbeef\n").unwrap();
+    symlink(real.join("external-dir"), real.join("00_nucleo/prompts/ancestor-link")).unwrap();
+    let local_reader = FsPromptReader { nucleo_root: real.join("00_nucleo") };
+    assert!(!local_reader.exists("prompts/final-link.md"));
+    assert!(local_reader.read_hash("prompts/final-link.md").is_none());
+    assert!(local_reader.read_hash("prompts/ancestor-link/nested.md").is_none());
+    println!("PASS final and intermediate symlinks below a regular root rejected");
+    symlink(&real, &facade).unwrap();
+
+    let reader = FsPromptReader { nucleo_root: facade.join("00_nucleo") };
+    let snapshot = FsPromptSnapshotReader { nucleo_root: facade.join("00_nucleo") };
+    let hash_crossed = reader.read_hash("prompts/p.md").is_some();
+    let snapshot_crossed = snapshot.read_snapshot("prompts/p.md").is_some();
+    let walker = FsPromptWalker::new(facade.clone(), HashSet::new());
+    let walker_crossed = walker
+        .scan()
+        .map(|all| all.contains("00_nucleo/prompts/p.md"))
+        .unwrap_or(false);
+
+    println!(
+        "{} root symlink confinement: reader={hash_crossed} snapshot={snapshot_crossed} walker={walker_crossed}",
+        if hash_crossed || snapshot_crossed || walker_crossed { "RED" } else { "PASS" }
+    );
+    fs::remove_file(facade).unwrap();
+    fs::remove_dir_all(real).unwrap();
+}
+
+#[cfg(not(unix))]
+fn probe_confinement_and_walker_root() {
+    println!("SKIP root symlink confinement: Unix-only fixture");
+}
+
+fn prompt_hash(root: &Path, name: &str, bytes: &[u8]) -> Option<String> {
+    fs::write(root.join(name), bytes).unwrap();
+    FsPromptReader { nucleo_root: root.to_path_buf() }.read_hash(name)
+}
+
+fn probe_hash_bytes_and_decoys() {
+    let root = temp("hash");
+    fs::create_dir_all(&root).unwrap();
+    let lf = prompt_hash(&root, "lf.md", b"# T\nHash do C\xC3\xB3digo: deadbeef\nbody\n").unwrap();
+    let crlf = prompt_hash(&root, "crlf.md", b"# T\r\nHash do C\xC3\xB3digo: deadbeef\r\nbody\r\n").unwrap();
+    let no_final = prompt_hash(&root, "no-final.md", b"# T\nHash do C\xC3\xB3digo: deadbeef\nbody").unwrap();
+    let bom = prompt_hash(&root, "bom.md", b"\xEF\xBB\xBF# T\nHash do C\xC3\xB3digo: deadbeef\nbody\n").unwrap();
+    assert_ne!(lf, crlf, "FAIL CRLF normalized");
+    assert_ne!(lf, no_final, "FAIL final newline ignored");
+    assert_ne!(lf, bom, "FAIL BOM ignored");
+
+    let fence_a = prompt_hash(
+        &root,
+        "fence-a.md",
+        b"# T\n```text\nHash do C\xC3\xB3digo: deadbeef\n```\nbody\n",
+    );
+    let fence_b = prompt_hash(
+        &root,
+        "fence-b.md",
+        b"# T\n```text\nHash do C\xC3\xB3digo: cafebabe\n```\nbody\n",
+    );
+    if fence_a.is_some() && fence_a == fence_b {
+        println!("RED prompt hash stripped canonical-looking meta decoy inside fence");
+    } else {
+        println!("PASS prompt meta decoy remained observable or blocked");
+    }
+
+    let source = root.join("source.rs");
+    fs::write(
+        &source,
+        b"fn before() {}\n//! @prompt-hash deadbeef\nfn after() {}\n",
+    )
+    .unwrap();
+    let body_meta = compute_source_hash(&source);
+    println!(
+        "{} source meta outside leading header",
+        if body_meta.is_some() { "RED" } else { "PASS" }
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn probe_snapshot_syntax_and_schema() {
+    let bare = format!("ordinary text\n{SNAPSHOT}\n");
+    let fenced = format!("~~~markdown\n{SNAPSHOT}\n~~~\n");
+    let duplicate = format!("## Interface Snapshot\n{SNAPSHOT}\n{SNAPSHOT}\n");
+    let extra = "<!-- crystalline-snapshot: {\"functions\":[],\"types\":[],\"reexports\":[],\"extra\":1} -->";
+
+    let bare_ok = extract_snapshot_json(&bare).is_some();
+    let tilde_ok = extract_snapshot_json(&fenced).is_some();
+    assert!(extract_snapshot_json(&duplicate).is_none(), "FAIL duplicate marker accepted");
+
+    let root = temp("snapshot");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("extra.md"), extra).unwrap();
+    let extra_ok = FsPromptSnapshotReader { nucleo_root: root.clone() }
+        .read_snapshot("extra.md")
+        .is_some();
+    println!(
+        "{} snapshot syntax: bare={bare_ok} tilde-fence={tilde_ok} extra-schema={extra_ok}",
+        if bare_ok || tilde_ok || extra_ok { "RED" } else { "PASS" }
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn probe_walker_root_and_symlink() {
+    let root = temp("walker-file");
+    fs::create_dir_all(root.join("00_nucleo")).unwrap();
+    fs::write(root.join("00_nucleo/prompts"), "not a directory\n").unwrap();
+    assert!(FsPromptWalker::new(root.clone(), HashSet::new()).scan().is_err());
+    fs::remove_dir_all(root).unwrap();
+    println!("PASS walker rejects prompts root that is a file");
+}
+
+#[cfg(unix)]
+fn mode(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
+
+fn probe_writers() {
+    let root = temp("writers");
+    fs::create_dir_all(&root).unwrap();
+    let source = root.join("source.rs");
+    let original = b"\xEF\xBB\xBF//! Crystalline\r\n//! @prompt-hash deadbeef\r\nfn x() {}\r\n";
+    fs::write(&source, original).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o640)).unwrap();
+    }
+    write_hash(&source, "0123abcd").unwrap();
+    let after = fs::read(&source).unwrap();
+    assert!(after.starts_with(b"\xEF\xBB\xBF//! Crystalline\r\n"));
+    assert!(after.ends_with(b"fn x() {}\r\n"));
+    #[cfg(unix)]
+    assert_eq!(mode(&source), 0o640);
+    assert!(write_hash(&source, "ABCDEF12").is_err());
+
+    let absent = root.join("absent.md");
+    fs::write(&absent, b"# P\r\nBody without metadata.\r\n").unwrap();
+    let absent_result = write_prompt_meta(&absent, "0123abcd");
+    let absent_after = fs::read(&absent).unwrap();
+    let absent_inserted = absent_after
+        .split(|byte| *byte == b'\n')
+        .any(|line| line.starts_with(b"Hash do C\xC3\xB3digo: 0123abcd"));
+    println!(
+        "{} writer absent meta insertion: result={absent_result:?}",
+        if absent_result.is_ok() && absent_inserted { "PASS" } else { "RED" }
+    );
+
+    let decoy = root.join("prompt.md");
+    let decoy_bytes = b"# P\r\nBody mentions Hash do C\xC3\xB3digo: but has no meta.\r\n";
+    fs::write(&decoy, decoy_bytes).unwrap();
+    let decoy_result = write_prompt_meta(&decoy, "0123abcd");
+    let decoy_after = fs::read(&decoy).unwrap();
+    let inserted = decoy_after
+        .split(|byte| *byte == b'\n')
+        .any(|line| line.starts_with(b"Hash do C\xC3\xB3digo: 0123abcd"));
+    println!(
+        "{} writer absent+decoy insertion: result={decoy_result:?}",
+        if decoy_result.is_ok() && inserted { "PASS" } else { "RED" }
+    );
+
+    let barrier = Arc::new(Barrier::new(9));
+    let mut handles = Vec::new();
+    for index in 0..8u32 {
+        let path = source.clone();
+        let barrier = barrier.clone();
+        handles.push(thread::spawn(move || {
+            let hash = format!("{index:08x}");
+            barrier.wait();
+            write_hash(&path, &hash)
+        }));
+    }
+    barrier.wait();
+    for handle in handles {
+        handle.join().unwrap().unwrap();
+    }
+    let final_bytes = fs::read(&source).unwrap();
+    assert!(compute_source_hash(&source).is_some());
+    assert!(final_bytes.windows(b"//! @prompt-hash ".len()).any(|w| w == b"//! @prompt-hash "));
+    #[cfg(unix)]
+    assert_eq!(mode(&source), 0o640);
+    let residues: Vec<_> = fs::read_dir(&root)
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
+        .collect();
+    assert!(residues.is_empty(), "FAIL temporary residue after concurrent writes");
+    println!("PASS writer CRLF/BOM/mode/digest/concurrency/residue controls");
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn main() {
+    if std::env::args().nth(1).as_deref() == Some("p0") {
+        probe_confinement_and_walker_root();
+        return;
+    }
+    probe_confinement_and_walker_root();
+    probe_hash_bytes_and_decoys();
+    probe_snapshot_syntax_and_schema();
+    probe_walker_root_and_symlink();
+    probe_writers();
+}

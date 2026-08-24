@@ -1,5 +1,5 @@
 # Prompt: Rule V15 — Multi Prompt Header (multi-prompt-header)
-Hash do Código: 346327d1
+Hash do Código: 50ec428f
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V15

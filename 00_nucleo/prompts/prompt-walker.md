@@ -1,10 +1,10 @@
 # Prompt: Prompt Walker (prompt-walker)
-Hash do Código: 3da73baa
+Hash do Código: adc676e9
 
 **Camada**: L3 (Infra)
 **Padrão**: Filesystem Scanner
 **Criado em**: 2026-03-14 (ADR-0006)
-**Revisado em**: 2026-03-20 (propagação de erros granular — entrada inacessível é saltada)
+**Revisado em**: 2026-08-24 (varredura fail-closed e confinada)
 **Arquivos gerados**:
   - 03_infra/prompt_walker.rs + test
 
@@ -46,17 +46,15 @@ de código.
 - Se `00_nucleo/prompts/` não puder ser lido (não existe ou
   sem permissão de leitura do directório raiz) →
   `PromptScanError::NucleoUnreadable` — correcto abortar
-- Se uma entrada individual dentro de `prompts/` não for
-  acessível (ficheiro ou subdirectório sem permissão) →
-  entrada saltada silenciosamente, varredura continua.
-  Análogo ao comportamento de `FileWalker` para `SourceError`.
+- Se uma entrada individual dentro de `prompts/` não for acessível →
+  `PromptScanError::NucleoUnreadable`; a varredura é fail-closed.
+- A raiz deve ser diretório local, symlinks não são seguidos e os paths são ordenados.
 - Se path contiver bytes inválidos UTF-8 →
   `PromptScanError::InvalidUtf8` para essa entrada
 
 A distinção é importante: a ausência do directório raiz impede
 qualquer varredura — o linter não pode garantir completude de V7
-e deve falhar. Um ficheiro inacessível dentro de um directório
-legível é um dado em falta, não uma falha de infra.
+e deve falhar. Um ficheiro inacessível também impede afirmar completude.
 
 ---
 
@@ -135,9 +133,7 @@ impl PromptProvider for FsPromptWalker {
 ## Restrições
 
 - Implementa `PromptProvider` — retorna `Result<AllPrompts<'a>, PromptScanError>`
-- `NucleoUnreadable` apenas para falha do directório raiz
-- Entradas individuais inacessíveis dentro de `prompts/` são
-  saltadas — não abortam a varredura
+- `NucleoUnreadable` cobre falha da raiz e qualquer erro interno de travessia
 - Exclui `[orphan_exceptions]` antes de retornar — V7 nunca
   vê prompts excluídos
 - Não contém nenhuma regra de violação
@@ -171,9 +167,8 @@ Então retorna Err(PromptScanError::NucleoUnreadable)
 Dado uma entrada individual dentro de prompts/ inacessível
 E o directório raiz 00_nucleo/prompts/ é legível
 Quando scan() for chamado
-Então a entrada é saltada silenciosamente
-E as demais entradas são retornadas normalmente
-— entrada individual inacessível não aborta a varredura
+Então retorna Err(PromptScanError::NucleoUnreadable)
+— a varredura é fail-closed
 
 Dado arquivo não-.md em 00_nucleo/prompts/ (ex: .toml)
 Quando scan() for chamado

@@ -1,5 +1,5 @@
 # Prompt: Rule V2 - Missing Test File (test-file)
-Hash do Código: 0890d519
+Hash do Código: f9074a5f
 
 **Camada**: L1 (Core - Rules)
 **Regra**: V2

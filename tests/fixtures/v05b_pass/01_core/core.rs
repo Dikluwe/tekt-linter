@@ -1,5 +1,5 @@
 //! @prompt 00_nucleo/prompts/core.md
-//! @prompt-hash e2662f1d
+//! @prompt-hash 9e4d643c
 //! @layer L1
 //! @updated 2026-06-08
 
