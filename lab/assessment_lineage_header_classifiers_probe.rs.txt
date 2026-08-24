@@ -1,0 +1,115 @@
+// Probe independente do Assessment 0009. `.txt` evita auto-lint como produção.
+use crystalline_lint::entities::layer::Layer;
+use crystalline_lint::entities::parsed_file::PromptHeader;
+use crystalline_lint::entities::rule_traits::{HasPromptFilesystem, HasPromptRefs};
+use crystalline_lint::entities::violation::ViolationLevel;
+use crystalline_lint::rules::{multi_prompt_header, prompt_header};
+use std::path::Path;
+
+struct V1File {
+    // Campo deliberado: HasPromptFilesystem não o expõe à regra.
+    layer: Layer,
+    header: Option<PromptHeader<'static>>,
+    exists: bool,
+    path: &'static Path,
+}
+impl HasPromptFilesystem<'static> for V1File {
+    fn prompt_header(&self) -> Option<&PromptHeader<'static>> { self.header.as_ref() }
+    fn prompt_file_exists(&self) -> bool { self.exists }
+    fn path(&self) -> &'static Path { self.path }
+}
+
+struct V15File { layer: Layer, refs: Vec<&'static str>, path: &'static Path }
+impl HasPromptRefs<'static> for V15File {
+    fn layer(&self) -> &Layer { &self.layer }
+    fn prompt_refs(&self) -> &[&'static str] { &self.refs }
+    fn path(&self) -> &'static Path { self.path }
+}
+
+fn layers() -> Vec<Layer> {
+    vec![Layer::L0, Layer::L1, Layer::L2, Layer::L3, Layer::L4, Layer::Lab, Layer::Unknown]
+}
+fn required(layer: &Layer) -> bool { matches!(layer, Layer::L1|Layer::L2|Layer::L3|Layer::L4) }
+fn header(path: &'static str) -> PromptHeader<'static> {
+    PromptHeader { prompt_path: path, prompt_hash: None, current_hash: None,
+                   layer: Layer::L1, updated: None }
+}
+
+fn main() {
+    // P1: escopo 7 camadas com header ausente. A regra deveria isentar 3 camadas.
+    let mut false_positives = vec![];
+    for layer in layers() {
+        let f = V1File { layer, header: None, exists: false, path: Path::new("lab/host.rs") };
+        let got = prompt_header::check(&f, &[]);
+        if !required(&f.layer) && !got.is_empty() { false_positives.push(format!("{:?}", f.layer)); }
+    }
+    assert_eq!(false_positives, vec!["L0", "Lab", "Unknown"]);
+    println!("RED P1 V1 false positives outside L1-L4: {:?}", false_positives);
+
+    // P2: nas camadas obrigatórias, tabela header x exists é completa e cardinalidade <= 1.
+    for layer in [Layer::L1, Layer::L2, Layer::L3, Layer::L4] {
+        for has_header in [false, true] { for exists in [false, true] {
+            let f = V1File { layer: layer.clone(),
+                header: has_header.then(|| header("00_nucleo/prompts/é.md")), exists,
+                path: Path::new("01_core/é.rs") };
+            let got = prompt_header::check(&f, &[]);
+            assert_eq!(got.len(), usize::from(!(has_header && exists)));
+            assert!(got.len() <= 1);
+            if let Some(v) = got.first() {
+                assert_eq!(v.rule_id, "V1"); assert_eq!(v.level, ViolationLevel::Error);
+                assert_eq!(v.location.path.as_ref(), Path::new("01_core/é.rs"));
+                assert_eq!((v.location.line, v.location.column), (1, 0));
+            }
+        }}
+    }
+    println!("PASS P2 V1 header/exists truth table in L1-L4");
+
+    // P3: strict dirs usa componentes, não prefixos textuais próximos.
+    let strict = vec!["01_core/contracts".to_string()];
+    for (path, level) in [
+        ("01_core/contracts/x.rs", ViolationLevel::Fatal),
+        ("01_core/contracts", ViolationLevel::Fatal),
+        ("01_core/contracts_extra/x.rs", ViolationLevel::Error),
+        ("01_core/contract/x.rs", ViolationLevel::Error),
+    ] {
+        let f = V1File { layer: Layer::L1, header: None, exists: false, path: Path::new(path) };
+        assert_eq!(prompt_header::check(&f, &strict)[0].level, level);
+    }
+    println!("PASS P3 V1 strict path component boundary");
+
+    // P4: tabela V15 de 7 camadas x cardinalidades 0..3.
+    for layer in layers() { for count in 0..=3 {
+        let refs = ["p0", "p1", "p2"][..count].to_vec();
+        let f = V15File { layer: layer.clone(), refs, path: Path::new("src/x.rs") };
+        let expected = usize::from(required(&f.layer) && count >= 2);
+        let got = multi_prompt_header::check(&f);
+        assert_eq!(got.len(), expected);
+        if let Some(v) = got.first() {
+            assert_eq!(v.rule_id, "V15"); assert_eq!(v.level, ViolationLevel::Error);
+            assert_eq!((v.location.line, v.location.column), (1, 0));
+        }
+    }}
+    println!("PASS P4 V15 exhaustive layer x cardinality");
+
+    // P5: V15 conserva ordem, duplicata, quantidade e representação Unicode.
+    let refs = vec!["00/p/é.md", "00/p/e\u{301}.md", "00/p/é.md"];
+    let f = V15File { layer: Layer::L3, refs: refs.clone(), path: Path::new("03_infra/é.rs") };
+    let a = multi_prompt_header::check(&f); let b = multi_prompt_header::check(&f);
+    assert_eq!(a, b); assert_eq!(a.len(), 1);
+    let v = &a[0];
+    assert!(v.message.contains("3 headers"));
+    assert!(v.message.contains(&refs.join(", ")));
+    assert_eq!(v.location.path.as_ref(), Path::new("03_infra/é.rs"));
+    println!("PASS P5 V15 order/duplicates/Unicode/evidence/determinism");
+
+    // P6: quando a referência falta, V1 conhece o header mas omite sua identidade.
+    let missing = "00_nucleo/prompts/ausente-é.md";
+    let f = V1File { layer: Layer::L2, header: Some(header(missing)), exists: false,
+                     path: Path::new("02_shell/host.rs") };
+    let v = prompt_header::check(&f, &[]);
+    assert_eq!(v.len(), 1); assert!(!v[0].message.contains(missing));
+    let absent = V1File { layer: Layer::L2, header: None, exists: false,
+                          path: Path::new("02_shell/host.rs") };
+    assert_eq!(v[0].message, prompt_header::check(&absent, &[])[0].message);
+    println!("RED P6 V1 missing-reference evidence omits prompt path and equals absent-header message");
+}
