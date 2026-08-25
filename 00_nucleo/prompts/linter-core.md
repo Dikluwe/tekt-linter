@@ -1,5 +1,5 @@
 # Prompt: Crystalline Linter (crystalline-lint)
-Hash do Código: cba9d9ce
+Hash do Código: e22f399b
 
 **Camada**: L1 → L4 (sistema completo)
 **Criado em**: 2025-03-13
@@ -702,7 +702,9 @@ respectivamente. A Etapa A não lê Git, não executa comandos e não usa SMT.
 A Etapa B1 adiciona `snapshot`: L3 executa queries tree-sitter Rust declaradas e escreve
 `ArtifactFacts` v1 deterministicamente; L1 decide cardinalidade/ausência; L2 traduz
 argumentos e sucesso; L4 compõe. Paths relativos e symlinks permanecem confinados à
-raiz. Git, wrapper e SMT continuam fora de escopo.
+raiz. Nesse envelope B1, Git continua fora de escopo; wrapper e SMT permanecem fora de
+escopo global. A Etapa B2 aceita pelo ADR-0019 autoriza separadamente apenas a leitura
+Git local e imutável de `refine-revisions`, nos limites documentados pela adenda.
 
 ## Histórico de Revisões
 
