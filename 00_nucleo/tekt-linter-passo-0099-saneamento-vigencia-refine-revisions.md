@@ -1,7 +1,7 @@
 # Passo operacional 0099 — saneamento da vigência Git de `refine-revisions`
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** planejado; não executado
+> **Estado:** executado; `READY WITH RESIDUAL AUDIT` / `PASS-CONFIRMED`
 > **Branch prevista:** `codex/reconcile-refine-revisions-authority`
 > **Pré-condição:** P0098 integrado em `master`, worktree limpo e branch nova criada a
 > partir do merge
