@@ -135,7 +135,9 @@ Ordem de propriedades não altera `ArtifactFacts`.
 
 ### Contrato TOML
 
-O documento raiz é fechado: `id` e uma ou mais `[[relation]]`. `id`, `source`, `target`
+O documento raiz é fechado: `id`, zero ou mais `[[observable]]` pertencentes ao extrator
+L3 e uma ou mais `[[relation]]`. O loader de relações reconhece `observable`, mas não o
+materializa nem substitui sua validação pelo loader de extração. `id`, `source`, `target`
 e valores de `accepted_targets` são preservados e exigem `trim` não vazio quando
 presentes. Kinds são case-sensitive:
 

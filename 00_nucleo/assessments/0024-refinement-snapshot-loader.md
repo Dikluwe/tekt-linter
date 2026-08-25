@@ -10,7 +10,7 @@
 | Unidade | Caminho | SHA-256 |
 |---|---|---|
 | ADR refinamento | `00_nucleo/adr/0019-validacao-direcional-de-refinamento.md` | `c2607ff2feb044487b454b3dc3115c9613d8124faebc415dc889eb717038e376` |
-| contrato refinamento | `00_nucleo/prompts/refinement-validator.md` | `398a4678b853c6ed2d7a80b77398ad0cbfd8a1c6d9a71acd45eb815073f11106` |
+| contrato refinamento | `00_nucleo/prompts/refinement-validator.md` | `7061d609f14343f041bb28dbee4a89589a3d68161bdb9dfb63b3e461cafcae97` |
 | arquitetura | `00_nucleo/prompts/linter-core.md` | `9446277167f07dc5290617855cff456f061aa052ce8bd51ecf980530800b8c00` |
 | diagnósticos | `00_nucleo/prompts/violation-types.md` | `147afa0d8f3f3e6e30e050590dad0b99c7da8486d3565e3f6c42f7fa883ea4dc` |
 | protocolo segregado | `00_nucleo/prompts/segregated-materialization.md` | `366fd0855c6b04e533f4f4a477a73d7e5ec65f24c056720c61fca906bb5299a4` |
@@ -91,3 +91,12 @@ públicas, incluindo `load_snapshot_from_bytes` para B1.
 Foi escolhida deliberadamente a API `Result<_, String>` existente, com prefixos
 normativos, em vez de ampliar este lote com novo enum público de erros. L3 continua sem
 veredito. Após resselamento, B1/B2 podem começar; produção permanece proibida.
+
+## RED de integração C1
+
+A primeira regressão completa encontrou `RED`, não defeito de gate: o fluxo histórico
+`refine-revisions` usa um único TOML com `[[observable]]` e `[[relation]]`, enquanto o
+fechamento inicial do loader de relações admitia apenas `id` e `relation`. O contrato foi
+saneado para reconhecer a extensão raiz `observable` sem materializá-la neste loader;
+sua validação continua exclusiva do loader de extração L3. Campos raiz diferentes desses
+três permanecem fechados. B1/B2 continuaram verdes após a correção.
