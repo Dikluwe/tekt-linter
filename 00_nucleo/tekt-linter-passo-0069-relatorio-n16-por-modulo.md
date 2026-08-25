@@ -117,3 +117,72 @@ de saída, não na tabela de verificações V0-V22.
 5. Fixture verde, auto-validação verde, README actualizado.
 6. Com 1–5 verdes: passo fechado, sem promoção de ADR (não é decisão de arquitetura nova,
    é extensão de relatório sobre mecanismo já aprovado no ADR-0017).
+
+## Adendo normativo P0094 — contrato total do relatório
+
+Este adendo substitui, para o relatório `n16-summary`, qualquer frase anterior
+incompatível sobre parsing, agrupamento, percentuais, avisos ou ordenação.
+
+### Tag e localização
+
+Um token é exatamente `N16[` + categoria + `]`. `N16` é case-sensitive; a categoria é
+`α`, `β`, `γ` ou A/B/C ASCII em qualquer case, mapeando A→α, B→β e C→γ. A varredura é
+não sobreposta, da esquerda para a direita, em qualquer posição e sem limite de palavra.
+Exatamente um token válido classifica a ocorrência. Zero tokens ou dois ou mais tokens,
+iguais ou divergentes, tornam a ocorrência não classificada. Tokens truncados,
+categorias extras e caracteres Unicode parecidos não contam. Este extrator pertence ao
+relatório e não redefine o validador de justificativas V16.
+
+A identidade de fonte é `(path.to_string_lossy(), line)`. A chave de exceção é dividida
+somente no último `:`; o prefixo integral é o path e o sufixo deve fazer parse decimal
+total em `usize`. Ausência, parse inválido ou overflow ignoram a chave. Linha zero e path
+vazio permanecem identidades nominais válidas. Não há normalização, case-folding,
+resolução de `.`/`..`, equivalência absoluto/relativo ou equivalência de separadores.
+Uma duplicata existe somente por igualdade exata do par. Fonte tem precedência: exceção
+igual apenas deduplica e exceção divergente na mesma localização é descartada.
+
+### Agrupamento
+
+Somente para agrupamento, separar lexicalmente por `/` e `\`, remover componentes
+vazios e `.` e preservar `..` como componente comum. Procurar o primeiro componente de
+camada exato entre `00_nucleo`, `01_core`, `02_shell`, `03_infra` e `04_wiring`.
+
+- Em `01_core`, se a sequência seguinte contiver `src`, usar o primeiro componente após
+  `src`; se os dois primeiros forem exatamente `math`, `layout`, usar `math/layout/`.
+- Arquivo diretamente em `01_core/src` ou `01_core` sem componente de módulo usa
+  `01_core/`.
+- As demais camadas usam `<camada>/`.
+- Path sem componente de camada usa `other/`.
+
+Comparações são case-sensitive e somente por componentes completos. A identidade de
+deduplicação continua nominal; agrupamento não cria equivalência entre localizações.
+
+### Ordem, tabela e amostra
+
+Ordenar módulos por γ absoluto decrescente e, em empate, nome do módulo por bytes UTF-8
+ascendente. Percentual, total, α e β não participam do desempate.
+
+As colunas são `Módulo`, `Total`, `α`, `β`, `γ`, `% γ`. Para total positivo, `% γ` é
+`γ * 100 / total`, arredondado half-up a uma casa, inclusive `0.0%` para γ zero. A linha
+total usa a mesma regra quando positiva; total geral zero usa `—`. A linha `Total` está
+sempre presente. Portanto `export/` α-only mostra `0.0%`, e não `—`; a coluna dedicada,
+sem parênteses, é a representação normativa.
+
+Emitir aviso para todo módulo com `total < min_sample_size`, inclusive γ zero. A linha
+total nunca recebe aviso. Como módulo emitido tem total ao menos 1, limiar zero ou um não
+produz aviso. `~pp` é `100 / total` arredondado half-up para inteiro e nunca é calculado
+para zero. Com limiar 5 na tabela histórica, recebem aviso `introspect/`,
+`math/layout/`, `parse/` e `export/`.
+
+### Consumidor e arquitetura Tekt
+
+`n16-summary` é formato L2 opt-in, selecionado por L4, e exige V16 habilitada. Se
+`--checks` omitir V16, a CLI retorna erro de uso/exit 1 antes da execução. Com outros
+checks habilitados, o payload contém somente o relatório N16; os demais diagnósticos
+continuam participando da política normal de exit status. Relatório vazio é sucesso e
+não altera exit status. Falha upstream permanece diagnóstico e conserva sua política.
+
+L2 agrega e apresenta entradas injetadas sem filesystem, configuração, ambiente,
+relógio, rede ou processo. L3 lê fontes/configuração. L4 seleciona e injeta. L1 fornece
+entidades/contratos e não conhece o formato. O relatório não cria regra V, não muda
+severidade e não bloqueia por si próprio.
