@@ -5,3 +5,8 @@ Owner exclusivo: `01_core/entities/mod.rs`.
 
 Declarar somente a fachada nominal dos módulos de entidades. Não conter regra, I/O,
 composição ou reexport que atravesse a gravidade arquitetural.
+
+## Critério observável
+
+A fachada compila contendo apenas declarações/reexports das entidades L1; análise de imports
+não encontra regra, adapter ou dependência L2/L3/L4.

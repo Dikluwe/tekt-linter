@@ -50,8 +50,10 @@ SPEC-GAP permanecem bloqueantes até classificação explícita.
 
 ## C — auditoria semântica dos 44 prompts
 
-O manifesto `0036-prompt-contracts.tsv` cobre exatamente os 44 pares: 14 são
-`SUFFICIENT`; 30 são `ENRICH` porque têm owner/fronteira corretos, mas critério observável
-apenas implícito. Zero `CONTRADICTION`, zero `SPEC-GAP`. Os classificadores 0034 continuam
-autoridades e nenhum Núcleo Tekt é necessário. Enriquecimento permanece pendente neste
-checkpoint.
+O manifesto `0036-prompt-contracts.tsv` cobre exatamente os 44 pares: 14 já eram
+`SUFFICIENT`; 30 eram `ENRICH` porque tinham owner/fronteira corretos, mas critério
+observável apenas implícito. Os 30 receberam seção `## Critério observável`, sem alteração
+de owner, código, camada ou claim compartilhada.
+
+Resultado final: 44 `SUFFICIENT`, zero `CONTRADICTION`, zero `SPEC-GAP`. Os classificadores
+0034 continuam autoridades e nenhum Núcleo Tekt foi criado artificialmente.
