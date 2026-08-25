@@ -1,5 +1,5 @@
 # Prompt: regra V26 — integridade de Núcleos Tekt
-Hash do Código: 00000000
+Hash do Código: 55f78db3
 
 ## Contexto
 
