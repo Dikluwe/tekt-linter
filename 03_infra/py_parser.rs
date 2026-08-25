@@ -18,8 +18,8 @@ use crate::contracts::prompt_reader::PromptReader;
 use crate::contracts::prompt_snapshot_reader::PromptSnapshotReader;
 use crate::entities::layer::{Language, Layer};
 use crate::entities::parsed_file::{
-    Declaration, DeclarationKind, FunctionSignature, Import, ImportKind, ParsedFile,
-    PromptHeader, PublicInterface, Token, TokenKind, TypeKind, TypeSignature,
+    Declaration, DeclarationKind, FunctionSignature, Import, ImportKind, ParsedFile, PromptHeader,
+    PublicInterface, Token, TokenKind, TypeKind, TypeSignature,
 };
 use crate::infra::config::CrystallineConfig;
 use crate::infra::walker::resolve_file_layer;
@@ -70,7 +70,9 @@ impl<R: PromptReader, S: PromptSnapshotReader> PyParser<R, S> {
 impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for PyParser<R, S> {
     fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
         if file.content.is_empty() {
-            return Err(ParseError::EmptySource { path: file.path.clone() });
+            return Err(ParseError::EmptySource {
+                path: file.path.clone(),
+            });
         }
 
         if file.language != Language::Python {
@@ -81,23 +83,24 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for PyParser<R, S>
         }
 
         let mut engine = PyParserEngine::new();
-        engine.set_language(&tree_sitter_python::LANGUAGE.into()).map_err(|_| {
-            ParseError::SyntaxError {
+        engine
+            .set_language(&tree_sitter_python::LANGUAGE.into())
+            .map_err(|_| ParseError::SyntaxError {
                 path: file.path.clone(),
                 line: 0,
                 column: 0,
                 message: "Failed to load Python grammar".to_string(),
-            }
-        })?;
+            })?;
 
-        let tree = engine.parse(file.content.as_bytes(), None).ok_or_else(|| {
-            ParseError::SyntaxError {
-                path: file.path.clone(),
-                line: 0,
-                column: 0,
-                message: "Parser returned None — possible timeout".to_string(),
-            }
-        })?;
+        let tree =
+            engine
+                .parse(file.content.as_bytes(), None)
+                .ok_or_else(|| ParseError::SyntaxError {
+                    path: file.path.clone(),
+                    line: 0,
+                    column: 0,
+                    message: "Parser returned None — possible timeout".to_string(),
+                })?;
 
         let root = tree.root_node();
 
@@ -125,8 +128,14 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for PyParser<R, S>
 
         // 2. Imports + import_name_map (PyLayerResolver 4 passos + resolve_py_subdir)
         let intern: &dyn Fn(String) -> &'static str = &|s| self.intern_subdir(s);
-        let (imports, import_name_map) =
-            extract_imports(root, source, file.path.as_path(), &self.project_root, &self.config, intern);
+        let (imports, import_name_map) = extract_imports(
+            root,
+            source,
+            file.path.as_path(),
+            &self.project_root,
+            &self.config,
+            intern,
+        );
 
         // 3. Tokens — imports proibidos + call nodes (sem Motor de Duas Fases)
         let tokens = extract_tokens(root, source, &imports);
@@ -143,13 +152,12 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for PyParser<R, S>
             .and_then(|h| self.snapshot_reader.read_snapshot(h.prompt_path));
 
         // 6. declared_traits — apenas L1/contracts, apenas class com Protocol/ABC (V11)
-        let declared_traits = if file.layer == Layer::L1
-            && path_contains_segment(file.path.as_path(), "contracts")
-        {
-            extract_declared_traits(root, source)
-        } else {
-            vec![]
-        };
+        let declared_traits =
+            if file.layer == Layer::L1 && path_contains_segment(file.path.as_path(), "contracts") {
+                extract_declared_traits(root, source)
+            } else {
+                vec![]
+            };
 
         // 7. implemented_traits — apenas L2|L3, bases de L1/contracts/ (V11)
         let implemented_traits = if matches!(file.layer, Layer::L2 | Layer::L3) {
@@ -306,11 +314,7 @@ fn resolve_relative_layer(
 }
 
 /// Resolve o target_layer de um módulo absoluto (alias ou externo).
-fn resolve_absolute_layer(
-    module: &str,
-    project_root: &Path,
-    config: &CrystallineConfig,
-) -> Layer {
+fn resolve_absolute_layer(module: &str, project_root: &Path, config: &CrystallineConfig) -> Layer {
     // Passo 1 — verificar alias
     if let Some((alias_key, alias_val)) = config
         .py_aliases
@@ -357,7 +361,10 @@ fn resolve_py_subdir(
         .strip_prefix(&base_l1)
         .or_else(|_| normalized.strip_prefix(layer_dir.as_str()))
         .ok()?;
-    let subdir = relative.components().next().and_then(|c| c.as_os_str().to_str())?;
+    let subdir = relative
+        .components()
+        .next()
+        .and_then(|c| c.as_os_str().to_str())?;
     Some(intern(subdir.to_string()))
 }
 
@@ -423,10 +430,22 @@ fn extract_imports<'a>(
     project_root: &Path,
     config: &CrystallineConfig,
     intern: &dyn Fn(String) -> &'static str,
-) -> (Vec<Import<'a>>, HashMap<&'a str, (Layer, Option<&'static str>)>) {
+) -> (
+    Vec<Import<'a>>,
+    HashMap<&'a str, (Layer, Option<&'static str>)>,
+) {
     let mut imports = Vec::new();
     let mut name_map: HashMap<&'a str, (Layer, Option<&'static str>)> = HashMap::new();
-    collect_imports(root, source, file_path, project_root, config, &mut imports, &mut name_map, intern);
+    collect_imports(
+        root,
+        source,
+        file_path,
+        project_root,
+        config,
+        &mut imports,
+        &mut name_map,
+        intern,
+    );
     (imports, name_map)
 }
 
@@ -443,12 +462,26 @@ fn collect_imports<'a>(
     match node.kind() {
         "import_statement" => {
             process_import_statement(
-                node, source, file_path, project_root, config, imports, name_map, intern,
+                node,
+                source,
+                file_path,
+                project_root,
+                config,
+                imports,
+                name_map,
+                intern,
             );
         }
         "import_from_statement" => {
             process_import_from_statement(
-                node, source, file_path, project_root, config, imports, name_map, intern,
+                node,
+                source,
+                file_path,
+                project_root,
+                config,
+                imports,
+                name_map,
+                intern,
             );
         }
         _ => {}
@@ -456,7 +489,16 @@ fn collect_imports<'a>(
 
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
-            collect_imports(child, source, file_path, project_root, config, imports, name_map, intern);
+            collect_imports(
+                child,
+                source,
+                file_path,
+                project_root,
+                config,
+                imports,
+                name_map,
+                intern,
+            );
         }
     }
 }
@@ -480,8 +522,13 @@ fn process_import_statement<'a>(
                 "dotted_name" => {
                     let module = node_text(child, source);
                     let target_layer = resolve_absolute_layer(module, project_root, config);
-                    let target_subdir =
-                        resolve_absolute_subdir(module, project_root, config, &target_layer, intern);
+                    let target_subdir = resolve_absolute_subdir(
+                        module,
+                        project_root,
+                        config,
+                        &target_layer,
+                        intern,
+                    );
                     imports.push(Import {
                         path: module,
                         line,
@@ -506,8 +553,13 @@ fn process_import_statement<'a>(
                         .unwrap_or(orig);
                     if !orig.is_empty() {
                         let target_layer = resolve_absolute_layer(orig, project_root, config);
-                        let target_subdir =
-                            resolve_absolute_subdir(orig, project_root, config, &target_layer, intern);
+                        let target_subdir = resolve_absolute_subdir(
+                            orig,
+                            project_root,
+                            config,
+                            &target_layer,
+                            intern,
+                        );
                         imports.push(Import {
                             path: orig,
                             line,
@@ -543,9 +595,9 @@ fn process_import_from_statement<'a>(
     // Find module_name child (relative_import or dotted_name)
     let module_child = node.child_by_field_name("module_name").or_else(|| {
         // Fallback: second child (after "from")
-        (0..node.child_count()).filter_map(|i| node.child(i)).find(|c| {
-            matches!(c.kind(), "relative_import" | "dotted_name" | "identifier")
-        })
+        (0..node.child_count())
+            .filter_map(|i| node.child(i))
+            .find(|c| matches!(c.kind(), "relative_import" | "dotted_name" | "identifier"))
     });
 
     let Some(mod_node) = module_child else { return };
@@ -588,7 +640,11 @@ fn process_import_from_statement<'a>(
     let is_wildcard = (0..node.child_count())
         .filter_map(|i| node.child(i))
         .any(|c| c.kind() == "wildcard_import");
-    let kind = if is_wildcard { ImportKind::Glob } else { ImportKind::Named };
+    let kind = if is_wildcard {
+        ImportKind::Glob
+    } else {
+        ImportKind::Named
+    };
 
     imports.push(Import {
         path: path_str,
@@ -647,8 +703,16 @@ fn process_import_from_statement<'a>(
 // ── Token extraction (V4) ─────────────────────────────────────────────────────
 
 const FORBIDDEN_MODULES: &[&str] = &[
-    "os", "os.path", "pathlib", "shutil", "subprocess", "socket",
-    "urllib", "http.client", "ftplib", "smtplib",
+    "os",
+    "os.path",
+    "pathlib",
+    "shutil",
+    "subprocess",
+    "socket",
+    "urllib",
+    "http.client",
+    "ftplib",
+    "smtplib",
 ];
 
 const FORBIDDEN_CALLS: &[&str] = &[
@@ -659,11 +723,7 @@ const FORBIDDEN_CALLS: &[&str] = &[
     "datetime.datetime.now",
 ];
 
-fn extract_tokens<'a>(
-    root: Node,
-    source: &'a [u8],
-    imports: &[Import<'a>],
-) -> Vec<Token<'a>> {
+fn extract_tokens<'a>(root: Node, source: &'a [u8], imports: &[Import<'a>]) -> Vec<Token<'a>> {
     let mut tokens = Vec::new();
 
     // Mecanismo 1 — imports de módulos proibidos
@@ -686,7 +746,10 @@ fn extract_tokens<'a>(
 fn collect_forbidden_calls<'a>(node: Node, source: &'a [u8], tokens: &mut Vec<Token<'a>>) {
     if node.kind() == "call" {
         // In tree-sitter-python, `call` has child `function` (identifier or attribute)
-        if let Some(func) = node.child_by_field_name("function").or_else(|| node.child(0)) {
+        if let Some(func) = node
+            .child_by_field_name("function")
+            .or_else(|| node.child(0))
+        {
             let text = node_text(func, source);
             if FORBIDDEN_CALLS.contains(&text) {
                 let pos = node.start_position();
@@ -731,13 +794,16 @@ fn has_test_calls(root: Node, source: &[u8]) -> bool {
 
 fn is_unittest_class(node: Node, source: &[u8]) -> bool {
     // Condição 1: nome termina em Test ou Tests
-    let name_ok = node.child_by_field_name("name")
+    let name_ok = node
+        .child_by_field_name("name")
         .map(|n| {
             let name = node_text(n, source);
             name.ends_with("Test") || name.ends_with("Tests")
         })
         .unwrap_or(false);
-    if !name_ok { return false; }
+    if !name_ok {
+        return false;
+    }
 
     // Condição 2: herda de TestCase
     node.child_by_field_name("superclasses")
@@ -747,7 +813,10 @@ fn is_unittest_class(node: Node, source: &[u8]) -> bool {
 
 fn check_test_call_nodes(node: Node, source: &[u8]) -> bool {
     if node.kind() == "call" {
-        if let Some(func) = node.child_by_field_name("function").or_else(|| node.child(0)) {
+        if let Some(func) = node
+            .child_by_field_name("function")
+            .or_else(|| node.child(0))
+        {
             let text = node_text(func, source);
             let first_seg = text.split('.').next().unwrap_or(text);
             if TEST_CALL_NAMES.contains(&first_seg) || TEST_CALL_NAMES.contains(&text) {
@@ -781,14 +850,10 @@ fn has_implementation(node: Node, source: &[u8]) -> bool {
             // decorated function or class
             for i in 0..node.child_count() {
                 if let Some(child) = node.child(i) {
-                    if child.kind() == "function_definition"
-                        && !is_trivial_body(child, source)
-                    {
+                    if child.kind() == "function_definition" && !is_trivial_body(child, source) {
                         return true;
                     }
-                    if child.kind() == "class_definition"
-                        && !is_protocol_abc_class(child, source)
-                    {
+                    if child.kind() == "class_definition" && !is_protocol_abc_class(child, source) {
                         return true;
                     }
                 }
@@ -909,7 +974,11 @@ fn extract_public_interface<'a>(root: Node, source: &'a [u8]) -> PublicInterface
         }
     }
 
-    PublicInterface { functions, types, reexports }
+    PublicInterface {
+        functions,
+        types,
+        reexports,
+    }
 }
 
 fn extract_fn_sig<'a>(node: Node, source: &'a [u8]) -> Option<FunctionSignature<'a>> {
@@ -1005,7 +1074,11 @@ fn extract_class_sig<'a>(node: Node, source: &'a [u8]) -> Option<TypeSignature<'
 
     let members = collect_class_members(node, source);
 
-    Some(TypeSignature { name, kind, members })
+    Some(TypeSignature {
+        name,
+        kind,
+        members,
+    })
 }
 
 fn collect_class_members<'a>(class_node: Node, source: &'a [u8]) -> Vec<&'a str> {
@@ -1045,11 +1118,7 @@ fn collect_class_members<'a>(class_node: Node, source: &'a [u8]) -> Vec<&'a str>
 }
 
 /// Colecta os nomes de `__all__ = ['foo', 'bar']` como reexports.
-fn collect_all_exports<'a>(
-    assign_node: Node,
-    source: &'a [u8],
-    reexports: &mut Vec<&'a str>,
-) {
+fn collect_all_exports<'a>(assign_node: Node, source: &'a [u8], reexports: &mut Vec<&'a str>) {
     // Check if left side is __all__
     let left = match assign_node.child_by_field_name("left") {
         Some(l) => l,
@@ -1210,7 +1279,11 @@ fn maybe_declaration<'a>(
     let name_node = class_node.child_by_field_name("name")?;
     let name = node_text(name_node, source);
     let line = class_node.start_position().row + 1;
-    Some(Declaration { kind: DeclarationKind::Class, name, line })
+    Some(Declaration {
+        kind: DeclarationKind::Class,
+        name,
+        line,
+    })
 }
 
 fn has_contracts_base(
@@ -1249,7 +1322,8 @@ fn normalize_whitespace(s: &str) -> String {
 }
 
 fn path_contains_segment(path: &Path, segment: &str) -> bool {
-    path.components().any(|c| c.as_os_str().to_str().unwrap_or("") == segment)
+    path.components()
+        .any(|c| c.as_os_str().to_str().unwrap_or("") == segment)
 }
 
 fn find_first_error_pos(node: Node) -> (usize, usize) {
@@ -1302,14 +1376,28 @@ mod tests {
 
     struct NullPromptReader;
     impl crate::contracts::prompt_reader::PromptReader for NullPromptReader {
-        fn exists(&self, _path: &str) -> bool { false }
-        fn read_hash(&self, _path: &str) -> Option<String> { None }
+        fn exists(&self, _path: &str) -> bool {
+            false
+        }
+        fn read_hash(&self, _path: &str) -> Option<String> {
+            None
+        }
     }
 
     struct NullSnapshotReader;
     impl crate::contracts::prompt_snapshot_reader::PromptSnapshotReader for NullSnapshotReader {
-        fn read_snapshot(&self, _path: &str) -> Option<crate::entities::parsed_file::PublicInterface<'static>> { None }
-        fn serialize_snapshot(&self, _iface: &crate::entities::parsed_file::PublicInterface<'_>) -> String { String::new() }
+        fn read_snapshot(
+            &self,
+            _path: &str,
+        ) -> Option<crate::entities::parsed_file::PublicInterface<'static>> {
+            None
+        }
+        fn serialize_snapshot(
+            &self,
+            _iface: &crate::entities::parsed_file::PublicInterface<'_>,
+        ) -> String {
+            String::new()
+        }
     }
 
     fn make_parser() -> PyParser<NullPromptReader, NullSnapshotReader> {
@@ -1357,7 +1445,10 @@ import os
         let src = "import os\n# @prompt foo.md\n";
         let file = make_file("03_infra/foo.py", src, Layer::L3);
         let result = make_parser().parse(&file).unwrap();
-        assert!(result.prompt_header.is_none(), "non-# first line should stop header scan");
+        assert!(
+            result.prompt_header.is_none(),
+            "non-# first line should stop header scan"
+        );
     }
 
     // ── UnsupportedLanguage / EmptySource ─────────────────────────────────────
@@ -1371,13 +1462,19 @@ import os
             layer: Layer::L1,
             has_adjacent_test: false,
         };
-        assert!(matches!(make_parser().parse(&file), Err(ParseError::UnsupportedLanguage { .. })));
+        assert!(matches!(
+            make_parser().parse(&file),
+            Err(ParseError::UnsupportedLanguage { .. })
+        ));
     }
 
     #[test]
     fn empty_source_returns_error() {
         let file = make_file("03_infra/empty.py", "", Layer::L3);
-        assert!(matches!(make_parser().parse(&file), Err(ParseError::EmptySource { .. })));
+        assert!(matches!(
+            make_parser().parse(&file),
+            Err(ParseError::EmptySource { .. })
+        ));
     }
 
     // ── Import resolution tests ───────────────────────────────────────────────
@@ -1387,7 +1484,10 @@ import os
         let src = "import os\n";
         let file = make_file("01_core/entities/layer.py", src, Layer::L1);
         let result = make_parser().parse(&file).unwrap();
-        assert!(result.imports.iter().any(|i| i.target_layer == Layer::Unknown));
+        assert!(result
+            .imports
+            .iter()
+            .any(|i| i.target_layer == Layer::Unknown));
     }
 
     #[test]
@@ -1395,7 +1495,10 @@ import os
         let src = "from typing import Protocol\n";
         let file = make_file("01_core/contracts/fp.py", src, Layer::L1);
         let result = make_parser().parse(&file).unwrap();
-        assert!(result.imports.iter().any(|i| i.target_layer == Layer::Unknown));
+        assert!(result
+            .imports
+            .iter()
+            .any(|i| i.target_layer == Layer::Unknown));
     }
 
     #[test]
@@ -1414,13 +1517,18 @@ import os
         let src = "from ......etc import passwd\n";
         let file = make_file("01_core/fp.py", src, Layer::L1);
         let result = make_parser().parse(&file).unwrap();
-        assert!(result.imports.iter().any(|i| i.target_layer == Layer::Unknown));
+        assert!(result
+            .imports
+            .iter()
+            .any(|i| i.target_layer == Layer::Unknown));
     }
 
     #[test]
     fn alias_resolves_to_correct_layer() {
         let mut config = CrystallineConfig::default();
-        config.py_aliases.insert("core".to_string(), "01_core".to_string());
+        config
+            .py_aliases
+            .insert("core".to_string(), "01_core".to_string());
         let parser = PyParser::new(
             NullPromptReader,
             NullSnapshotReader,
@@ -1486,14 +1594,18 @@ import os
         let src = "x = random.random()\n";
         let file = make_file("01_core/entities/layer.py", src, Layer::L1);
         let result = make_parser().parse(&file).unwrap();
-        assert!(result.tokens.iter().any(|t| t.symbol.as_ref() == "random.random"));
+        assert!(result
+            .tokens
+            .iter()
+            .any(|t| t.symbol.as_ref() == "random.random"));
     }
 
     // ── V2 test coverage tests ────────────────────────────────────────────────
 
     #[test]
     fn test_class_inheriting_testcase_gives_coverage() {
-        let src = "import unittest\nclass FooTest(unittest.TestCase):\n    def test_it(self): pass\n";
+        let src =
+            "import unittest\nclass FooTest(unittest.TestCase):\n    def test_it(self): pass\n";
         let file = make_file("01_core/entities/layer.py", src, Layer::L1);
         let result = make_parser().parse(&file).unwrap();
         assert!(result.has_test_coverage);
@@ -1542,7 +1654,10 @@ class FileProvider(Protocol):
 ";
         let file = make_file("01_core/contracts/fp.py", src, Layer::L1);
         let result = make_parser().parse(&file).unwrap();
-        assert!(result.has_test_coverage, "declaration-only should be exempt");
+        assert!(
+            result.has_test_coverage,
+            "declaration-only should be exempt"
+        );
     }
 
     #[test]
@@ -1578,7 +1693,11 @@ class FileProvider(Protocol):
         let src = "from typing import Protocol\nclass FileProvider(Protocol):\n    def files(self): ...\n";
         let file = make_file("01_core/contracts/fp.py", src, Layer::L1);
         let result = make_parser().parse(&file).unwrap();
-        let type_sig = result.public_interface.types.iter().find(|t| t.name == "FileProvider");
+        let type_sig = result
+            .public_interface
+            .types
+            .iter()
+            .find(|t| t.name == "FileProvider");
         assert!(type_sig.is_some());
         assert_eq!(type_sig.unwrap().kind, TypeKind::Interface);
     }
@@ -1588,7 +1707,11 @@ class FileProvider(Protocol):
         let src = "class FileWalker:\n    def walk(self): pass\n";
         let file = make_file("03_infra/walker.py", src, Layer::L3);
         let result = make_parser().parse(&file).unwrap();
-        let type_sig = result.public_interface.types.iter().find(|t| t.name == "FileWalker");
+        let type_sig = result
+            .public_interface
+            .types
+            .iter()
+            .find(|t| t.name == "FileWalker");
         assert!(type_sig.is_some());
         assert_eq!(type_sig.unwrap().kind, TypeKind::Class);
     }
@@ -1624,7 +1747,9 @@ class FileProvider(Protocol):
     #[test]
     fn class_with_contracts_base_adds_implemented_trait() {
         let mut config = CrystallineConfig::default();
-        config.py_aliases.insert("core".to_string(), "01_core".to_string());
+        config
+            .py_aliases
+            .insert("core".to_string(), "01_core".to_string());
         let parser = PyParser::new(
             NullPromptReader,
             NullSnapshotReader,
@@ -1665,7 +1790,10 @@ class InternalHelper:
         let src = "class OutputFormatter:\n    pass\n";
         let file = make_file("04_wiring/main.py", src, Layer::L4);
         let result = make_parser().parse(&file).unwrap();
-        assert!(result.declarations.iter().any(|d| d.name == "OutputFormatter"));
+        assert!(result
+            .declarations
+            .iter()
+            .any(|d| d.name == "OutputFormatter"));
     }
 
     #[test]
@@ -1679,7 +1807,9 @@ class InternalHelper:
     #[test]
     fn adapter_class_not_in_declarations() {
         let mut config = CrystallineConfig::default();
-        config.py_aliases.insert("core".to_string(), "01_core".to_string());
+        config
+            .py_aliases
+            .insert("core".to_string(), "01_core".to_string());
         let parser = PyParser::new(
             NullPromptReader,
             NullSnapshotReader,
@@ -1702,9 +1832,15 @@ class OutputFormatter:
         };
         let result = parser.parse(&file).unwrap();
         // Adapter should NOT be in declarations
-        assert!(!result.declarations.iter().any(|d| d.name == "L3HashAdapter"));
+        assert!(!result
+            .declarations
+            .iter()
+            .any(|d| d.name == "L3HashAdapter"));
         // Plain class SHOULD be in declarations
-        assert!(result.declarations.iter().any(|d| d.name == "OutputFormatter"));
+        assert!(result
+            .declarations
+            .iter()
+            .any(|d| d.name == "OutputFormatter"));
     }
 
     // ── normalize unit tests ──────────────────────────────────────────────────
@@ -1853,7 +1989,9 @@ class OutputFormatter:
         // Smoke test: sem crash após criação e descarte repetidos.
         for _ in 0..10 {
             let mut config = CrystallineConfig::default();
-            config.py_aliases.insert("core".to_string(), "01_core".to_string());
+            config
+                .py_aliases
+                .insert("core".to_string(), "01_core".to_string());
             let parser = PyParser::new(
                 NullPromptReader,
                 NullSnapshotReader,
@@ -1867,5 +2005,4 @@ class OutputFormatter:
         }
         // Contrato correcto — teste adicionado para prevenir regressão de Box::leak
     }
-
 }

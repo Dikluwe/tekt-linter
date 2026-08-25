@@ -20,14 +20,9 @@ pub enum ParseError {
         message: String,
     },
     /// File language has no registered grammar.
-    UnsupportedLanguage {
-        path: PathBuf,
-        language: Language,
-    },
+    UnsupportedLanguage { path: PathBuf, language: Language },
     /// Empty content — nothing to parse.
-    EmptySource {
-        path: PathBuf,
-    },
+    EmptySource { path: PathBuf },
 }
 
 #[cfg(test)]
@@ -74,13 +69,17 @@ mod tests {
 
     #[test]
     fn empty_source_clone_and_eq() {
-        let a = ParseError::EmptySource { path: PathBuf::from("empty.rs") };
+        let a = ParseError::EmptySource {
+            path: PathBuf::from("empty.rs"),
+        };
         assert_eq!(a.clone(), a);
     }
 
     #[test]
     fn variants_are_distinct() {
-        let a = ParseError::EmptySource { path: PathBuf::from("x.rs") };
+        let a = ParseError::EmptySource {
+            path: PathBuf::from("x.rs"),
+        };
         let b = ParseError::UnsupportedLanguage {
             path: PathBuf::from("x.rs"),
             language: Language::Unknown,

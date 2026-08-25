@@ -6,8 +6,8 @@
 
 use std::borrow::Cow;
 
-use crate::entities::rule_traits::HasImports;
 use crate::entities::layer::Layer;
+use crate::entities::rule_traits::HasImports;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 
 /// V10 — Quarantine Leak.
@@ -61,21 +61,45 @@ mod tests {
     }
 
     impl HasImports<'static> for MockFile {
-        fn layer(&self) -> &Layer { &self.layer }
-        fn imports(&self) -> &[Import<'static>] { &self.imports }
-        fn path(&self) -> &'static Path { self.path }
+        fn layer(&self) -> &Layer {
+            &self.layer
+        }
+        fn imports(&self) -> &[Import<'static>] {
+            &self.imports
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
     }
 
     fn base_file(layer: Layer) -> MockFile {
-        MockFile { layer, imports: vec![], path: Path::new("src/foo.rs") }
+        MockFile {
+            layer,
+            imports: vec![],
+            path: Path::new("src/foo.rs"),
+        }
     }
 
     fn lab_import(line: usize) -> Import<'static> {
-        Import { path: "crate::lab::algo", line, kind: ImportKind::Direct, target_layer: Layer::Lab, target_subdir: None, is_test_origin: false }
+        Import {
+            path: "crate::lab::algo",
+            line,
+            kind: ImportKind::Direct,
+            target_layer: Layer::Lab,
+            target_subdir: None,
+            is_test_origin: false,
+        }
     }
 
     fn non_lab_import() -> Import<'static> {
-        Import { path: "crate::entities::Layer", line: 1, kind: ImportKind::Direct, target_layer: Layer::L1, target_subdir: None, is_test_origin: false }
+        Import {
+            path: "crate::entities::Layer",
+            line: 1,
+            kind: ImportKind::Direct,
+            target_layer: Layer::L1,
+            target_subdir: None,
+            is_test_origin: false,
+        }
     }
 
     #[test]

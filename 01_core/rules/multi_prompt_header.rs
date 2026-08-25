@@ -1,14 +1,110 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/multi-prompt-header.md
-//! @prompt-hash 868d3a92
+//! @prompt-hash 3b0476ea
 //! @layer L1
 //! @updated 2026-07-23
 
 use std::borrow::Cow;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 
 use crate::entities::layer::Layer;
 use crate::entities::rule_traits::HasPromptRefs;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromptOwnershipLayer {
+    L0,
+    L1,
+    L2,
+    L3,
+    L4,
+    Lab,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PromptOwnership {
+    pub code_path: PathBuf,
+    pub layer: PromptOwnershipLayer,
+    pub prompt_refs: Vec<String>,
+}
+
+fn is_productive(layer: PromptOwnershipLayer) -> bool {
+    matches!(
+        layer,
+        PromptOwnershipLayer::L1
+            | PromptOwnershipLayer::L2
+            | PromptOwnershipLayer::L3
+            | PromptOwnershipLayer::L4
+    )
+}
+
+/// V15 integral: preserva a regra local e rejeita qualquer prompt proprietário
+/// consumido por mais de um código produtivo.
+pub fn check_prompt_ownership(entries: &[PromptOwnership]) -> Vec<Violation<'static>> {
+    let mut violations = Vec::new();
+    let mut consumers: BTreeMap<&str, BTreeSet<&PathBuf>> = BTreeMap::new();
+
+    for entry in entries.iter().filter(|entry| is_productive(entry.layer)) {
+        if entry.prompt_refs.len() >= 2 {
+            violations.push(Violation {
+                rule_id: "V15".into(),
+                level: ViolationLevel::Error,
+                message: format!(
+                    "Arquivo com {} headers @prompt ({}). Regra biunívoca: um código, um prompt proprietário.",
+                    entry.prompt_refs.len(),
+                    entry.prompt_refs.join(", ")
+                ),
+                location: Location {
+                    path: Cow::Owned(entry.code_path.clone()),
+                    line: 1,
+                    column: 0,
+                },
+            });
+        }
+        for prompt in &entry.prompt_refs {
+            consumers
+                .entry(prompt)
+                .or_default()
+                .insert(&entry.code_path);
+        }
+    }
+
+    for (prompt, paths) in consumers.into_iter().filter(|(_, paths)| paths.len() >= 2) {
+        let listed = paths
+            .iter()
+            .map(|path| path.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(", ");
+        violations.push(Violation {
+            rule_id: "V15".into(),
+            level: ViolationLevel::Error,
+            message: format!(
+                "Prompt proprietário {prompt} possui {} consumers: {listed}. Regra biunívoca: um prompt, um código.",
+                paths.len()
+            ),
+            location: Location {
+                path: Cow::Owned((**paths.first().expect("non-empty collision")).clone()),
+                line: 1,
+                column: 0,
+            },
+        });
+    }
+
+    violations.sort_by(|left, right| {
+        left.message
+            .as_bytes()
+            .cmp(right.message.as_bytes())
+            .then_with(|| {
+                left.location
+                    .path
+                    .as_os_str()
+                    .cmp(right.location.path.as_os_str())
+            })
+    });
+    violations
+}
 
 /// V15 — Multiple @prompt headers in one file.
 /// Regra de linhagem: um ficheiro, um prompt. Com 2+ linhas `@prompt` no
@@ -31,7 +127,11 @@ pub fn check<'a, T: HasPromptRefs<'a>>(file: &T) -> Vec<Violation<'a>> {
             refs.len(),
             refs.join(", "),
         ),
-        location: Location { path: Cow::Borrowed(file.path()), line: 1, column: 0 },
+        location: Location {
+            path: Cow::Borrowed(file.path()),
+            line: 1,
+            column: 0,
+        },
     }]
 }
 
@@ -59,7 +159,11 @@ mod tests {
     }
 
     fn file_with(layer: Layer, refs: Vec<&'static str>) -> MockFile {
-        MockFile { layer, refs, path: Path::new("01_core/foo.rs") }
+        MockFile {
+            layer,
+            refs,
+            path: Path::new("01_core/foo.rs"),
+        }
     }
 
     #[test]
@@ -98,10 +202,7 @@ mod tests {
 
     #[test]
     fn three_prompt_headers_produce_single_violation() {
-        let file = file_with(
-            Layer::L3,
-            vec!["a.md", "b.md", "c.md"],
-        );
+        let file = file_with(Layer::L3, vec!["a.md", "b.md", "c.md"]);
         let violations = check(&file);
         assert_eq!(violations.len(), 1);
         assert!(violations[0].message.contains('3'));
@@ -131,7 +232,10 @@ mod tests {
         // V15 aplica-se apenas a L1–L4.
         for layer in [Layer::Lab, Layer::Unknown, Layer::L0] {
             let file = file_with(layer.clone(), vec!["a.md", "b.md"]);
-            assert!(check(&file).is_empty(), "layer {layer:?} não devia disparar V15");
+            assert!(
+                check(&file).is_empty(),
+                "layer {layer:?} não devia disparar V15"
+            );
         }
     }
 }

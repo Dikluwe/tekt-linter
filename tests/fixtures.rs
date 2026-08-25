@@ -46,9 +46,17 @@ fn violations(name: &str) -> Vec<String> {
     let dir = fixture_dir(name);
     assert!(dir.is_dir(), "fixture inexistente: {}", dir.display());
 
+    // Fixtures anteriores a P0104 reutilizam prompts mínimos entre vários arquivos
+    // para isolar outras regras. Elas não são oráculo de ownership global. V15 tem
+    // fixtures próprias e um gate multi-parser dedicado.
+    let checks = if name.starts_with("v15") {
+        "v15"
+    } else {
+        "v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v16,v17,v18,v19,v20,v21,v23,v24,v25"
+    };
     let output = Command::new(env!("CARGO_BIN_EXE_crystalline-lint"))
         .current_dir(&dir)
-        .args(["--format", "sarif", "."])
+        .args(["--format", "sarif", "--checks", checks, "."])
         .output()
         .expect("falha ao executar o binário crystalline-lint");
 

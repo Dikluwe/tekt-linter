@@ -1,127 +1,22 @@
-# Prompt: Selo de materialização segregada
-Hash do Código: fdbf29ac
+# Prompt: política pura do selo de refinamento
+Hash do Código: 309f7ad4
 
-> **Estado:** VIGENTE — piloto autorizado pelo ADR-0020
-> **Camadas:** L1–L4
+## Owner
 
-## Intenção
+`01_core/entities/refinement_seal.rs`, exclusivamente.
 
-Verificar mecanicamente que um contrato de refinamento foi congelado antes da solução
-e demonstrou poder discriminatório em oráculos independentes. O comando produz recibo,
-não prova formal de independência entre agentes.
+## Instrução
 
-## Interface
+Modelar o manifesto validado, categorias de oráculo, produtores segregados, recibos e
+decisão pura de selabilidade. `UNKNOWN` bloqueia onde o protocolo exige decisão.
 
-```bash
-crystalline-lint seal-refinement <repository-root> \
-  --manifest 00_nucleo/refinement/manifests/run.toml \
-  --output seal.json
-```
+## Restrições
 
-## Manifesto v1
+- L1 não conhece TOML, JSON, Git, SHA ou filesystem;
+- produtores obrigatórios devem ser distintos;
+- score e ordenação são determinísticos e sem ponto flutuante ambíguo.
 
-```toml
-protocol_version = 1
-prompt = "00_nucleo/prompts/example.md"
-prompt_sha256 = "<64 hex>"
-baseline_oid = "<commit oid completo>"
-contract = "00_nucleo/refinement/contracts/example.toml"
-contract_sha256 = "<64 hex>"
-contract_producer = "contract-agent/session-id"
-implementation_producer = "implementation-agent/session-id"
-verifier_producer = "mechanical-verifier/id"
-unknown_policy = "block"
+## Critérios
 
-[[oracle]]
-id = "preserves-valid-rewrite"
-kind = "positive"
-before_ref = "<oid>"
-after_ref = "<oid>"
-
-[[oracle]]
-id = "rejects-field-removal"
-kind = "negative"
-before_ref = "<oid>"
-after_ref = "<oid>"
-
-[[oracle]]
-id = "reports-opacity"
-kind = "unknown"
-before_ref = "<oid>"
-after_ref = "<oid>"
-```
-
-Paths internos são relativos à raiz, confinados sem symlink escape. Hashes declarados
-de prompt e contrato são SHA-256 sobre os bytes exatos capturados uma única vez. O
-baseline deve ser OID completo e resolver para o mesmo commit.
-
-## Resultado
-
-O selo JSON é determinístico, sem timestamp, e contém:
-
-- `protocol_version`;
-- hash da representação semântica canônica do manifesto e hashes exatos de prompt e
-  contrato;
-- baseline OID;
-- produtores declarados;
-- recibos ordenados por `id`, com OIDs e veredito;
-- objeto `counts` com contagens `positive`, `negative` e `unknown`;
-- `mutation_score` representado sem ponto flutuante ambíguo;
-- `sealed: true`.
-
-Falha de hash, produtor duplicado, oráculo sem id, tipo inválido, veredito divergente,
-`UNKNOWN` num negativo, orçamento ou entrada Git inválida termina com exit 2 e não
-publica selo parcial.
-
-## Invariantes
-
-- L1 não conhece TOML, JSON, Git, filesystem, SHA ou agentes concretos.
-- O comparador e extrator de refinamento não são duplicados.
-- Oráculos resolvem refs uma vez e registram OIDs completos.
-- O manifesto e entradas nunca são reescritos.
-- Saída é atômica.
-- Ordem de campos e `[[oracle]]` no TOML não altera os bytes do selo. Para tornar isso
-  compatível com a proveniência, `manifest_sha256` é calculado sobre uma representação
-  semântica canônica (campos e oráculos ordenados), não sobre os bytes crus do TOML.
-- Identidade nominal não é apresentada como prova de sandbox.
-- Um negativo só é morto por `VIOLATED`.
-- O manifesto contém pelo menos um oráculo de cada categoria: `positive`, `negative` e
-  `unknown`; categoria ausente bloqueia antes da execução.
-- Um negativo `VIOLATED` que também contenha qualquer inconclusivo bloqueia o selo. A
-  versão 1 não possui vínculo causal suficiente para distinguir uma testemunha válida
-  de uma divergência-isca que lave uma mutação inconclusiva.
-
-## Insumos normativos do verificador
-
-O isolamento do verificador não o autoriza a adivinhar o contrato. Seu pacote de entrada
-deve conter os valores normativos completos ou referências L0 explicitamente autorizadas
-e fixadas por caminho mais SHA-256 exato. Contagens, nomes parciais e referências que o
-papel não pode ler não constituem contrato executável.
-
-O verificador pode ler somente os artefatos L0 listados no pacote; continua proibido de
-ler L1–L4, patches e testes do implementador. Expectativas do gate são derivadas de L0 e
-não podem importar uma constante da própria produção, pois isso compartilharia o oráculo
-com o alvo. Referência ausente, inacessível ou com hash divergente bloqueia a alegação e
-é registrada como `SPEC-GAP`, nunca convertida silenciosamente em PASS.
-
-## Fixtures RED
-
-1. pacote válido com positivo, negativo e unknown produz selo;
-2. negativo que retorna `PRESERVED` bloqueia;
-3. negativo que retorna `UNKNOWN` bloqueia;
-4. positivo violado bloqueia;
-5. oráculo unknown preservado bloqueia;
-6. hash de prompt ou contrato divergente bloqueia;
-7. produtores repetidos bloqueiam;
-8. baseline simbólico ou divergente bloqueia;
-9. ordem diferente produz selo byte-idêntico;
-10. falha não deixa arquivo temporário ou parcial;
-11. working tree sujo permanece idêntico;
-12. nenhum checkout, hook, filtro, LFS, submódulo ou rede é executado.
-
-## Histórico
-
-| Data | Estado | Motivo |
-|---|---|---|
-| 2026-08-24 | Vigente | Piloto autorizado para testar a ADR-0003 do Tekt no próprio linter |
-| 2026-08-24 | Vigente | Insumos normativos completos ou L0 autorizada e fixada por hash para verificadores segregados |
+Manifestos completos selam; ausência de categoria, produtor repetido ou veredito
+incompatível produz erro tipado antes de qualquer escrita.

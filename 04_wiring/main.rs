@@ -1,9 +1,10 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 1b09018a
+//! @prompt-hash 669b4590
 //! @layer L4
 //! @updated 2026-08-24
 
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::process;
 
@@ -27,7 +28,7 @@ use crystalline_lint::entities::refinement::{
     compare_refinement, ArtifactFacts, ObservableValue, UnknownReason,
 };
 use crystalline_lint::entities::refinement_seal::{accepts, OracleKind, VerdictName};
-use crystalline_lint::entities::violation::{Violation, ViolationLevel};
+use crystalline_lint::entities::violation::{Location, Violation, ViolationLevel};
 use crystalline_lint::infra::c_parser::CParser;
 use crystalline_lint::infra::citation_freshness::FsCitationFreshnessResolver;
 use crystalline_lint::infra::config::CrystallineConfig;
@@ -73,11 +74,14 @@ use crystalline_lint::rules::{
     semantic_field_loss, test_file, unsourced_constant, wildcard_saturation, wiring_logic_leak,
 };
 use crystalline_lint::shell::cli::{validate_args, Cli, EnabledChecks, OutputFormat};
-use crystalline_lint::shell::fix_hashes::{self, HashRewriter};
+use crystalline_lint::shell::fix_hashes::{
+    self, BijectivePair, HashRewriter, PairSnapshot, TransactionalHashRewriter,
+};
 use crystalline_lint::shell::refinement::{
     self, Command as RefinementCommand, RefinementOutputFormat,
 };
 use crystalline_lint::shell::update_snapshot::{self, SnapshotRewriter};
+use crystalline_lint::{PromptOwnership, PromptOwnershipLayer};
 use std::collections::HashMap;
 
 fn select_git_executable() -> Result<PathBuf, String> {
@@ -594,11 +598,66 @@ fn main() {
             v11_level,
         ));
     }
+    let prompt_ownerships = prompt_ownerships(&all_parsed);
+    if enabled.v15 {
+        all_violations.extend(crystalline_lint::check_prompt_ownership(&prompt_ownerships));
+    }
     if enabled.v22 {
         all_violations.extend(provenance_inventory::check_inventory(
             &all_parsed,
             &v21_config,
         ));
+    }
+    if enabled.v26 {
+        let audit = crystalline_lint::infra::nucleus::audit_project(&cli.path);
+        for (path, message) in audit.issues {
+            all_violations.push(Violation {
+                rule_id: "V26".into(),
+                level: ViolationLevel::Error,
+                message,
+                location: Location {
+                    path: Cow::Owned(path),
+                    line: 1,
+                    column: 0,
+                },
+            });
+        }
+        for finding in
+            crystalline_lint::rules::nucleus_integrity::check_graph(&audit.entries, &audit.usages)
+        {
+            all_violations.push(Violation {
+                rule_id: "V26".into(),
+                level: if finding.message.starts_with("orphan") {
+                    ViolationLevel::Warning
+                } else {
+                    ViolationLevel::Error
+                },
+                message: finding.message,
+                location: Location {
+                    path: Cow::Owned(cli.path.join(finding.path)),
+                    line: 1,
+                    column: 0,
+                },
+            });
+        }
+        for file in &all_parsed {
+            if file
+                .prompt_header
+                .as_ref()
+                .is_some_and(|header| header.prompt_path.starts_with("00_nucleo/prompts/_nuclei/"))
+            {
+                all_violations.push(Violation {
+                    rule_id: "V26".into(),
+                    level: ViolationLevel::Error,
+                    message: "production code cannot own a .toml nucleus through @prompt".into(),
+                    location: Location {
+                        path: Cow::Owned(file.path.to_path_buf()),
+                        line: 1,
+                        column: 0,
+                    },
+                });
+            }
+        }
     }
 
     // ── Ordenação determinística ───────────────────────────────────────────────
@@ -610,7 +669,75 @@ fn main() {
         let rewriter = L3HashRewriter {
             nucleo_root: nucleo_root.clone(),
         };
+        let nucleus_errors = all_violations
+            .iter()
+            .filter(|violation| {
+                violation.rule_id == "V26"
+                    && matches!(
+                        violation.level,
+                        ViolationLevel::Error | ViolationLevel::Fatal
+                    )
+                    && !violation.message.starts_with("stale nucleus pin ")
+            })
+            .count();
+        if nucleus_errors > 0 {
+            eprintln!(
+                "crystalline-lint: --fix-hashes blocked by {nucleus_errors} V26 nucleus finding(s)"
+            );
+            process::exit(2);
+        }
+        let ownership_violations = crystalline_lint::check_prompt_ownership(&prompt_ownerships);
+        if !ownership_violations.is_empty() {
+            eprintln!(
+                "crystalline-lint: --fix-hashes blocked by {} V15 ownership collision(s)",
+                ownership_violations.len()
+            );
+            for violation in ownership_violations {
+                eprintln!("{}", violation.message);
+            }
+            process::exit(2);
+        }
         let entries = fix_hashes::plan(&all_violations, &rewriter);
+        if entries
+            .iter()
+            .any(|entry| matches!(entry, fix_hashes::FixEntry::Unavailable { .. }))
+        {
+            if !cli.quiet {
+                print!("{}", fix_hashes::format_plan(&entries));
+            }
+            eprintln!("crystalline-lint: --fix-hashes blocked by incomplete preflight");
+            process::exit(2);
+        }
+
+        let pairs = entries
+            .iter()
+            .filter_map(|entry| match entry {
+                fix_hashes::FixEntry::Ready {
+                    source_path,
+                    prompt_path,
+                    old_hash,
+                    new_hash,
+                    source_hash,
+                } => Some(hash_writer::prepare_pair(
+                    &nucleo_root,
+                    source_path,
+                    prompt_path,
+                    &nucleo_root.join(prompt_path),
+                    old_hash,
+                    new_hash,
+                    source_hash,
+                )),
+                fix_hashes::FixEntry::Unavailable { .. } => None,
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap_or_else(|reason| {
+                eprintln!("crystalline-lint: --fix-hashes preflight failed: {reason}");
+                process::exit(2)
+            });
+        let transaction = fix_hashes::plan_bijective(&pairs, &rewriter).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: --fix-hashes preflight failed: {error}");
+            process::exit(2)
+        });
 
         if cli.dry_run {
             if !cli.quiet {
@@ -623,61 +750,98 @@ fn main() {
             .iter()
             .filter(|e| matches!(e, fix_hashes::FixEntry::Unavailable { .. }))
             .count();
-        let results = fix_hashes::execute(&entries, &rewriter, false);
+        let batch_result = fix_hashes::execute_bijective(&transaction, &rewriter, false);
+        if !batch_result.is_complete() {
+            eprintln!("crystalline-lint: --fix-hashes transaction failed: {batch_result:?}");
+            process::exit(2);
+        }
+        fix_hashes::validate_bijective(&transaction, &rewriter).unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: --fix-hashes validation failed: {error}");
+            process::exit(2)
+        });
+        let results = entries
+            .iter()
+            .map(|entry| match entry {
+                fix_hashes::FixEntry::Unavailable {
+                    source_path,
+                    reason,
+                } => fix_hashes::FixResult::Unavailable {
+                    source_path: source_path.clone(),
+                    reason: reason.clone(),
+                },
+                fix_hashes::FixEntry::Ready {
+                    source_path,
+                    prompt_path,
+                    new_hash,
+                    source_hash,
+                    ..
+                } => fix_hashes::FixResult::Applied {
+                    source_path: source_path.clone(),
+                    prompt_path: prompt_path.clone(),
+                    new_hash: new_hash.clone(),
+                    source_hash: source_hash.clone(),
+                },
+            })
+            .collect::<Vec<_>>();
 
         // Re-run analysis to count remaining V5
         let remaining_v5 = {
+            let fresh_prompt_reader = std::sync::Arc::new(
+                crystalline_lint::infra::prompt_reader::CachedPromptReader::new(FsPromptReader {
+                    nucleo_root: nucleo_root.clone(),
+                }),
+            );
             let reparser = MultiParser {
                 rust: RustParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     crate_registry.clone(),
                 ),
                 ts: TsParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 py: PyParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 c: CParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 cpp: CppParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 zig: ZigParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 go: GoParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 java: JavaParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 elixir: ElixirParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
@@ -711,6 +875,7 @@ fn main() {
                 v23: false,
                 v24: false,
                 v25: false,
+                v26: false,
             };
             let (violations, _, _) = run_pipeline(
                 &re_files,
@@ -845,6 +1010,7 @@ fn main() {
                 v23: false,
                 v24: false,
                 v25: false,
+                v26: false,
             };
             let (violations, _, _) = run_pipeline(
                 &re_files,
@@ -997,6 +1163,50 @@ impl HashRewriter for L3HashRewriter {
     }
 }
 
+impl TransactionalHashRewriter for L3HashRewriter {
+    fn preflight(&self, pair: &BijectivePair) -> Result<PairSnapshot, String> {
+        hash_writer::snapshot_pair(&pair.source_path, &self.nucleo_root.join(&pair.prompt_path))
+    }
+
+    fn apply_pair(&self, pair: &BijectivePair) -> Result<(), String> {
+        let original = self.preflight(pair)?;
+        let result = hash_writer::write_pair(
+            &pair.source_path,
+            &self.nucleo_root.join(&pair.prompt_path),
+            &PairSnapshot {
+                source_bytes: pair.new_source_bytes.clone(),
+                prompt_bytes: pair.new_prompt_bytes.clone(),
+            },
+        );
+        if let Err(reason) = result {
+            self.rollback_pair(pair, &original).map_err(|rollback| {
+                format!("apply failed ({reason}); rollback failed ({rollback})")
+            })?;
+            return Err(reason);
+        }
+        Ok(())
+    }
+
+    fn rollback_pair(&self, pair: &BijectivePair, snapshot: &PairSnapshot) -> Result<(), String> {
+        hash_writer::write_pair(
+            &pair.source_path,
+            &self.nucleo_root.join(&pair.prompt_path),
+            snapshot,
+        )
+    }
+
+    fn validate_pair(&self, pair: &BijectivePair) -> Result<(), String> {
+        let actual = self.preflight(pair)?;
+        if actual.source_bytes == pair.new_source_bytes
+            && actual.prompt_bytes == pair.new_prompt_bytes
+        {
+            Ok(())
+        } else {
+            Err("paridade bidirecional ausente".into())
+        }
+    }
+}
+
 // ── L4 adapter: SnapshotRewriter (L3 snapshot_writer → L2 port) ──────────────
 
 struct L3SnapshotWriter {
@@ -1124,6 +1334,31 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
                 (viols_a, parsed_a, idx_a.merge(idx_b))
             },
         )
+}
+
+fn prompt_ownerships(files: &[ParsedFile<'_>]) -> Vec<PromptOwnership> {
+    files
+        .iter()
+        .map(|file| PromptOwnership {
+            code_path: file.path.to_path_buf(),
+            layer: match file.layer {
+                crystalline_lint::entities::layer::Layer::L0 => PromptOwnershipLayer::L0,
+                crystalline_lint::entities::layer::Layer::L1 => PromptOwnershipLayer::L1,
+                crystalline_lint::entities::layer::Layer::L2 => PromptOwnershipLayer::L2,
+                crystalline_lint::entities::layer::Layer::L3 => PromptOwnershipLayer::L3,
+                crystalline_lint::entities::layer::Layer::L4 => PromptOwnershipLayer::L4,
+                crystalline_lint::entities::layer::Layer::Lab => PromptOwnershipLayer::Lab,
+                crystalline_lint::entities::layer::Layer::Unknown => PromptOwnershipLayer::Unknown,
+            },
+            // A regra local já consome `prompt_refs`; a visão integral transporta
+            // somente a referência canônica para não duplicar o mesmo V15.
+            prompt_refs: file
+                .prompt_header
+                .as_ref()
+                .map(|header| vec![header.prompt_path.to_owned()])
+                .unwrap_or_default(),
+        })
+        .collect()
 }
 
 // ── Rule dispatcher ───────────────────────────────────────────────────────────

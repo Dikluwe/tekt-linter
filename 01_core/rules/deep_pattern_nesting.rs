@@ -1,6 +1,6 @@
 //! Crystalline Lineage
-//! @prompt 00_nucleo/prompts/rules/wildcard-saturation.md
-//! @prompt-hash c193c459
+//! @prompt 00_nucleo/prompts/rules/deep-pattern-nesting.md
+//! @prompt-hash 3305ec0b
 //! @layer L1
 //! @updated 2026-08-14
 

@@ -1,6 +1,6 @@
 //! Crystalline Lineage
-//! @prompt 00_nucleo/prompts/rules/wildcard-saturation.md
-//! @prompt-hash c193c459
+//! @prompt 00_nucleo/prompts/rules/or-pattern-alternatives.md
+//! @prompt-hash 9cefba37
 //! @layer L1
 //! @updated 2026-08-14
 
@@ -58,10 +58,18 @@ mod tests {
     }
 
     impl HasDecisionArms<'static> for MockFile {
-        fn layer(&self) -> &Layer { &Layer::L1 }
-        fn decision_exprs(&self) -> &[DecisionExpr<'static>] { &self.exprs }
-        fn path(&self) -> &'static Path { self.path }
-        fn language(&self) -> &Language { &self.language }
+        fn layer(&self) -> &Layer {
+            &Layer::L1
+        }
+        fn decision_exprs(&self) -> &[DecisionExpr<'static>] {
+            &self.exprs
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
+        fn language(&self) -> &Language {
+            &self.language
+        }
     }
 
     #[test]

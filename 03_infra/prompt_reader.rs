@@ -1,6 +1,6 @@
 //! Crystalline Lineage
-//! @prompt 00_nucleo/prompts/contracts/prompt-reader.md
-//! @prompt-hash 48a4329e
+//! @prompt 00_nucleo/prompts/infra/prompt-reader.md
+//! @prompt-hash 1d71982b
 //! @layer L3
 //! @updated 2026-03-13
 
@@ -23,6 +23,11 @@ pub struct FsPromptReader {
 
 impl PromptReader for FsPromptReader {
     fn read_hash(&self, prompt_path: &str) -> Option<String> {
+        if let Ok(hash) =
+            crate::infra::nucleus::effective_prompt_hash_at(&self.nucleo_root, prompt_path)
+        {
+            return Some(hash);
+        }
         let bytes = read_confined(
             &self.nucleo_root,
             PathBuf::from(prompt_path).as_path(),
