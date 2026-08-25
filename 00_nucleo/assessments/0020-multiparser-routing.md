@@ -13,6 +13,8 @@
 | sistema/composição | `00_nucleo/prompts/linter-core.md` | `908a00fd7e4eaa985b755682fb73984cbb886496ce988070f176ad307ec24446` |
 | contrato parser | `00_nucleo/prompts/contracts/language-parser.md` | `5d8a5db677dfba32be5228e643e1c1184905a0def86379aef40bab7640fa9588` |
 | tipos de IR/Language | `00_nucleo/prompts/violation-types.md` | `147afa0d8f3f3e6e30e050590dad0b99c7da8486d3565e3f6c42f7fa883ea4dc` |
+| tipos de fatos/sentinelas | `00_nucleo/prompts/contracts/rule-traits.md` | `cdba18365badfb56288480f683451914d88b0df07201acc43ee8334d22289ba3` |
+| tipos de decisão/sentinelas | `00_nucleo/prompts/rules/wildcard-saturation.md` | `19f79428f1e7c9740ae7f2466f03bc82c22a5632a2388e5b2c587a3fa2588609` |
 | ParseError | `00_nucleo/prompts/contracts/parse-error.md` | `1f8c47cb5d0001c356c71e2df8ec0619d76dd5a439a5ba9e9b8f8d7285282645` |
 | SourceFile/Language | `00_nucleo/prompts/contracts/file-provider.md` | `1574ce788513573901376fc80933464cca5e7b6bc17acf5af8bfcd28e4d7335d` |
 | isolamento multilíngue | `00_nucleo/adr/0009-isolamento- de-parsers-por-linguagem.md` | `fbfeb007115f2464ece7e1f0e2a5615bb06b459e7bb7446bbd2957a06ee67452` |
@@ -132,6 +134,18 @@ permaneceu byte a byte inalterado em suas expectativas.
 - classificação congelada: `RED` de produção, sem `SPEC-GAP` residual no gate.
 
 O confronto C da produção está autorizado a partir deste ponto.
+
+## Correção requerida pelo primeiro adversário D
+
+O primeiro confronto D aprovou a produção, mas bloqueou o fechamento por dois defeitos de
+evidência: B1 e B2 compartilharam a mesma identidade e o `Ok` de B2 não continha
+sentinelas em todos os campos. Os dois L0 adicionais acima ficam autorizados somente para
+construir valores não vazios dos tipos já referenciados por `ParsedFile`; não alteram a
+matriz nem a seam de roteamento.
+
+Um verificador novo, sem contexto herdado, deve criar B2 em arquivo separado, sem ler B1,
+produção ou testes existentes. Cada campo de `ParsedFile` deve carregar sentinela
+observável e o retorno deve ser comparado integralmente por `PartialEq`.
 
 ## Papéis e precedência
 
