@@ -348,6 +348,7 @@ where
     pub prompt_reader: R,
     pub snapshot_reader: S,
     pub config: CrystallineConfig,
+    pub registry: CrateRegistry,
 }
 
 impl<R: PromptReader, S: PromptSnapshotReader> RustParser<R, S> {
@@ -355,8 +356,9 @@ impl<R: PromptReader, S: PromptSnapshotReader> RustParser<R, S> {
         prompt_reader: R,
         snapshot_reader: S,
         config: CrystallineConfig,
+        registry: CrateRegistry,
     ) -> Self {
-        Self { prompt_reader, snapshot_reader, config }
+        Self { prompt_reader, snapshot_reader, config, registry }
     }
 }
 
@@ -388,6 +390,42 @@ where
     }
 }
 ```
+
+## Contrato de extração estrutural `SourceConstant` — saneamento P0097
+
+O oráculo P0097 é deliberadamente mínimo. Ele projeta somente ocorrências de kind
+`FunctionNumberLiteral` e `NegativeLiteral` para literais numéricos dentro de
+`function_item`. Outros kinds históricos podem coexistir em `ParsedFile.constants`, mas
+ficam opacos e não são alegação deste lote. Strings, chars, bytes, constantes nomeadas,
+macros, ranges, patterns e expressões não numéricas não podem aparecer nessa projeção
+numérica.
+
+- literal positivo produz `ConstantKind::FunctionNumberLiteral`;
+- literal sob um único operador unário `-` produz `ConstantKind::NegativeLiteral` e uma
+  única ocorrência; o sinal pertence ao snippet;
+- sufixo numérico Rust pertence ao snippet;
+- `snippet` são os bytes UTF-8 exatos do nó autorizado, sem trim ou normalização;
+- linha e coluna são 1-based; coluna conta bytes UTF-8 desde o início da linha;
+- emissão segue preorder lexical da fonte e preserva multiplicidade, sem deduplicação;
+- comments, whitespace e literais fora de `function_item` não criam ocorrências;
+- fonte sintaticamente inválida retorna `ParseError::SyntaxError` sem IR parcial.
+
+O gate filtra os dois kinds numéricos autorizados e observa exclusivamente `kind`,
+`snippet`, `line`, `column`, ordem e multiplicidade. Não pode exigir que a coleção completa
+esteja vazia quando houver outros kinds.
+`citation`, `is_test_origin`, `function_return_type`, `is_in_binary_scaling`,
+`context_var`, `geometric_sink` e `is_in_data_table` ficam fora do contrato P0097, mesmo
+que a implementação vigente os preencha.
+
+Harness autorizado: construir `SourceFile` pelos campos públicos publicados em
+`contracts/file-provider.md`; instanciar `RustParser::new` com mocks locais que implementem
+`PromptReader` e `PromptSnapshotReader`, `CrystallineConfig::default()` e
+`CrateRegistry::default()`; chamar somente
+`LanguageParser::parse(&SourceFile)`. Não há segunda API pública de extração.
+
+V21 e V22 são consumidores de regressão. É proibido chamá-los, importar suas listas ou
+derivar expectations deles no gate. Semântica de citações permanece `SPEC-GAP` fora deste
+contrato.
 
 ---
 
