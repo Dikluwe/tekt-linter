@@ -91,3 +91,29 @@ fn one_nucleus_byte_invalidates_both_pins_and_both_code_hashes() {
         "{rules:?}"
     );
 }
+
+#[test]
+fn fix_hashes_updates_pins_and_effective_hashes_in_one_transaction() {
+    let temp = tempfile::tempdir().unwrap();
+    copy_tree(&fixture(), temp.path());
+    let path = temp.path().join("00_nucleo/prompts/_nuclei/path.tekt");
+    let changed = std::fs::read_to_string(&path)
+        .unwrap()
+        .replace("logical identity", "logical identity!");
+    std::fs::write(path, changed).unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_crystalline-lint"))
+        .current_dir(temp.path())
+        .args([".", "--fix-hashes"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "code={:?} stdout={} stderr={}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let (_, rules) = run_at(temp.path(), "v5,v26");
+    assert!(rules.is_empty(), "{rules:?}");
+}

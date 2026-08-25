@@ -59,23 +59,30 @@ pub fn write_prompt_meta(path: &Path, code_hash: &str) -> Result<(), String> {
 }
 
 pub fn prepare_pair(
+    root: &Path,
     source_path: &Path,
     prompt_path: &str,
     full_prompt_path: &Path,
     old_prompt_hash: &str,
-    new_prompt_hash: &str,
+    _new_prompt_hash: &str,
     new_source_hash: &str,
 ) -> Result<BijectivePair, String> {
     let source_bytes = std::fs::read(source_path).map_err(|error| error.to_string())?;
     let prompt_bytes = std::fs::read(full_prompt_path).map_err(|error| error.to_string())?;
+    let (prompt_with_current_pins, nucleus_dependencies) =
+        crate::infra::nucleus::refresh_prompt_nucleus_pins(root, &prompt_bytes)?;
+    let final_prompt_hash = crate::infra::nucleus::effective_prompt_hash(
+        &prompt_with_current_pins,
+        &nucleus_dependencies,
+    )?;
     let new_source_bytes = replace_meta_line(
         &source_bytes,
         b"//! @prompt-hash ",
-        new_prompt_hash.as_bytes(),
+        final_prompt_hash.as_bytes(),
         true,
     )?;
     let new_prompt_bytes = replace_meta_line(
-        &prompt_bytes,
+        &prompt_with_current_pins,
         "Hash do Código: ".as_bytes(),
         new_source_hash.as_bytes(),
         true,
@@ -84,7 +91,7 @@ pub fn prepare_pair(
         source_path: source_path.to_path_buf(),
         prompt_path: prompt_path.to_owned(),
         old_prompt_hash: old_prompt_hash.to_owned(),
-        new_prompt_hash: new_prompt_hash.to_owned(),
+        new_prompt_hash: final_prompt_hash,
         new_source_hash: new_source_hash.to_owned(),
         new_source_bytes,
         new_prompt_bytes,
