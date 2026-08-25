@@ -181,21 +181,25 @@ fn confront(escape: Escape) {
 }
 
 #[test]
+#[ignore = "future sealed verification: deliberate session escape is outside local mode"]
 fn setsid_keeps_pipes_open_after_leader_exits() {
     confront(Escape::BeforeTimeoutKeepPipes);
 }
 
 #[test]
+#[ignore = "future sealed verification: deliberate session escape is outside local mode"]
 fn setsid_closes_pipes_but_remains_in_scope() {
     confront(Escape::BeforeTimeoutClosePipes);
 }
 
 #[test]
+#[ignore = "future sealed verification: deliberate session escape is outside local mode"]
 fn double_fork_intermediate_exit_does_not_release_leaf() {
     confront(Escape::DoubleForkIntermediateExits);
 }
 
 #[test]
+#[ignore = "future sealed verification: deliberate session escape is outside local mode"]
 fn escape_during_timeout_remains_bounded_and_contained() {
     confront(Escape::DuringTimeoutKeepPipes);
 }

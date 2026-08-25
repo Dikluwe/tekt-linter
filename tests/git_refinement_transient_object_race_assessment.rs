@@ -226,16 +226,19 @@ fn positive_control(kind: RaceKind) {
 }
 
 #[test]
+#[ignore = "future sealed verification: active local filesystem adversary is outside local mode"]
 fn transient_loose_object_symlink_is_rejected() {
     confront(RaceKind::Loose);
 }
 
 #[test]
+#[ignore = "future sealed verification: active local filesystem adversary is outside local mode"]
 fn transient_fanout_symlink_is_rejected() {
     confront(RaceKind::Fanout);
 }
 
 #[test]
+#[ignore = "future sealed verification: active local filesystem adversary is outside local mode"]
 fn transient_pack_and_index_symlinks_are_rejected() {
     confront(RaceKind::PackPair);
 }

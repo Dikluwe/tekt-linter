@@ -1,5 +1,5 @@
 # Prompt: Validador direcional de refinamento
-Hash do Código: d1231d0f
+Hash do Código: 4e99a22c
 
 > **Estado:** VIGENTE — ADR-0019 aprovado pelo humano em 2026-08-23
 > **Camadas:** L1–L4
@@ -282,7 +282,7 @@ paths, 4 MiB por blob e 32 MiB por revisão. Excesso produz
 `Unknown(BudgetExhausted)` sem truncamento. O backend não adiciona biblioteca Git e
 mantém `snapshot + refine` como fallback sem autoridade de subprocesso.
 
-### Contrato operacional B2 resselado — saneamento P0100
+### Contrato operacional B2 resselado — saneamento P0100/P0103
 
 Esta seção substitui qualquer alternativa anterior dentro de B2. Não altera exits,
 precedência ou apresentação de F09, nem move fatos, comparação ou `UnknownReason` para
@@ -297,8 +297,28 @@ symlink e a presença de `.git/objects/info/alternates`. Todos os objetos aceito
 estar sob `.git/objects`; nenhum alternate ou object store externo é permitido. Como o
 ambiente do filho é limpo, overrides herdados como `GIT_DIR`, `GIT_WORK_TREE`,
 `GIT_COMMON_DIR`, `GIT_OBJECT_DIRECTORY` e `GIT_ALTERNATE_OBJECT_DIRECTORIES` nunca
-chegam ao Git. `.git/objects` e todo componente de pack/objeto acessado também devem
-ser reais e internos, sem symlink.
+chegam ao Git. No instante das verificações defensivas, `.git/objects` e seus
+componentes observados devem ser reais e internos, sem symlink persistente.
+
+#### Base confiável do modo local
+
+`refine-revisions` é uma conveniência do linter para engenharia local, não um executor
+de código não confiável nem um certificador contra adversário local ativo. Pertencem à
+base confiável deste modo o executável Git selecionado no `PATH`, o usuário e os
+processos locais com acesso ao repositório e a estabilidade do repositório durante cada
+operação.
+
+Refs, paths, conteúdo dos objetos, configuração persistente e framing continuam entradas
+não confiáveis e são validados defensivamente. O adapter rejeita alternates, symlinks
+persistentes, hooks/extensões, configuração e protocolos externos, budgets excedidos e
+respostas malformadas.
+
+O modo local não promete resistir a Git adulterado, troca de filesystem sincronizada
+durante a leitura, descendente deliberadamente escapando por `setsid` ou interferência
+de outro processo do mesmo usuário. Esses cenários pertencem a um futuro modo
+selado/certificador, com comando, modelo de ameaça, sandbox e critérios de release
+próprios. Esse modo futuro não é implementado nem implicitamente ativado por
+`refine-revisions`.
 
 O ponto único de auditoria é público em `crystalline_lint::infra::git_refinement`:
 
@@ -431,13 +451,16 @@ admite zero bytes. Ultrapassar cap de transcript encerra e reap o grupo/job e re
 Uma operação Git é um dos três processos acima, desde `spawn` até stdin fechado,
 stdout/stderr drenados, status coletado e contenção encerrada. Cada operação tem
 deadline de 10 segundos medido por relógio monotônico próprio da L3. Antes de liberar o
-filho, o adapter o coloca em grupo de processos isolado no Unix ou Job Object com
-encerramento no close no Windows. No deadline fecha stdin e pipes graváveis, encerra
-todo o grupo/job, drena ou fecha stdout/stderr e espera todos os membros. Não há grace
-period. O watchdog não depende dos pipes do filho e o chamador nunca espera sem limite.
-Se não puder criar a contenção, encerrar descendentes ou comprovar reap, retorna
-`ContainmentFailure`; se o deadline vencer e a contenção/reap for comprovada, retorna
-`Timeout`. Nenhum byte dessa revisão chega à porta de conteúdo em ambos os casos.
+filho, o adapter aplica a contenção normal disponível na plataforma: process group no
+Unix e encerramento do líder no backend Windows vigente. No deadline fecha stdin,
+encerra a contenção conhecida e conclui os readers sem publicar conteúdo. Falha
+observável ao preparar ou encerrar essa contenção retorna `ContainmentFailure`; deadline
+do processo confiável retorna `Timeout` depois do cleanup conhecido.
+
+Reap integral de descendente deliberadamente dissociado da contenção normal não é
+garantia do modo local. O adapter deve evitar espera ilimitada causada por subprocesso
+cooperativo ou falha ordinária, mas não incorpora cgroup, namespace, subreaper, Job
+Object obrigatório ou sandbox multiplataforma nesta modalidade.
 
 #### Taxonomia fechada
 
@@ -487,3 +510,4 @@ fonte única e a apresentação deve evitar duplicidade.
 | 2026-08-23 | Vigente | Humano aprovou materialização segura da Etapa A em branch dedicado |
 | 2026-08-24 | Vigente | Humano aprovou Etapa B1: snapshot Rust por queries explícitas, sem Git |
 | 2026-08-24 | Vigente | Humano aprovou Etapa B2: leitura imutável por Git batch, sem checkout ou rede |
+| 2026-08-25 | Vigente | P0103 separa o linter local de futuro modo selado e explicita a base confiável |

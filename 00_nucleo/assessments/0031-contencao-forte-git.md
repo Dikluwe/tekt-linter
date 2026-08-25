@@ -1,6 +1,6 @@
 # Assessment 0031 — contenção forte do Git
 
-**Estado:** FECHADO `BLOCKED` — C não executado; F05 aberto
+**Estado:** HISTÓRICO — pesquisa selada adiada pelo ADR-0021
 **Data:** 2026-08-25
 **Passo:** P0102
 **Baseline funcional:** `c681c7a8fd419c48683553f88b6a3bf391f2032b`
@@ -119,3 +119,10 @@ limpos e o reparador V5 responde `Nothing to fix`. A suíte workspace integral p
 deliberadamente RED pelos novos gates congelados.
 
 Resultado: **P0102/F05 `BLOCKED`**. Sem merge ou push.
+
+## Decisão posterior
+
+O ADR-0021, aceito pelo mantenedor em 2026-08-25, não tenta converter os REDs hostis em
+PASS. Ele os retira do contrato do modo local e preserva os gates como pesquisa
+`ignored` para um possível certificador futuro. SG-1/SG-2 e os `GATE-DEFECTs` continuam
+registrados para esse projeto futuro. F05 fecha somente para a base confiável local.
