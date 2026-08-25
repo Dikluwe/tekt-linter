@@ -2,11 +2,7 @@ use crystalline_lint::shell::fix_hashes::{
     execute_bijective, plan_bijective, BijectivePair, FixBatchResult, PairSnapshot,
     TransactionalHashRewriter,
 };
-use std::{
-    cell::RefCell,
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-};
+use std::{cell::RefCell, collections::BTreeMap, path::PathBuf};
 
 #[derive(Default)]
 struct Spy {

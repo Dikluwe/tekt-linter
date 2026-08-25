@@ -12,6 +12,7 @@ pub mod impure_core;
 pub mod infrastructure_error;
 pub mod multi_prompt_header;
 pub mod mutable_state_core;
+pub mod nucleus_integrity;
 pub mod orphan_prompt;
 pub mod prompt_drift;
 pub mod prompt_header;

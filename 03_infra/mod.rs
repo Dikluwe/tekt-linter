@@ -14,6 +14,7 @@ pub mod git_refinement;
 pub mod go_parser;
 pub mod hash_writer;
 pub mod java_parser;
+pub mod nucleus;
 pub mod prompt_io;
 pub mod prompt_reader;
 pub mod prompt_snapshot_reader;

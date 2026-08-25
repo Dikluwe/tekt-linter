@@ -40,7 +40,7 @@ pub struct Cli {
     /// rule_traits in L1/contracts/ are implemented by ParsedFile (L1), not L2/L3.
     #[arg(
         long,
-        default_value = "v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15,v16,v17,v18,v19,v20,v21,v23,v24,v25"
+        default_value = "v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15,v16,v17,v18,v19,v20,v21,v23,v24,v25,v26"
     )]
     pub checks: String,
 
@@ -139,6 +139,7 @@ pub struct EnabledChecks {
     pub v23: bool,
     pub v24: bool,
     pub v25: bool,
+    pub v26: bool,
 }
 
 impl EnabledChecks {
@@ -177,6 +178,7 @@ impl EnabledChecks {
             v23: has("v23"),
             v24: has("v24"),
             v25: has("v25"),
+            v26: has("v26"),
         }
     }
 }
@@ -494,6 +496,12 @@ fn sarif_rules() -> Vec<serde_json::Value> {
             "V25",
             "DecisionOwnership",
             "Semantic decision is recomposed outside its declared owner",
+            "warning",
+        ),
+        sarif_rule(
+            "V26",
+            "NucleusIntegrity",
+            "Malformed, stale, cyclic, missing, or orphan Tekt nucleus",
             "warning",
         ),
     ]
@@ -936,8 +944,8 @@ mod tests {
     }
 
     #[test]
-    fn sarif_driver_rules_has_26_entries() {
-        // SARIF driver.rules contém V0–V25.
+    fn sarif_driver_rules_has_27_entries() {
+        // SARIF driver.rules contém V0–V26.
         let out = format_sarif(&[]);
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
         let rules = parsed["runs"][0]["tool"]["driver"]["rules"]
@@ -945,8 +953,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             rules.len(),
-            26,
-            "expected 26 rules (V0 to V25), got {}",
+            27,
+            "expected 27 rules (V0 to V26), got {}",
             rules.len()
         );
     }
