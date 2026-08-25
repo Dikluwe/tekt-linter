@@ -1,6 +1,6 @@
 # Assessment 0022 — planejamento e execução de fix-hashes
 
-**Estado:** PREFLIGHT — SPEC-GAP saneado; produção ainda não confrontada
+**Estado:** READY WITH RESIDUAL AUDIT
 **Data:** 2026-08-25
 **Passo:** P0093
 **Baseline:** `6a325dc`
@@ -94,3 +94,43 @@ enganosa. B1/B2/B3 podem começar após resselamento; produção permanece proib
 
 Resultados: `PASS`, `RED`, `SPEC-GAP`, `GATE-DEFECT`. Fechamento somente
 `READY WITH RESIDUAL AUDIT` ou `BLOCKED`, sem merge/push.
+
+## Gates congelados e RED causal
+
+O primeiro B1 foi classificado `GATE-DEFECT` porque inventou `FixHashesPort`. O mesmo
+verificador corrigiu o gate sem ler produção, usando o port L2 existente
+`HashRewriter`. Os três arquivos foram congelados em `b09aac5`, antes do confronto:
+
+- B1 planejamento: `tests/fix_hashes_planning_assessment.rs`, SHA-256
+  `f1eb184536dc5526a6fdb402bb928e8906df6f96dad146754404075b27f3434b`, 3 casos;
+- B2 execução: `tests/fix_hashes_execution_assessment.rs`, SHA-256
+  `24cc0a2c072c6c95bfbdbb1d1d6c951172c1aa4e106c27992b3b7d40829181a4`, 4 casos;
+- B3 apresentação: `tests/fix_hashes_presentation_assessment.rs`, SHA-256
+  `bbc5a7f9c9294e6d92c0b9dc6b9c4c61a081ffc06566b0802ed7b13609a4c223`, 5 casos.
+
+Os gates ficaram RED pela ausência de `FixUnavailable` e das variantes normativas de
+`FixEntry`/`FixResult`. Esse RED foi reproduzido no commit congelado.
+
+## Confronto C e correção
+
+O confronto confirmou structs com `Option`/booleanos, `filter_map` apagando entradas
+indisponíveis e erro da segunda escrita descartado. O commit produtivo `895a378`
+materializou os enums L2, planejamento e execução totais, sequência Hash A → Hash B,
+`CodeWriteFailed` e `PartialWrite`, apresentação por estado e contagem nominal no wiring
+L4. L3 permaneceu apenas como primitiva de I/O; três arquivos L2/L3 adicionais mudaram
+somente na metadata de linhagem exigida pelo novo hash L0.
+
+## Adversário D e fechamento
+
+O adversário final reproduziu RED em `b09aac5` e GREEN em `895a378`: B1 3/3, B2 4/4 e
+B3 5/5. A suíte workspace passou com 628 unitários e todas as integrações/fixtures;
+auto-lint V5/V6/V7/V12 não encontrou violações; reparador em dry-run respondeu
+`Nothing to fix`; `git diff --check` passou. L2 não contém I/O nem import L3, L3 não
+decide o caso de uso e L4 somente adapta, injeta, chama e reanalisa.
+
+Veredito: `READY WITH RESIDUAL AUDIT`.
+
+Resíduos: a operação composta não possui rollback entre arquivos, conforme decisão L0;
+o exit code do CLI para `PartialWrite` ainda não é normatizado e pode depender somente
+do V5 remanescente; não há fixture end-to-end que force falha real entre as duas escritas,
+embora a ordem seja provada por spies e cada writer L3 tenha testes próprios.
