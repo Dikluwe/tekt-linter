@@ -1,5 +1,5 @@
 # Prompt: parser Java para IR canônica
-Hash do Código: be7122c5
+Hash do Código: b068d498
 
 Owner exclusivo: `03_infra/java_parser.rs`.
 

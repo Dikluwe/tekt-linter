@@ -1,5 +1,5 @@
 # Prompt: tipos de violação
-Hash do Código: 5cdf39c4
+Hash do Código: c2e504f5
 
 Owner exclusivo: `01_core/entities/violation.rs`.
 

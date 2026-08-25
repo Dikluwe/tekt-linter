@@ -1,5 +1,5 @@
 # Prompt: parser Elixir para IR canônica
-Hash do Código: 26e44dd4
+Hash do Código: ac5222d8
 
 Owner exclusivo: `03_infra/elixir_parser.rs`.
 
