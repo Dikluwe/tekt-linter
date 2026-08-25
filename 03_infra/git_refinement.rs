@@ -355,14 +355,17 @@ fn validate_public_inputs(
     }
     for directory in [objects.join("info"), objects.join("pack")] {
         match std::fs::symlink_metadata(&directory) {
-            Ok(metadata)
-                if metadata.is_dir()
+            Ok(metadata) => {
+                let is_confined_directory = metadata.is_dir()
                     && !metadata.file_type().is_symlink()
                     && directory
                         .canonicalize()
                         .ok()
-                        .is_some_and(|canonical| canonical.starts_with(&objects)) => {}
-            Ok(_) => return Err(GitRevisionError::ContainmentFailure),
+                        .is_some_and(|canonical| canonical.starts_with(&objects));
+                if !is_confined_directory {
+                    return Err(GitRevisionError::ContainmentFailure);
+                }
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(_) => return Err(GitRevisionError::ContainmentFailure),
         }
@@ -370,15 +373,18 @@ fn validate_public_inputs(
     for name in ["alternates", "http-alternates"] {
         let path = objects.join("info").join(name);
         match std::fs::symlink_metadata(&path) {
-            Ok(metadata)
-                if metadata.is_file()
+            Ok(metadata) => {
+                let is_confined_empty_file = metadata.is_file()
                     && !metadata.file_type().is_symlink()
                     && metadata.len() == 0
                     && path
                         .canonicalize()
                         .ok()
-                        .is_some_and(|canonical| canonical.starts_with(&objects)) => {}
-            Ok(_) => return Err(GitRevisionError::ContainmentFailure),
+                        .is_some_and(|canonical| canonical.starts_with(&objects));
+                if !is_confined_empty_file {
+                    return Err(GitRevisionError::ContainmentFailure);
+                }
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(_) => return Err(GitRevisionError::ContainmentFailure),
         }

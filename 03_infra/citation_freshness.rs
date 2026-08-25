@@ -34,10 +34,10 @@ impl CitationFreshnessResolver for FsCitationFreshnessResolver {
         }
         let mut clean = PathBuf::new();
         for component in relative.components() {
-            match component {
-                Component::Normal(part) => clean.push(part),
-                Component::CurDir => {}
-                _ => return CitationFreshness::Unknown(CitationUnknownReason::OutsideRoot),
+            if let Component::Normal(part) = component {
+                clean.push(part);
+            } else if component != Component::CurDir {
+                return CitationFreshness::Unknown(CitationUnknownReason::OutsideRoot);
             }
         }
         if clean.as_os_str().is_empty() {
