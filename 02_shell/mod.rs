@@ -1,6 +1,6 @@
 //! Crystalline Lineage
-//! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 1b09018a
+//! @prompt 00_nucleo/prompts/shell/module.md
+//! @prompt-hash PENDING
 //! @layer L2
 //! @updated 2025-03-13
 
