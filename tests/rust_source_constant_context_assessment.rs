@@ -59,13 +59,14 @@ fn observe(source: &str) -> Result<Vec<(ConstantKind, String, usize, usize)>, Pa
     Ok(parsed
         .constants
         .iter()
-        .map(|constant| {
-            (
+        .filter_map(|constant| match constant.kind {
+            ConstantKind::FunctionNumberLiteral | ConstantKind::NegativeLiteral => Some((
                 constant.kind,
                 constant.snippet.to_owned(),
                 constant.line,
                 constant.column,
-            )
+            )),
+            _ => None,
         })
         .collect())
 }

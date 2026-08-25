@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/rust.md
-//! @prompt-hash 85d787b1
+//! @prompt-hash 5b49feef
 //! @layer L3
 //! @updated 2026-06-09
 
@@ -2335,6 +2335,16 @@ fn is_numeric_format_specifier(text: &str) -> bool {
     false
 }
 
+fn has_ancestor_kind(mut node: Node<'_>, kind: &str) -> bool {
+    while let Some(parent) = node.parent() {
+        if parent.kind() == kind {
+            return true;
+        }
+        node = parent;
+    }
+    false
+}
+
 /// Detecta se um match é uma tabela de dados (>= 5 braços com corpo literal).
 fn is_data_table_match(node: Node, _source: &[u8]) -> bool {
     let mut arm_count = 0;
@@ -2398,7 +2408,7 @@ fn collect_constants<'a>(
     let kind = node.kind();
     let pos = node.start_position();
     let line_num = pos.row + 1;
-    let col = pos.column;
+    let col = pos.column + 1;
 
     let get_citation = || -> Option<Citation<'a>> {
         for offset in 0..=3 {
@@ -2528,8 +2538,8 @@ fn collect_constants<'a>(
                     literal_child = Some(child);
                 }
             }
-            if let Some(_lit) = literal_child {
-                let snippet = node_text(node, source).trim();
+            if in_fn_body && !in_pattern && literal_child.is_some() {
+                let snippet = node_text(node, source);
                 acc.push(SourceConstant {
                     kind: ConstantKind::NegativeLiteral,
                     snippet,
@@ -2562,18 +2572,16 @@ fn collect_constants<'a>(
                     geometric_sink: current_sink.clone(),
                     is_in_data_table: in_data_table,
                 });
-                return;
             }
+            return;
         }
         "integer_literal" | "float_literal" => {
-            let snippet = node_text(node, source).trim();
-            let c_kind = if in_pattern {
-                ConstantKind::MatchPattern
-            } else {
-                ConstantKind::FunctionNumberLiteral
-            };
+            if !in_fn_body || in_pattern || has_ancestor_kind(node, "macro_invocation") {
+                return;
+            }
+            let snippet = node_text(node, source);
             acc.push(SourceConstant {
-                kind: c_kind,
+                kind: ConstantKind::FunctionNumberLiteral,
                 snippet,
                 line: line_num,
                 column: col,
@@ -2612,6 +2620,7 @@ fn collect_constants<'a>(
             });
             return;
         }
+        "range_expression" => return,
         "match_expression" => {
             let is_table = is_data_table_match(node, source);
             for_each_child_in_test_scope(node, source, cfg_test, |child, child_cfg| {
