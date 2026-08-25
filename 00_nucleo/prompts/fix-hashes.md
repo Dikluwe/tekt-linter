@@ -144,18 +144,93 @@ de leitura são reportadas, não descartadas.
 
 ---
 
-## Contrato L2 — `SnapshotRewriter` (novo)
+## Contrato L2 — planejamento e execução de snapshots
+
+L2 possui o caso de uso e o port. L3 implementa serialização canônica e escrita; L4
+somente instancia e injeta o adapter.
+
 ```rust
-pub trait SnapshotWriter {
-    fn read_interface(&self, source_path: &Path) -> Option<PublicInterface>;
-    fn serialize(&self, interface: &PublicInterface) -> String;
+pub trait SnapshotRewriter {
+    fn serialize_snapshot(&self, interface: &PublicInterface<'_>) -> String;
     fn write_snapshot(
         &self,
         prompt_path: &str,
-        interface: &PublicInterface,
+        snapshot: &str,
     ) -> Result<(), String>;
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SnapshotUnreadable {
+    MissingParsedFile,
+    MissingPromptHeader,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SnapshotEntry {
+    Ready {
+        source_path: PathBuf,
+        prompt_path: String,
+        snapshot: String,
+    },
+    Unreadable {
+        source_path: PathBuf,
+        reason: SnapshotUnreadable,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SnapshotResult {
+    DryRun {
+        source_path: PathBuf,
+        prompt_path: String,
+        snapshot: String,
+    },
+    Written {
+        source_path: PathBuf,
+        prompt_path: String,
+    },
+    WriteFailed {
+        source_path: PathBuf,
+        prompt_path: String,
+        reason: String,
+    },
+    Unreadable {
+        source_path: PathBuf,
+        reason: SnapshotUnreadable,
+    },
+}
+
+pub fn plan<'a>(
+    violations: &[Violation<'a>],
+    parsed_files: &[ParsedFile<'a>],
+    rewriter: &dyn SnapshotRewriter,
+) -> Vec<SnapshotEntry>;
+
+pub fn execute(
+    entries: &[SnapshotEntry],
+    rewriter: &dyn SnapshotRewriter,
+    dry_run: bool,
+) -> Vec<SnapshotResult>;
 ```
+
+`plan` produz exatamente uma entrada para cada ocorrência cujo `rule_id` seja exatamente
+`"V6"`, preservando ordem e duplicatas. Para associar o arquivo, usa o primeiro
+`ParsedFile` na ordem recebida cujo `path` seja integralmente igual ao path da violação;
+não normaliza, canonicaliza, compara prefixo ou basename.
+
+Sem arquivo associado, produz `Unreadable::MissingParsedFile`. Sem header, produz
+`Unreadable::MissingPromptHeader`. Esses estados não chamam serialização. `Ready`
+preserva source path e prompt path do mesmo arquivo e chama `serialize_snapshot` uma vez
+com sua `public_interface`.
+
+`execute` produz exatamente um resultado por entrada, na mesma ordem. `Unreadable`
+permanece `Unreadable`, sem chamada ao port. Em dry-run, cada `Ready` vira `DryRun` com
+path e snapshot inalterados e nenhuma escrita. Em execução real, cada `Ready` chama
+`write_snapshot` exatamente uma vez; `Ok` vira `Written` e `Err(reason)` vira
+`WriteFailed` com a razão exata. Falhas não interrompem itens posteriores.
+
+L2 não lê filesystem, ambiente, relógio, rede ou processo. Somente a implementação L3 do
+port produz efeito externo.
 
 ---
 
@@ -188,7 +263,9 @@ Re-running analysis... ✅ 0 drift warnings remaining
 - L1 não é modificado por nenhum dos comandos
 - Se `--dry-run`, nenhum arquivo é tocado
 - `plan()` nunca descarta entradas com `filter_map` — usa `map`
-  e captura falhas em `unreadable_reason`
+  e captura falhas em `SnapshotEntry::Unreadable`
+- `execute()` preserva cardinalidade inclusive para entradas não acionáveis
+- dry-run possui resultado distinto de escrita realizada
 - `--fix-hashes` e `--update-snapshot` não podem rodar juntos
 
 ---
