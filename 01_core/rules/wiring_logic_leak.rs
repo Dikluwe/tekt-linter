@@ -6,9 +6,9 @@
 
 use std::borrow::Cow;
 
-use crate::entities::rule_traits::HasWiringPurity;
 use crate::entities::layer::Layer;
 use crate::entities::parsed_file::{Declaration, DeclarationKind, WiringConfig};
+use crate::entities::rule_traits::HasWiringPurity;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 
 /// V12 — Wiring Logic Leak.
@@ -48,22 +48,22 @@ pub fn check<'a, T: HasWiringPurity<'a>>(file: &T, config: &WiringConfig) -> Vec
 
 fn is_forbidden(d: &Declaration, config: &WiringConfig) -> bool {
     match d.kind {
-        DeclarationKind::Enum      => true,                           // enums nunca pertencem a L4
-        DeclarationKind::Struct    => !config.allow_adapter_structs,  // configurável
-        DeclarationKind::Impl      => true,                           // impl sem trait = lógica de negócio
+        DeclarationKind::Enum => true, // enums nunca pertencem a L4
+        DeclarationKind::Struct => !config.allow_adapter_structs, // configurável
+        DeclarationKind::Impl => true, // impl sem trait = lógica de negócio
         // ADR-0009: linguagens OO
-        DeclarationKind::Class     => !config.allow_adapter_structs,  // Class ≡ Struct (ADR-0009)
-        DeclarationKind::Interface => true,                           // interfaces pertencem a L1/L2
-        DeclarationKind::TypeAlias => true,                           // type aliases pertencem a L1/L2
+        DeclarationKind::Class => !config.allow_adapter_structs, // Class ≡ Struct (ADR-0009)
+        DeclarationKind::Interface => true,                      // interfaces pertencem a L1/L2
+        DeclarationKind::TypeAlias => true,                      // type aliases pertencem a L1/L2
     }
 }
 
 fn declaration_kind_str(kind: &DeclarationKind) -> &'static str {
     match kind {
-        DeclarationKind::Struct    => "struct",
-        DeclarationKind::Enum      => "enum",
-        DeclarationKind::Impl      => "impl",
-        DeclarationKind::Class     => "class",
+        DeclarationKind::Struct => "struct",
+        DeclarationKind::Enum => "enum",
+        DeclarationKind::Impl => "impl",
+        DeclarationKind::Class => "class",
         DeclarationKind::Interface => "interface",
         DeclarationKind::TypeAlias => "type",
     }
@@ -85,21 +85,39 @@ mod tests {
     }
 
     impl HasWiringPurity<'static> for MockFile {
-        fn layer(&self) -> &Layer { &self.layer }
-        fn declarations(&self) -> &[Declaration<'static>] { &self.declarations }
-        fn path(&self) -> &'static Path { self.path }
+        fn layer(&self) -> &Layer {
+            &self.layer
+        }
+        fn declarations(&self) -> &[Declaration<'static>] {
+            &self.declarations
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
     }
 
     fn l4_file(declarations: Vec<Declaration<'static>>) -> MockFile {
-        MockFile { layer: Layer::L4, declarations, path: Path::new("04_wiring/main.rs") }
+        MockFile {
+            layer: Layer::L4,
+            declarations,
+            path: Path::new("04_wiring/main.rs"),
+        }
     }
 
     fn decl(kind: DeclarationKind, name: &'static str, line: usize) -> Declaration<'static> {
         Declaration { kind, name, line }
     }
 
-    fn allow_structs() -> WiringConfig { WiringConfig { allow_adapter_structs: true } }
-    fn deny_structs() -> WiringConfig { WiringConfig { allow_adapter_structs: false } }
+    fn allow_structs() -> WiringConfig {
+        WiringConfig {
+            allow_adapter_structs: true,
+        }
+    }
+    fn deny_structs() -> WiringConfig {
+        WiringConfig {
+            allow_adapter_structs: false,
+        }
+    }
 
     #[test]
     fn struct_forbidden_when_allow_adapter_structs_false() {

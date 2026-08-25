@@ -17,8 +17,8 @@ use crate::contracts::prompt_reader::PromptReader;
 use crate::contracts::prompt_snapshot_reader::PromptSnapshotReader;
 use crate::entities::layer::{Language, Layer};
 use crate::entities::parsed_file::{
-    Declaration, DeclarationKind, FunctionSignature, Import, ImportKind, ParsedFile,
-    PromptHeader, PublicInterface, Token, TokenKind, TypeKind, TypeSignature,
+    Declaration, DeclarationKind, FunctionSignature, Import, ImportKind, ParsedFile, PromptHeader,
+    PublicInterface, Token, TokenKind, TypeKind, TypeSignature,
 };
 use crate::infra::config::CrystallineConfig;
 use crate::infra::walker::resolve_file_layer;
@@ -69,7 +69,9 @@ impl<R: PromptReader, S: PromptSnapshotReader> TsParser<R, S> {
 impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for TsParser<R, S> {
     fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
         if file.content.is_empty() {
-            return Err(ParseError::EmptySource { path: file.path.clone() });
+            return Err(ParseError::EmptySource {
+                path: file.path.clone(),
+            });
         }
 
         if file.language != Language::TypeScript {
@@ -80,26 +82,30 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for TsParser<R, S>
         }
 
         let mut engine = TsParserEngine::new();
-        let lang: tree_sitter::Language = if file.path.extension().and_then(|e| e.to_str()) == Some("tsx") {
-            tree_sitter_typescript::LANGUAGE_TSX.into()
-        } else {
-            tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()
-        };
-        engine.set_language(&lang).map_err(|_| ParseError::SyntaxError {
-            path: file.path.clone(),
-            line: 0,
-            column: 0,
-            message: "Failed to load TypeScript grammar".to_string(),
-        })?;
-
-        let tree = engine
-            .parse(file.content.as_bytes(), None)
-            .ok_or_else(|| ParseError::SyntaxError {
+        let lang: tree_sitter::Language =
+            if file.path.extension().and_then(|e| e.to_str()) == Some("tsx") {
+                tree_sitter_typescript::LANGUAGE_TSX.into()
+            } else {
+                tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()
+            };
+        engine
+            .set_language(&lang)
+            .map_err(|_| ParseError::SyntaxError {
                 path: file.path.clone(),
                 line: 0,
                 column: 0,
-                message: "Parser returned None — possible timeout".to_string(),
+                message: "Failed to load TypeScript grammar".to_string(),
             })?;
+
+        let tree =
+            engine
+                .parse(file.content.as_bytes(), None)
+                .ok_or_else(|| ParseError::SyntaxError {
+                    path: file.path.clone(),
+                    line: 0,
+                    column: 0,
+                    message: "Parser returned None — possible timeout".to_string(),
+                })?;
 
         let root = tree.root_node();
 
@@ -127,7 +133,14 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for TsParser<R, S>
 
         // 2. Imports — TsLayerResolver 4 passos + SubdirResolver físico
         let intern: &dyn Fn(String) -> &'static str = &|s| self.intern_subdir(s);
-        let imports = extract_imports(root, source, file.path.as_path(), &self.project_root, &self.config, intern);
+        let imports = extract_imports(
+            root,
+            source,
+            file.path.as_path(),
+            &self.project_root,
+            &self.config,
+            intern,
+        );
 
         // 3. Tokens — imports proibidos + call expressions (sem Motor de Duas Fases)
         let tokens = extract_tokens(root, source, &imports);
@@ -144,13 +157,12 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for TsParser<R, S>
             .and_then(|h| self.snapshot_reader.read_snapshot(h.prompt_path));
 
         // 6. declared_traits — apenas L1/contracts, apenas interface com export (V11)
-        let declared_traits = if file.layer == Layer::L1
-            && path_contains_segment(file.path.as_path(), "contracts")
-        {
-            extract_declared_traits(root, source)
-        } else {
-            vec![]
-        };
+        let declared_traits =
+            if file.layer == Layer::L1 && path_contains_segment(file.path.as_path(), "contracts") {
+                extract_declared_traits(root, source)
+            } else {
+                vec![]
+            };
 
         // 7. implemented_traits — apenas L2|L3, apenas class com implements (V11)
         let implemented_traits = if matches!(file.layer, Layer::L2 | Layer::L3) {
@@ -281,7 +293,10 @@ fn resolve_ts_layer(
 ) -> Layer {
     // Passo 1 — detecção de package externo
     let is_relative = import_path.starts_with("./") || import_path.starts_with("../");
-    let is_alias = config.ts_aliases.keys().any(|k| import_path.starts_with(k.as_str()));
+    let is_alias = config
+        .ts_aliases
+        .keys()
+        .any(|k| import_path.starts_with(k.as_str()));
     if !is_relative && !is_alias {
         return Layer::Unknown;
     }
@@ -289,7 +304,9 @@ fn resolve_ts_layer(
     // Passo 2 — resolução de alias
     let resolved_str: String;
     let import_after_alias: &str = if is_alias {
-        let alias_key = config.ts_aliases.keys()
+        let alias_key = config
+            .ts_aliases
+            .keys()
             .find(|k| import_path.starts_with(k.as_str()))
             .expect("alias_key found above");
         let alias_val = &config.ts_aliases[alias_key];
@@ -332,11 +349,16 @@ fn resolve_ts_subdir(
     }
 
     let is_relative = import_path.starts_with("./") || import_path.starts_with("../");
-    let is_alias = config.ts_aliases.keys().any(|k| import_path.starts_with(k.as_str()));
+    let is_alias = config
+        .ts_aliases
+        .keys()
+        .any(|k| import_path.starts_with(k.as_str()));
 
     let resolved_str: String;
     let import_after_alias: &str = if is_alias {
-        let alias_key = config.ts_aliases.keys()
+        let alias_key = config
+            .ts_aliases
+            .keys()
             .find(|k| import_path.starts_with(k.as_str()))
             .expect("alias_key found above");
         let alias_val = &config.ts_aliases[alias_key];
@@ -385,7 +407,15 @@ fn extract_imports<'a>(
     intern: &dyn Fn(String) -> &'static str,
 ) -> Vec<Import<'a>> {
     let mut imports = Vec::new();
-    collect_imports(root, source, file_path, project_root, config, &mut imports, intern);
+    collect_imports(
+        root,
+        source,
+        file_path,
+        project_root,
+        config,
+        &mut imports,
+        intern,
+    );
     imports
 }
 
@@ -403,7 +433,14 @@ fn collect_imports<'a>(
             if let Some(path_str) = import_source_str(node, source) {
                 let line = node.start_position().row + 1;
                 let target_layer = resolve_ts_layer(path_str, file_path, project_root, config);
-                let target_subdir = resolve_ts_subdir(path_str, file_path, project_root, config, &target_layer, intern);
+                let target_subdir = resolve_ts_subdir(
+                    path_str,
+                    file_path,
+                    project_root,
+                    config,
+                    &target_layer,
+                    intern,
+                );
                 let kind = classify_import_statement(node, source);
                 imports.push(Import {
                     path: path_str,
@@ -422,7 +459,14 @@ fn collect_imports<'a>(
                 if !path_str.is_empty() {
                     let line = node.start_position().row + 1;
                     let target_layer = resolve_ts_layer(path_str, file_path, project_root, config);
-                    let target_subdir = resolve_ts_subdir(path_str, file_path, project_root, config, &target_layer, intern);
+                    let target_subdir = resolve_ts_subdir(
+                        path_str,
+                        file_path,
+                        project_root,
+                        config,
+                        &target_layer,
+                        intern,
+                    );
                     let kind = classify_export_statement(node, source);
                     imports.push(Import {
                         path: path_str,
@@ -440,7 +484,15 @@ fn collect_imports<'a>(
 
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
-            collect_imports(child, source, file_path, project_root, config, imports, intern);
+            collect_imports(
+                child,
+                source,
+                file_path,
+                project_root,
+                config,
+                imports,
+                intern,
+            );
         }
     }
 }
@@ -542,23 +594,29 @@ fn string_content<'a>(string_node: Node, source: &'a [u8]) -> Option<&'a str> {
 // ── Token extraction (V4) ─────────────────────────────────────────────────────
 
 const FORBIDDEN_MODULES: &[&str] = &[
-    "fs", "node:fs", "fs/promises", "node:fs/promises",
-    "child_process", "node:child_process",
-    "net", "node:net",
-    "http", "node:http",
-    "https", "node:https",
-    "dgram", "node:dgram",
-    "dns", "node:dns",
-    "readline", "node:readline",
+    "fs",
+    "node:fs",
+    "fs/promises",
+    "node:fs/promises",
+    "child_process",
+    "node:child_process",
+    "net",
+    "node:net",
+    "http",
+    "node:http",
+    "https",
+    "node:https",
+    "dgram",
+    "node:dgram",
+    "dns",
+    "node:dns",
+    "readline",
+    "node:readline",
 ];
 
 const FORBIDDEN_CALLS: &[&str] = &["process.env", "Date.now", "Math.random"];
 
-fn extract_tokens<'a>(
-    root: Node,
-    source: &'a [u8],
-    imports: &[Import<'a>],
-) -> Vec<Token<'a>> {
+fn extract_tokens<'a>(root: Node, source: &'a [u8], imports: &[Import<'a>]) -> Vec<Token<'a>> {
     let mut tokens = Vec::new();
 
     // Mecanismo 1 — imports de módulos proibidos
@@ -680,14 +738,24 @@ fn extract_public_interface<'a>(root: Node, source: &'a [u8]) -> PublicInterface
         if let Some(child) = root.child(i) {
             match child.kind() {
                 "export_statement" => {
-                    process_export_statement(child, source, &mut functions, &mut types, &mut reexports);
+                    process_export_statement(
+                        child,
+                        source,
+                        &mut functions,
+                        &mut types,
+                        &mut reexports,
+                    );
                 }
                 _ => {}
             }
         }
     }
 
-    PublicInterface { functions, types, reexports }
+    PublicInterface {
+        functions,
+        types,
+        reexports,
+    }
 }
 
 fn process_export_statement<'a>(
@@ -706,8 +774,10 @@ fn process_export_statement<'a>(
     }
 
     // export { X } without from — named re-export
-    if let Some(clause) = node.child_by_field_name("export_clause")
-        .or_else(|| find_child_by_kind(node, "export_clause")) {
+    if let Some(clause) = node
+        .child_by_field_name("export_clause")
+        .or_else(|| find_child_by_kind(node, "export_clause"))
+    {
         let text = node_text(clause, source);
         reexports.push(text);
         return;
@@ -789,10 +859,18 @@ fn extract_fn_sig<'a>(
         .map(|rt| {
             let text = node_text(rt, source);
             let trimmed = text.trim_start_matches(':').trim();
-            if trimmed == "void" || trimmed.is_empty() { "" } else { trimmed }
+            if trimmed == "void" || trimmed.is_empty() {
+                ""
+            } else {
+                trimmed
+            }
         })
         .filter(|s| !s.is_empty());
-    Some(FunctionSignature { name, params, return_type })
+    Some(FunctionSignature {
+        name,
+        params,
+        return_type,
+    })
 }
 
 fn extract_const_fn_sig<'a>(node: Node, source: &'a [u8]) -> Option<FunctionSignature<'a>> {
@@ -800,7 +878,9 @@ fn extract_const_fn_sig<'a>(node: Node, source: &'a [u8]) -> Option<FunctionSign
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
             if child.kind() == "variable_declarator" {
-                let name = child.child_by_field_name("name").map(|n| node_text(n, source))?;
+                let name = child
+                    .child_by_field_name("name")
+                    .map(|n| node_text(n, source))?;
                 let value = child.child_by_field_name("value")?;
                 if matches!(value.kind(), "arrow_function" | "function_expression") {
                     let params = value
@@ -812,10 +892,18 @@ fn extract_const_fn_sig<'a>(node: Node, source: &'a [u8]) -> Option<FunctionSign
                         .map(|rt| {
                             let text = node_text(rt, source);
                             let trimmed = text.trim_start_matches(':').trim();
-                            if trimmed == "void" { "" } else { trimmed }
+                            if trimmed == "void" {
+                                ""
+                            } else {
+                                trimmed
+                            }
                         })
                         .filter(|s| !s.is_empty());
-                    return Some(FunctionSignature { name, params, return_type });
+                    return Some(FunctionSignature {
+                        name,
+                        params,
+                        return_type,
+                    });
                 }
             }
         }
@@ -851,14 +939,21 @@ fn extract_class_sig<'a>(
         .child_by_field_name("body")
         .map(|b| extract_class_members(b, source))
         .unwrap_or_default();
-    Some(TypeSignature { name, kind: TypeKind::Class, members })
+    Some(TypeSignature {
+        name,
+        kind: TypeKind::Class,
+        members,
+    })
 }
 
 fn extract_class_members<'a>(body: Node, source: &'a [u8]) -> Vec<&'a str> {
     let mut result = Vec::new();
     for i in 0..body.child_count() {
         if let Some(child) = body.child(i) {
-            if matches!(child.kind(), "public_field_definition" | "method_definition") {
+            if matches!(
+                child.kind(),
+                "public_field_definition" | "method_definition"
+            ) {
                 if let Some(key) = child.child_by_field_name("name") {
                     result.push(node_text(key, source));
                 }
@@ -869,12 +964,18 @@ fn extract_class_members<'a>(body: Node, source: &'a [u8]) -> Vec<&'a str> {
 }
 
 fn extract_interface_sig<'a>(node: Node, source: &'a [u8]) -> Option<TypeSignature<'a>> {
-    let name = node.child_by_field_name("name").map(|n| node_text(n, source))?;
+    let name = node
+        .child_by_field_name("name")
+        .map(|n| node_text(n, source))?;
     let members = node
         .child_by_field_name("body")
         .map(|b| extract_interface_members(b, source))
         .unwrap_or_default();
-    Some(TypeSignature { name, kind: TypeKind::Interface, members })
+    Some(TypeSignature {
+        name,
+        kind: TypeKind::Interface,
+        members,
+    })
 }
 
 fn extract_interface_members<'a>(body: Node, source: &'a [u8]) -> Vec<&'a str> {
@@ -892,12 +993,20 @@ fn extract_interface_members<'a>(body: Node, source: &'a [u8]) -> Vec<&'a str> {
 }
 
 fn extract_type_alias_sig<'a>(node: Node, source: &'a [u8]) -> Option<TypeSignature<'a>> {
-    let name = node.child_by_field_name("name").map(|n| node_text(n, source))?;
-    Some(TypeSignature { name, kind: TypeKind::TypeAlias, members: vec![] })
+    let name = node
+        .child_by_field_name("name")
+        .map(|n| node_text(n, source))?;
+    Some(TypeSignature {
+        name,
+        kind: TypeKind::TypeAlias,
+        members: vec![],
+    })
 }
 
 fn extract_enum_sig<'a>(node: Node, source: &'a [u8]) -> Option<TypeSignature<'a>> {
-    let name = node.child_by_field_name("name").map(|n| node_text(n, source))?;
+    let name = node
+        .child_by_field_name("name")
+        .map(|n| node_text(n, source))?;
     let members = node
         .child_by_field_name("body")
         .map(|b| {
@@ -914,7 +1023,11 @@ fn extract_enum_sig<'a>(node: Node, source: &'a [u8]) -> Option<TypeSignature<'a
             result
         })
         .unwrap_or_default();
-    Some(TypeSignature { name, kind: TypeKind::Enum, members })
+    Some(TypeSignature {
+        name,
+        kind: TypeKind::Enum,
+        members,
+    })
 }
 
 // ── declared_traits (V11) ─────────────────────────────────────────────────────
@@ -1107,7 +1220,8 @@ fn node_text<'a>(node: Node, source: &'a [u8]) -> &'a str {
 }
 
 fn path_contains_segment(path: &Path, segment: &str) -> bool {
-    path.components().any(|c| c.as_os_str().to_str().unwrap_or("") == segment)
+    path.components()
+        .any(|c| c.as_os_str().to_str().unwrap_or("") == segment)
 }
 
 fn find_first_error_pos(node: Node) -> (usize, usize) {
@@ -1147,14 +1261,22 @@ mod tests {
 
     struct NullPromptReader;
     impl PromptReader for NullPromptReader {
-        fn read_hash(&self, _: &str) -> Option<String> { None }
-        fn exists(&self, _: &str) -> bool { false }
+        fn read_hash(&self, _: &str) -> Option<String> {
+            None
+        }
+        fn exists(&self, _: &str) -> bool {
+            false
+        }
     }
 
     struct NullSnapshotReader;
     impl PromptSnapshotReader for NullSnapshotReader {
-        fn read_snapshot(&self, _: &str) -> Option<PublicInterface<'static>> { None }
-        fn serialize_snapshot(&self, _: &PublicInterface<'_>) -> String { String::new() }
+        fn read_snapshot(&self, _: &str) -> Option<PublicInterface<'static>> {
+            None
+        }
+        fn serialize_snapshot(&self, _: &PublicInterface<'_>) -> String {
+            String::new()
+        }
     }
 
     fn make_parser() -> TsParser<NullPromptReader, NullSnapshotReader> {
@@ -1166,8 +1288,15 @@ mod tests {
         )
     }
 
-    fn make_parser_with_config(config: CrystallineConfig) -> TsParser<NullPromptReader, NullSnapshotReader> {
-        TsParser::new(NullPromptReader, NullSnapshotReader, config, PathBuf::from("."))
+    fn make_parser_with_config(
+        config: CrystallineConfig,
+    ) -> TsParser<NullPromptReader, NullSnapshotReader> {
+        TsParser::new(
+            NullPromptReader,
+            NullSnapshotReader,
+            config,
+            PathBuf::from("."),
+        )
     }
 
     fn ts_file(content: &str) -> SourceFile {
@@ -1202,7 +1331,10 @@ mod tests {
             layer: Layer::L1,
             has_adjacent_test: false,
         };
-        assert!(matches!(parser.parse(&file), Err(ParseError::UnsupportedLanguage { .. })));
+        assert!(matches!(
+            parser.parse(&file),
+            Err(ParseError::UnsupportedLanguage { .. })
+        ));
     }
 
     // ── EmptySource ────────────────────────────────────────────────────────────
@@ -1211,7 +1343,10 @@ mod tests {
     fn empty_source_returns_error() {
         let parser = make_parser();
         let file = ts_file("");
-        assert!(matches!(parser.parse(&file), Err(ParseError::EmptySource { .. })));
+        assert!(matches!(
+            parser.parse(&file),
+            Err(ParseError::EmptySource { .. })
+        ));
     }
 
     // ── Header ────────────────────────────────────────────────────────────────
@@ -1229,7 +1364,10 @@ mod tests {
         );
         let parsed = parser.parse(&file).unwrap();
         let header = parsed.prompt_header.unwrap();
-        assert_eq!(header.prompt_path, "00_nucleo/prompts/parsers/typescript.md");
+        assert_eq!(
+            header.prompt_path,
+            "00_nucleo/prompts/parsers/typescript.md"
+        );
         assert_eq!(header.prompt_hash, Some("abcd1234"));
         assert_eq!(header.layer, Layer::L3);
         assert_eq!(header.updated, Some("2026-03-19"));
@@ -1301,7 +1439,9 @@ mod tests {
     #[test]
     fn import_with_alias_resolves_to_correct_layer() {
         let mut config = CrystallineConfig::default();
-        config.ts_aliases.insert("@core".to_string(), "01_core".to_string());
+        config
+            .ts_aliases
+            .insert("@core".to_string(), "01_core".to_string());
         let parser = make_parser_with_config(config);
         let file = ts_file_at(
             "import { Layer } from '@core/entities/layer';",
@@ -1341,7 +1481,10 @@ mod tests {
         let parser = make_parser();
         let file = ts_file("const t = Date.now();");
         let parsed = parser.parse(&file).unwrap();
-        assert!(parsed.tokens.iter().any(|t| t.symbol.as_ref() == "Date.now"));
+        assert!(parsed
+            .tokens
+            .iter()
+            .any(|t| t.symbol.as_ref() == "Date.now"));
     }
 
     #[test]
@@ -1349,7 +1492,10 @@ mod tests {
         let parser = make_parser();
         let file = ts_file("const r = Math.random();");
         let parsed = parser.parse(&file).unwrap();
-        assert!(parsed.tokens.iter().any(|t| t.symbol.as_ref() == "Math.random"));
+        assert!(parsed
+            .tokens
+            .iter()
+            .any(|t| t.symbol.as_ref() == "Math.random"));
     }
 
     // ── Test coverage (V2) ────────────────────────────────────────────────────
@@ -1474,7 +1620,11 @@ mod tests {
             Layer::L4,
         );
         let parsed = parser.parse(&file).unwrap();
-        let kinds: Vec<_> = parsed.declarations.iter().map(|d| (&d.kind, d.name)).collect();
+        let kinds: Vec<_> = parsed
+            .declarations
+            .iter()
+            .map(|d| (&d.kind, d.name))
+            .collect();
         assert!(kinds.contains(&(&DeclarationKind::Class, "OutputFormatter")));
         assert!(kinds.contains(&(&DeclarationKind::Interface, "InternalConfig")));
         assert!(kinds.contains(&(&DeclarationKind::TypeAlias, "Mode")));
@@ -1491,8 +1641,14 @@ mod tests {
         );
         let parsed = parser.parse(&file).unwrap();
         // Only OutputFormatter (no implements) should be captured
-        assert!(!parsed.declarations.iter().any(|d| d.name == "L3HashAdapter"));
-        assert!(parsed.declarations.iter().any(|d| d.name == "OutputFormatter"));
+        assert!(!parsed
+            .declarations
+            .iter()
+            .any(|d| d.name == "L3HashAdapter"));
+        assert!(parsed
+            .declarations
+            .iter()
+            .any(|d| d.name == "OutputFormatter"));
     }
 
     // ── export classification tests ───────────────────────────────────────────
@@ -1529,7 +1685,12 @@ mod tests {
         let indent = "  ".repeat(depth);
         let text = std::str::from_utf8(&source[node.start_byte()..node.end_byte()]).unwrap_or("?");
         let short = if text.len() > 40 { &text[..40] } else { text };
-        println!("{}[{}] {:?}", indent, node.kind(), short.replace('\n', "\\n"));
+        println!(
+            "{}[{}] {:?}",
+            indent,
+            node.kind(),
+            short.replace('\n', "\\n")
+        );
         for i in 0..node.child_count() {
             if let Some(child) = node.child(i) {
                 print_tree(child, source, depth + 1);
@@ -1575,7 +1736,10 @@ mod tests {
             Layer::L3,
         );
         let parsed = parser.parse(&file).unwrap();
-        assert!(!parsed.imports.is_empty(), "should have at least one import");
+        assert!(
+            !parsed.imports.is_empty(),
+            "should have at least one import"
+        );
         assert_eq!(parsed.imports[0].kind, ImportKind::Direct);
     }
 
@@ -1589,7 +1753,10 @@ mod tests {
             Layer::L3,
         );
         let parsed = parser.parse(&file).unwrap();
-        assert!(!parsed.imports.is_empty(), "should have at least one import");
+        assert!(
+            !parsed.imports.is_empty(),
+            "should have at least one import"
+        );
         assert_eq!(parsed.imports[0].kind, ImportKind::Glob);
     }
 
@@ -1603,7 +1770,10 @@ mod tests {
             Layer::L3,
         );
         let parsed = parser.parse(&file).unwrap();
-        assert!(!parsed.imports.is_empty(), "should have at least one import");
+        assert!(
+            !parsed.imports.is_empty(),
+            "should have at least one import"
+        );
         assert_eq!(parsed.imports[0].kind, ImportKind::Alias);
     }
 
@@ -1612,7 +1782,9 @@ mod tests {
         // @core/entities/layer → target_subdir = Some("entities")
         // target_subdir produzido via intern_subdir(), não Box::leak
         let mut config = CrystallineConfig::default();
-        config.ts_aliases.insert("@core".to_string(), "01_core".to_string());
+        config
+            .ts_aliases
+            .insert("@core".to_string(), "01_core".to_string());
         let parser = make_parser_with_config(config);
         let file = ts_file_at(
             "import { W } from '@core/entities/layer';",
@@ -1649,7 +1821,9 @@ mod tests {
         // Este smoke test verifica que não há crash após criação e descarte repetidos.
         for _ in 0..10 {
             let mut config = CrystallineConfig::default();
-            config.ts_aliases.insert("@core".to_string(), "01_core".to_string());
+            config
+                .ts_aliases
+                .insert("@core".to_string(), "01_core".to_string());
             let parser = TsParser::new(
                 NullPromptReader,
                 NullSnapshotReader,
@@ -1674,8 +1848,17 @@ mod tests {
         let parser = make_parser();
         let file = ts_file("export default function handler(req: Request): Response {}");
         let parsed = parser.parse(&file).unwrap();
-        let names: Vec<_> = parsed.public_interface.functions.iter().map(|f| f.name).collect();
-        assert!(names.contains(&"handler"), "expected 'handler' in {:?}", names);
+        let names: Vec<_> = parsed
+            .public_interface
+            .functions
+            .iter()
+            .map(|f| f.name)
+            .collect();
+        assert!(
+            names.contains(&"handler"),
+            "expected 'handler' in {:?}",
+            names
+        );
     }
 
     #[test]
@@ -1683,8 +1866,17 @@ mod tests {
         let parser = make_parser();
         let file = ts_file("export default function() {}");
         let parsed = parser.parse(&file).unwrap();
-        let names: Vec<_> = parsed.public_interface.functions.iter().map(|f| f.name).collect();
-        assert!(names.contains(&"default"), "expected 'default' in {:?}", names);
+        let names: Vec<_> = parsed
+            .public_interface
+            .functions
+            .iter()
+            .map(|f| f.name)
+            .collect();
+        assert!(
+            names.contains(&"default"),
+            "expected 'default' in {:?}",
+            names
+        );
     }
 
     #[test]
@@ -1692,7 +1884,16 @@ mod tests {
         let parser = make_parser();
         let file = ts_file("export default class {}");
         let parsed = parser.parse(&file).unwrap();
-        let names: Vec<_> = parsed.public_interface.types.iter().map(|t| t.name).collect();
-        assert!(names.contains(&"default"), "expected 'default' in {:?}", names);
+        let names: Vec<_> = parsed
+            .public_interface
+            .types
+            .iter()
+            .map(|t| t.name)
+            .collect();
+        assert!(
+            names.contains(&"default"),
+            "expected 'default' in {:?}",
+            names
+        );
     }
 }

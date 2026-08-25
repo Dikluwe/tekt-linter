@@ -16,8 +16,8 @@ use crate::contracts::prompt_reader::PromptReader;
 use crate::contracts::prompt_snapshot_reader::PromptSnapshotReader;
 use crate::entities::layer::{Language, Layer};
 use crate::entities::parsed_file::{
-    Declaration, DeclarationKind, FunctionSignature, Import, ImportKind, ParsedFile,
-    PromptHeader, PublicInterface, StaticDeclaration, Token, TokenKind, TypeKind, TypeSignature,
+    Declaration, DeclarationKind, FunctionSignature, Import, ImportKind, ParsedFile, PromptHeader,
+    PublicInterface, StaticDeclaration, Token, TokenKind, TypeKind, TypeSignature,
 };
 use crate::infra::config::CrystallineConfig;
 use crate::infra::walker::resolve_file_layer;
@@ -48,7 +48,9 @@ impl<R: PromptReader, S: PromptSnapshotReader> CParser<R, S> {
 impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for CParser<R, S> {
     fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
         if file.content.is_empty() {
-            return Err(ParseError::EmptySource { path: file.path.clone() });
+            return Err(ParseError::EmptySource {
+                path: file.path.clone(),
+            });
         }
 
         if file.language != Language::C {
@@ -59,21 +61,24 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for CParser<R, S> 
         }
 
         let mut engine = TsParserEngine::new();
-        engine.set_language(&tree_sitter_c::LANGUAGE.into()).map_err(|_| ParseError::SyntaxError {
-            path: file.path.clone(),
-            line: 0,
-            column: 0,
-            message: "Failed to load C grammar".to_string(),
-        })?;
-
-        let tree = engine
-            .parse(file.content.as_bytes(), None)
-            .ok_or_else(|| ParseError::SyntaxError {
+        engine
+            .set_language(&tree_sitter_c::LANGUAGE.into())
+            .map_err(|_| ParseError::SyntaxError {
                 path: file.path.clone(),
                 line: 0,
                 column: 0,
-                message: "Parser returned None — possible timeout".to_string(),
+                message: "Failed to load C grammar".to_string(),
             })?;
+
+        let tree =
+            engine
+                .parse(file.content.as_bytes(), None)
+                .ok_or_else(|| ParseError::SyntaxError {
+                    path: file.path.clone(),
+                    line: 0,
+                    column: 0,
+                    message: "Parser returned None — possible timeout".to_string(),
+                })?;
 
         let root = tree.root_node();
 
@@ -98,7 +103,13 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for CParser<R, S> 
             header.current_hash = self.prompt_reader.read_hash(header.prompt_path);
         }
 
-        let imports = extract_imports(root, source, file.path.as_path(), &self.project_root, &self.config);
+        let imports = extract_imports(
+            root,
+            source,
+            file.path.as_path(),
+            &self.project_root,
+            &self.config,
+        );
 
         let tokens = extract_tokens(root, source);
 
@@ -308,8 +319,8 @@ fn resolve_c_layer(
     config: &CrystallineConfig,
 ) -> Layer {
     let is_relative = import_path.starts_with("./") || import_path.starts_with("../");
-    
-    // Simplification for C: if it's not relative we treat it as Layer::Unknown 
+
+    // Simplification for C: if it's not relative we treat it as Layer::Unknown
     // Usually system headers or local include dirs (-I) which we don't resolve strictly yet.
     if !is_relative {
         return Layer::Unknown;
@@ -326,10 +337,14 @@ fn resolve_c_layer(
 
 // ── PublicInterface extraction ────────────────────────────────────────────────
 
-fn extract_public_interface<'a>(root: Node, source: &'a [u8], file_path: &Path) -> PublicInterface<'a> {
+fn extract_public_interface<'a>(
+    root: Node,
+    source: &'a [u8],
+    file_path: &Path,
+) -> PublicInterface<'a> {
     let mut functions = Vec::new();
     let mut types = Vec::new();
-    
+
     let is_header = file_path.extension().unwrap_or_default() == "h";
 
     for i in 0..root.child_count() {
@@ -339,8 +354,10 @@ fn extract_public_interface<'a>(root: Node, source: &'a [u8], file_path: &Path) 
                     // For C, consider what is "public". If it is in a `.h`, it's public.
                     // If it's a `.c` file and doesn't have `static`, it might be public, but
                     // let's only expose those actually in `.h` files or non-static functions as a fallback.
-                    let is_static = child.child(0).map_or(false, |n| node_text(n, source) == "static");
-                    
+                    let is_static = child
+                        .child(0)
+                        .map_or(false, |n| node_text(n, source) == "static");
+
                     if !is_static || is_header {
                         if child.kind() == "function_definition" {
                             if let Some(sig) = extract_fn_sig(child, source) {
@@ -357,14 +374,18 @@ fn extract_public_interface<'a>(root: Node, source: &'a [u8], file_path: &Path) 
         }
     }
 
-    PublicInterface { functions, types, reexports: vec![] }
+    PublicInterface {
+        functions,
+        types,
+        reexports: vec![],
+    }
 }
 
 fn extract_fn_sig<'a>(node: Node, source: &'a [u8]) -> Option<FunctionSignature<'a>> {
     let decl = node.child_by_field_name("declarator")?;
     let mut name = None;
     let mut params = Vec::new();
-    
+
     // In C, declarator can be a function_declarator
     if decl.kind() == "function_declarator" {
         if let Some(n) = decl.child_by_field_name("declarator") {
@@ -374,21 +395,37 @@ fn extract_fn_sig<'a>(node: Node, source: &'a [u8]) -> Option<FunctionSignature<
             params.push(node_text(p, source));
         }
     }
-    
-    let return_type = node.child_by_field_name("type").map(|n| node_text(n, source));
-    
-    name.map(|n| FunctionSignature { name: n, params, return_type })
+
+    let return_type = node
+        .child_by_field_name("type")
+        .map(|n| node_text(n, source));
+
+    name.map(|n| FunctionSignature {
+        name: n,
+        params,
+        return_type,
+    })
 }
 
 fn extract_decl_sig<'a>(node: Node, source: &'a [u8]) -> Option<TypeSignature<'a>> {
     let type_node = node.child_by_field_name("type")?;
-    
+
     if type_node.kind() == "struct_specifier" || type_node.kind() == "enum_specifier" {
-        let name = type_node.child_by_field_name("name").map(|n| node_text(n, source))?;
-        let kind = if type_node.kind() == "struct_specifier" { TypeKind::Struct } else { TypeKind::Enum };
-        return Some(TypeSignature { name, kind, members: vec![] });
+        let name = type_node
+            .child_by_field_name("name")
+            .map(|n| node_text(n, source))?;
+        let kind = if type_node.kind() == "struct_specifier" {
+            TypeKind::Struct
+        } else {
+            TypeKind::Enum
+        };
+        return Some(TypeSignature {
+            name,
+            kind,
+            members: vec![],
+        });
     }
-    
+
     None
 }
 
@@ -432,8 +469,10 @@ fn has_test_calls(root: Node, source: &[u8]) -> bool {
 }
 
 fn check_c_test_calls(node: Node, source: &[u8], found: &mut bool) {
-    if *found { return; }
-    
+    if *found {
+        return;
+    }
+
     if node.kind() == "call_expression" {
         if let Some(func) = node.child_by_field_name("function") {
             let text = node_text(func, source);
@@ -484,12 +523,17 @@ fn extract_static_declarations<'a>(root: Node, source: &'a [u8]) -> Vec<StaticDe
     for i in 0..root.child_count() {
         if let Some(node) = root.child(i) {
             if node.kind() == "declaration" {
-                let is_static = node.child(0).map_or(false, |n| node_text(n, source) == "static");
+                let is_static = node
+                    .child(0)
+                    .map_or(false, |n| node_text(n, source) == "static");
                 // For global variables with static keyword
                 if is_static {
                     if let Some(decl) = node.child_by_field_name("declarator") {
                         let name = node_text(decl, source); // simplified
-                        let type_text = node.child_by_field_name("type").map(|n| node_text(n, source)).unwrap_or("");
+                        let type_text = node
+                            .child_by_field_name("type")
+                            .map(|n| node_text(n, source))
+                            .unwrap_or("");
                         decls.push(StaticDeclaration {
                             name,
                             type_text,

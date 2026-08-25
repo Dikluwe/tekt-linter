@@ -1,105 +1,23 @@
-# Prompt: porta de frescura de citação V21
+# Prompt: contrato de frescura de citação
+Hash do Código: 2fab11e0
 
-Hash do Código: ausente
+## Owner
 
-**Camada da porta:** L1 (`01_core/contracts/citation_freshness.rs`)
-**Adapter inicial:** L3 (`03_infra/citation_freshness.rs`)
-**Consumidor:** V21 `HardcodedContextualValue`
+`01_core/contracts/citation_freshness.rs`, exclusivamente.
 
-## Intenção
+## Instrução
 
-Permitir que V21 decida se uma citação `// ref:` está fresca sem importar filesystem em
-L1. A porta expõe três estados fechados; falha externa nunca é convertida em validade.
+Definir em L1 os estados fechados `Valid`, `Stale(reason)` e `Unknown(reason)`, a porta
+`CitationFreshnessResolver` e o fallback fail-closed. Razões devem preservar a causa
+sem expor filesystem, Git ou erros concretos de L3.
 
-## API L1
+## Restrições
 
-```rust
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CitationStaleReason { MissingFile, InvalidLine, EmptyLine }
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CitationUnknownReason {
-    OutsideRoot, Symlink, InvalidRoot, Io, InvalidUtf8,
-    BudgetExceeded, ConcurrentMutation,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CitationFreshness {
-    Valid,
-    Stale(CitationStaleReason),
-    Unknown(CitationUnknownReason),
-}
-
-pub trait CitationFreshnessResolver {
-    fn resolve(&self, path: &str, line: usize) -> CitationFreshness;
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct UnknownCitationFreshness;
-
-impl CitationFreshnessResolver for UnknownCitationFreshness {
-    fn resolve(&self, _path: &str, _line: usize) -> CitationFreshness {
-        CitationFreshness::Unknown(CitationUnknownReason::Io)
-    }
-}
-```
-
-L1 usa mocks puros. A porta não expõe bool, PathBuf, erro de I/O concreto ou tipo L3.
-`UnknownCitationFreshness` é o fallback fail-closed para consumidores sem adapter; nunca
-autoriza silêncio de `Ref`.
-
-## Semântica L3
-
-Superfície pública do adapter:
-
-```rust
-// módulo crystalline_lint::infra::citation_freshness
-pub struct FsCitationFreshnessResolver { /* estado privado */ }
-
-impl FsCitationFreshnessResolver {
-    pub fn new(root: PathBuf, max_bytes: u64) -> Self;
-}
-```
-
-O construtor não faz I/O nem falha. `max_bytes == 0` faz toda resolução retornar
-`Unknown(BudgetExceeded)`; raiz inválida é classificada durante `resolve`.
-
-O adapter recebe raiz e orçamento máximo positivo em bytes. `path` é relativo, UTF-8 e
-não vazio. Absoluto, prefix/root, `..` ou vazio são `Unknown(OutsideRoot)`; `.` é removido
-lexicalmente. Root symlink ou qualquer componente symlink é `Unknown(Symlink)`, mesmo
-quando aponta para dentro. Root ausente/não diretório é `Unknown(InvalidRoot)`.
-
-Confinamento não pode ser apenas check-then-open por path. Em plataformas com suporte,
-o adapter atravessa a raiz e cada componente por handles de diretório com semântica
-`NOFOLLOW`, abrindo o arquivo final relativamente ao handle validado; a leitura ocorre
-somente do handle final. Plataforma sem primitiva equivalente retorna fail-closed
-`Unknown(Io)`. Troca concorrente nunca autoriza leitura por um symlink e pode resultar
-em `Unknown(Symlink)`, `Unknown(Io)` ou `Unknown(ConcurrentMutation)`.
-
-- ausente: `Stale(MissingFile)`;
-- linha zero/além de EOF: `Stale(InvalidLine)`;
-- linha com `trim()` vazio: `Stale(EmptyLine)`;
-- tamanho/leitura acima do orçamento: `Unknown(BudgetExceeded)`;
-- conteúdo não UTF-8: `Unknown(InvalidUtf8)`;
-- erro de metadata/open/read ou diretório: `Unknown(Io)`;
-- metadata relevante divergente antes/depois: `Unknown(ConcurrentMutation)`;
-- restante com linha existente não vazia: `Valid`.
-
-Linhas são one-based por `str::lines()`; CRLF é removido logicamente e última linha sem
-newline conta. O adapter é read-only, não usa rede, processo, hooks ou escrita.
-
-## Fronteira
-
-L3 não conhece listas, triviais, strict, Spec/Rationale, severidade ou mensagens V21.
-L1 não conhece root, metadata, bytes, encoding ou symlink.
+- não realizar I/O nem importar tipos de infraestrutura;
+- não reduzir estado triádico a booleano;
+- `UnknownCitationFreshness` nunca autoriza silêncio de uma referência.
 
 ## Critérios
 
-Mock L1 cobre os três estados. Gate L3 cobre valid/stale/unknown e razões, confinamento,
-symlink, UTF-8, orçamento, determinismo e fingerprint inalterado.
-
-## Histórico
-
-| Data | Estado | Motivo |
-|---|---|---|
-| 2026-08-24 | Proposto pelo P0088 | Remover filesystem de V21/L1 sem falso silêncio |
+Tipos são clonáveis/comparáveis; mocks puros implementam a porta; ausência de adapter
+permanece observável como `Unknown`.
