@@ -1,8 +1,8 @@
 # Passo operacional 0091 — auditoria segregada do roteamento MultiParser
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** planejado; não executado
-> **Branch prevista:** `codex/audit-multiparser-routing`
+> **Estado:** executado; `READY WITH RESIDUAL AUDIT`
+> **Branch:** `codex/audit-multiparser-routing`
 > **Pré-condição:** P0090 integrado em `master`, worktree limpo e branch nova criada a
 > partir do merge
 > **Predecessor:** P0090
@@ -161,3 +161,24 @@ Fechar somente como `READY WITH RESIDUAL AUDIT` ou `BLOCKED`.
 
 P0091 não autoriza merge, push, instalação ou release. Sem integração prévia do P0090,
 a execução deve parar antes de criar branch concorrente.
+
+## Resultado
+
+O preflight encontrou quatro `SPEC-GAPs`: universo normativo limitado a três linguagens,
+decisão ainda atribuída a L4, ausência de seam black-box e propriedades causais apenas
+implícitas. O adversário A confirmou `SPEC-GAP / BLOCKED`; o L0 foi saneado e resselado
+antes de qualquer gate ou leitura da seam produtiva.
+
+B1/B2 congelaram RED pela ausência de `ParserSlot`, `parser_slot` e `ParserSet`. O
+confronto mostrou o `match` completo em L4. A correção moveu política e composição sobre
+ports para L1; L3 continuou com adapters concretos e o `MultiParser` privado de L4 passou
+a ser wrapper transparente.
+
+O primeiro adversário D bloqueou o fechamento porque B1/B2 compartilhavam identidade e
+o retorno `Ok` não tinha sentinelas integrais. Um verificador novo criou B2 independente,
+com nove spies, nove `Ok`, nove `Err`, `Unknown`, identidade do empréstimo e comparação
+integral de `ParsedFile`. A repetição D concluiu `READY WITH RESIDUAL AUDIT`.
+
+Suíte global, gates, 83 fixtures, hashes, auto-lint V4/V5/V11/V12, `rustfmt` dirigido e
+`git diff --check` passaram. Permanece apenas o aviso preexistente de `print_tree` não
+utilizada. Não houve merge, push, instalação ou release do P0091.

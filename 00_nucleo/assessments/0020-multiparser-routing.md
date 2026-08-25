@@ -1,6 +1,6 @@
 # Assessment 0020 — roteamento MultiParser
 
-**Estado:** PREFLIGHT — SPEC-GAP saneado; produção ainda não confrontada
+**Estado:** READY WITH RESIDUAL AUDIT
 **Data:** 2026-08-24
 **Passo:** P0091
 **Baseline:** `13180b1`
@@ -20,7 +20,7 @@
 | isolamento multilíngue | `00_nucleo/adr/0009-isolamento- de-parsers-por-linguagem.md` | `fbfeb007115f2464ece7e1f0e2a5615bb06b459e7bb7446bbd2957a06ee67452` |
 | protocolo segregado | `00_nucleo/prompts/segregated-materialization.md` | `366fd0855c6b04e533f4f4a477a73d7e5ec65f24c056720c61fca906bb5299a4` |
 | ADR segregado | `00_nucleo/adr/0020-piloto-materializacao-segregada.md` | `ee1a4a7f3665674b008d127373ed23fc6762d0ff13b2ca83efe5d2ace1539d23` |
-| protocolo P0091 | `00_nucleo/tekt-linter-passo-0091-auditoria-roteamento-multiparser.md` | `666cc14a5e08efd8c796482a975f0f3c1f317de9d5fc5a84f9b79ca42ef49a62` |
+| protocolo P0091 | `00_nucleo/tekt-linter-passo-0091-auditoria-roteamento-multiparser.md` | `a177a2bb119d5f7d907a3921597eb67ca9e6f9d62cc799e91150e696dda85fe3` |
 
 ## Alegações candidatas
 
@@ -164,6 +164,27 @@ Um agente novo sem contexto herdado validou os onze hashes L0 e criou somente
 
 Os dois `GATE-DEFECTs` apontados pelo primeiro D estão fechados. O fechamento ainda exige
 repetição adversarial D sobre o novo delta e a regressão global posterior.
+
+## Fechamento
+
+- adversário A: `SPEC-GAP / BLOCKED`; G1–G4 confirmados e depois saneados em L0;
+- B1/B2 inicial SHA-256
+  `4e0df518f6eca5918247bec058793d01d63501a34b1a7ffe59897930a7018ffa`:
+  3/3 PASS após correção, preservado como gate de política e primeira composição;
+- RED congelado: APIs `parser_slot`, `ParserSlot` e `ParserSet` ausentes e decisão em L4;
+- correção causal: `74de284`, política/ports em L1 e wrapper L4 transparente;
+- B2 independente SHA-256
+  `a8c8985933272cdd9d7ab5c99e29b77ab9f5baea1a884a25041ef1d3b4800e2b`:
+  3/3 PASS, com nove `Ok`, nove `Err` e `Unknown`;
+- suíte global: 628 unitários, 83 fixtures e todos os gates de integração PASS;
+- auto-lint V4/V5/V11/V12: nenhuma violação;
+- hashes: `Nothing to fix`; `rustfmt` dirigido e `git diff --check`: PASS;
+- adversário D repetido: `READY WITH RESIDUAL AUDIT`.
+
+Residual: a ausência de leitura do verificador cego não é provável somente pelo autor
+Git genérico; a segregação registrada e o conteúdo do B2 não mostram oráculo compartilhado
+ou contaminação. O B2 corretivo ocorreu depois da materialização, por exigência explícita
+do primeiro D, sem alteração posterior de produção ou B1.
 
 ## Papéis e precedência
 
