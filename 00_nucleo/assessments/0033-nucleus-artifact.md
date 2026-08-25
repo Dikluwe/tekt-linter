@@ -1,5 +1,9 @@
 # Assessment 0033 — artefato Núcleo Tekt
 
+> **Nota de supersessão (P0107):** este Assessment preserva a evidência P0105 da extensão
+> original `.tekt`. ADR-0022 Rev. 1 substitui apenas a representação física por `.toml`;
+> claims, framing, hashes e gates permanecem históricos válidos.
+
 **Estado:** READY WITH RESIDUAL AUDIT — implementação verde; integração bloqueada por P0104/P0106
 **Data:** 2026-08-25
 **Passo:** P0105

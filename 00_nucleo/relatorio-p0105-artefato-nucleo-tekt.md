@@ -1,5 +1,8 @@
 # Relatório P0105 — artefato Núcleo Tekt
 
+> **Nota de supersessão (P0107):** este relatório descreve a implementação original
+> `.tekt`. ADR-0022 Rev. 1 migra a extensão para `.toml` sem alterar o conceito ou schema.
+
 **Estado:** READY WITH RESIDUAL AUDIT — não merge-ready por bloqueio P0104/P0106
 **Data:** 2026-08-25
 **Branch:** `codex/tekt-nucleus-artifact`

@@ -18,9 +18,12 @@ tests/fixtures/nucleus_wiring/00_nucleo/prompts/_nuclei/path.tekt
 → tests/fixtures/nucleus_wiring/00_nucleo/prompts/_nuclei/path.toml
 ```
 
-Referências/pins da fixture `a.md` e `b.md` migram para `path.toml`. O hash raw dos bytes
-do núcleo deve permanecer `424df624a791b44060553caffea232f29315db10e58ab28c21f844e3575635fe`;
-o path lógico e os hashes efetivos mudam intencionalmente.
+Referências/pins da fixture `a.md` e `b.md` migram para `path.toml`. O SHA-256 raw dos bytes
+permanece `76eca72e6d377a7e69723c95027093ad8e35f5d27d85b948d9f14d8316bcf89c`.
+O valor `424df624a791b44060553caffea232f29315db10e58ab28c21f844e3575635fe`
+é o digest efetivo v1 do núcleo sem dependências, não seu hash raw. O path lógico e hashes
+de consumers mudam intencionalmente; o digest do próprio núcleo sem dependências não usa
+seu path e portanto permanece `424df…`.
 
 ## Superfície prevista
 
