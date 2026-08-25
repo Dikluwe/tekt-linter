@@ -33,18 +33,7 @@ struct SnapshotDto {
 struct ObservableDto {
     state: String,
     value: Option<String>,
-    reason: Option<UnknownReasonDto>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum UnknownReasonDto {
-    MissingObservable,
-    AmbiguousIdentity,
-    UnsupportedParser,
-    OpaqueConstruction,
-    PartialContract,
-    BudgetExhausted,
+    reason: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -161,14 +150,15 @@ fn read_regular(path: &Path) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-fn reason(dto: UnknownReasonDto) -> UnknownReason {
-    match dto {
-        UnknownReasonDto::MissingObservable => UnknownReason::MissingObservable,
-        UnknownReasonDto::AmbiguousIdentity => UnknownReason::AmbiguousIdentity,
-        UnknownReasonDto::UnsupportedParser => UnknownReason::UnsupportedParser,
-        UnknownReasonDto::OpaqueConstruction => UnknownReason::OpaqueConstruction,
-        UnknownReasonDto::PartialContract => UnknownReason::PartialContract,
-        UnknownReasonDto::BudgetExhausted => UnknownReason::BudgetExhausted,
+fn reason(value: &str, source: &str) -> Result<UnknownReason, String> {
+    match value {
+        "missing-observable" => Ok(UnknownReason::MissingObservable),
+        "ambiguous-identity" => Ok(UnknownReason::AmbiguousIdentity),
+        "unsupported-parser" => Ok(UnknownReason::UnsupportedParser),
+        "opaque-construction" => Ok(UnknownReason::OpaqueConstruction),
+        "partial-contract" => Ok(UnknownReason::PartialContract),
+        "budget-exhausted" => Ok(UnknownReason::BudgetExhausted),
+        _ => Err(format!("schema: {source}: unsupported unknown reason")),
     }
 }
 
@@ -212,6 +202,11 @@ pub fn load_snapshot_from_bytes(bytes: &[u8], source: &str) -> Result<ArtifactFa
         if key.len() > MAX_STRING {
             return Err(format!("limit: {source}: string exceeds 64 KiB"));
         }
+        if value.state.len() > MAX_STRING
+            || value.reason.as_ref().is_some_and(|r| r.len() > MAX_STRING)
+        {
+            return Err(format!("limit: {source}: string exceeds 64 KiB"));
+        }
         let value = match (value.state.as_str(), value.value, value.reason) {
             ("known", Some(value), None) => {
                 if value.len() > MAX_STRING {
@@ -220,7 +215,9 @@ pub fn load_snapshot_from_bytes(bytes: &[u8], source: &str) -> Result<ArtifactFa
                 ObservableValue::Known(value)
             }
             ("absent", None, None) => ObservableValue::Absent,
-            ("unknown", None, Some(reason_value)) => ObservableValue::Unknown(reason(reason_value)),
+            ("unknown", None, Some(reason_value)) => {
+                ObservableValue::Unknown(reason(&reason_value, source)?)
+            }
             _ => return Err(format!("schema: {source}: invalid observable state fields")),
         };
         observables.insert(key, value);
@@ -367,5 +364,25 @@ mod tests {
         assert!(load_snapshot_from_bytes(s, "m").is_ok());
         let c = b"id='c'\n[[relation]]\nkind='must-not-invent'\ntarget='t'\n";
         assert!(load_contract_from_bytes(c, "m").is_ok());
+    }
+
+    #[test]
+    fn oversized_observable_discriminants_are_limits() {
+        for field in ["state", "reason"] {
+            let oversized = "x".repeat(MAX_STRING + 1);
+            let observable = if field == "state" {
+                serde_json::json!({"state": oversized})
+            } else {
+                serde_json::json!({"state": "unknown", "reason": oversized})
+            };
+            let snapshot = serde_json::json!({
+                "format_version": 1,
+                "artifact_id": "a",
+                "extractor_version": "e",
+                "observables": {"x": observable}
+            });
+            let error = load_snapshot_from_bytes(snapshot.to_string().as_bytes(), "m").unwrap_err();
+            assert!(error.starts_with("limit:"), "{field}: {error}");
+        }
     }
 }
