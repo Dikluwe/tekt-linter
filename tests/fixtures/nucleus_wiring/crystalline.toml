@@ -1,0 +1,7 @@
+[project]
+root = "."
+
+[layers]
+L0 = "00_nucleo"
+L1 = "01_core"
+
