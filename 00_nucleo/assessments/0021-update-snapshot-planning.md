@@ -1,6 +1,6 @@
 # Assessment 0021 — planejamento e execução de update-snapshot
 
-**Estado:** BLOCKED — RED de apresentação dry-run aguardando gate/correção
+**Estado:** READY WITH RESIDUAL AUDIT
 **Data:** 2026-08-24
 **Passo:** P0092
 **Baseline:** `aee1344`
@@ -17,7 +17,7 @@
 | arquitetura do pipeline | `00_nucleo/prompts/linter-core.md` | `908a00fd7e4eaa985b755682fb73984cbb886496ce988070f176ad307ec24446` |
 | protocolo segregado | `00_nucleo/prompts/segregated-materialization.md` | `366fd0855c6b04e533f4f4a477a73d7e5ec65f24c056720c61fca906bb5299a4` |
 | ADR segregado | `00_nucleo/adr/0020-piloto-materializacao-segregada.md` | `ee1a4a7f3665674b008d127373ed23fc6762d0ff13b2ca83efe5d2ace1539d23` |
-| protocolo P0092 | `00_nucleo/tekt-linter-passo-0092-auditoria-planejamento-update-snapshot.md` | `27780d89b05911458ce62b81957d95edebc2967c46cb34ecccddc2a8ebbd8415` |
+| protocolo P0092 | `00_nucleo/tekt-linter-passo-0092-auditoria-planejamento-update-snapshot.md` | `9044f67778b1a2f8759f2a7d907771a1e4373e0ce230ca43fd9d7ee44c3516e6` |
 
 ## Alegações candidatas
 
@@ -138,7 +138,7 @@ resultado por entrada, distingue dry-run/escrita/falha/unreadable e continua ap�
 Os formatters foram adaptados aos estados tipados. Sete arquivos adicionais mudaram
 somente na metadata `@prompt-hash` pelo reparador oficial.
 
-## Primeiro confronto D — bloqueio adicional
+## Primeiro confronto D — bloqueio adicional fechado
 
 - G1–G5: fechados normativamente antes dos gates;
 - B1 SHA-256
@@ -174,9 +174,31 @@ resselado na tabela acima sem alterar a expectativa do gate.
 - `format_plan` torna snapshot hostil observável: RED;
 - `format_results(DryRun)` evita “Updated” e mostra snapshot: RED.
 
-O RED de apresentação está congelado; a correção pode começar.
+O RED de apresentação foi congelado antes da correção.
 
-Residual futuro: Git prova arquivos e escopos separados, mas não prova sozinho independência
+O commit `56341ca` alterou somente os formatters L2: `format_plan` passou a exibir o
+snapshot integral de cada `Ready`, e `format_results` ganhou seção própria
+`Dry-run — would update`, sem rotular o resultado como atualização concluída. O gate
+corretivo passou 3/3.
+
+## Repetição D e fechamento final
+
+O segundo D confirmou:
+
+- gate corretivo SHA-256
+  `77c3003ced9d8386fdd66edf029aac97b53fe77e37ce7236614214bf51f0a6ed`:
+  3/3 PASS;
+- wiring real continua dry-run → `format_plan`, agora com source, prompt e snapshot
+  integralmente observáveis;
+- `format_results(DryRun)` usa status próprio e preserva o snapshot;
+- causalidade gate `566a8c9` → correção `56341ca`;
+- B1 3/3, B2 2/2, suíte global e assessments 0001–0020 PASS;
+- hashes, auto-lint, formatação dirigida, `diff-check` e arquitetura Tekt PASS;
+- nenhum delta escondido ou I/O/import L3 em L2.
+
+Veredito: `READY WITH RESIDUAL AUDIT`.
+
+Residual: Git prova arquivos e escopos separados, mas não prova sozinho independência
 cognitiva dos verificadores porque ambos os gates foram congelados no mesmo commit com
 autor genérico. O registro segregado e o conteúdo não mostram oráculo compartilhado.
 
