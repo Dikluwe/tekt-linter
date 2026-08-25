@@ -1,6 +1,6 @@
 # Assessment 0029 — auditoria funcional Git de `refine-revisions`
 
-**Estado:** PREFLIGHT CONGELADO — produção e gates proibidos
+**Estado:** L0 SANEADO — aguardando re-preflight A; produção e gates proibidos
 **Data:** 2026-08-25
 **Passo:** P0100 / F05
 **Baseline:** `8c28cc01ea7cdb47aa9e8e582597085304a7ece4`
@@ -50,3 +50,35 @@ até saneamento e resselamento.
 
 Classificações: `PASS`, `RED`, `SPEC-GAP`, `GATE-DEFECT`. Fechamento somente
 `READY WITH RESIDUAL AUDIT` ou `BLOCKED`. Sem merge ou push.
+
+## RED/SPEC-GAP A1 e saneamento
+
+A1 validou os quatorze pins e encontrou três itens de preflight `PASS`, oito
+`SPEC-GAP` e um `RED` normativo; nas alegações, sete `PASS`, cinco `SPEC-GAP` e um
+`RED`. A adenda permitia alternates locais apesar da autocontenção fechada por P0072, e
+o L0 não publicava transcript, ambiente, framing, contabilidade, lifecycle, taxonomia ou
+seam de executável suficientes para um gate hostil independente.
+
+O saneamento alterou somente `refinement-validator.md` e ADR-0019. Foram congelados:
+
+- autocontenção sem alternates/object stores externos, `.git` indireto, bare ou linked;
+- seam pública L3 `load_revision_with_git`, que troca apenas o path absoluto do
+  executável e atravessa o adapter real;
+- tipos públicos `GitRevisionContent`, `GitPathContent`, `GitUnknownReason` e
+  `GitRevisionError`;
+- gramáticas de ref/path, ambiente limpo, prefixo `-c`, três argvs e framing byte-level;
+- budgets inclusivos, contabilidade e descarte integral;
+- timeout por operação, grupo/job, kill, drenagem, reap e falha de contenção;
+- matriz fechada entre erro L3, `Missing` e razões `Unknown`.
+
+Novas identidades a validar por A2:
+
+| Unidade | SHA-256 saneado |
+|---|---|
+| `00_nucleo/prompts/refinement-validator.md` | `86e5d4e35f0abbb8099ff0a37da25d62253cb2352b0af57582917ea508676391` |
+| `00_nucleo/adr/0019-validacao-direcional-de-refinamento.md` | `cdd1acfe688aabd0c2bb0b7061a55c80dc47f1d7745c8a5c2e7f7f560115485f` |
+| parecer A1 | `afb696a894c87b3f90875fca7388c4512d7c53b9912402077164c3aad07a3a1f` |
+
+O drift V5 decorrente do novo prompt é esperado e não será reparado antes dos gates:
+atualizar headers de produção nesta fase contaminaria o RED causal. A2 deve ler somente
+o Assessment, A1 e os dois L0 saneados; B1/B2 continuam proibidos até `PASS` de A2.
