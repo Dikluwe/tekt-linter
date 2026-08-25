@@ -393,10 +393,12 @@ where
 
 ## Contrato de extração estrutural `SourceConstant` — saneamento P0097
 
-O oráculo P0097 é deliberadamente mínimo. Para fonte Rust sintaticamente válida, somente
-literais numéricos que aparecem dentro de um `function_item` produzem ocorrências neste
-lote. Ficam fora strings, chars, bytes, constantes nomeadas, macros, ranges, patterns e
-qualquer expressão não numérica.
+O oráculo P0097 é deliberadamente mínimo. Ele projeta somente ocorrências de kind
+`FunctionNumberLiteral` e `NegativeLiteral` para literais numéricos dentro de
+`function_item`. Outros kinds históricos podem coexistir em `ParsedFile.constants`, mas
+ficam opacos e não são alegação deste lote. Strings, chars, bytes, constantes nomeadas,
+macros, ranges, patterns e expressões não numéricas não podem aparecer nessa projeção
+numérica.
 
 - literal positivo produz `ConstantKind::FunctionNumberLiteral`;
 - literal sob um único operador unário `-` produz `ConstantKind::NegativeLiteral` e uma
@@ -408,7 +410,9 @@ qualquer expressão não numérica.
 - comments, whitespace e literais fora de `function_item` não criam ocorrências;
 - fonte sintaticamente inválida retorna `ParseError::SyntaxError` sem IR parcial.
 
-O gate observa exclusivamente `kind`, `snippet`, `line`, `column`, ordem e multiplicidade.
+O gate filtra os dois kinds numéricos autorizados e observa exclusivamente `kind`,
+`snippet`, `line`, `column`, ordem e multiplicidade. Não pode exigir que a coleção completa
+esteja vazia quando houver outros kinds.
 `citation`, `is_test_origin`, `function_return_type`, `is_in_binary_scaling`,
 `context_var`, `geometric_sink` e `is_in_data_table` ficam fora do contrato P0097, mesmo
 que a implementação vigente os preencha.

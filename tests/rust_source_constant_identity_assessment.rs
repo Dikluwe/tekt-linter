@@ -52,13 +52,19 @@ fn observed(source: &str) -> Vec<(ConstantKind, String, usize, usize)> {
         .expect("a fixture Rust valida deve produzir IR")
         .constants
         .into_iter()
-        .map(|constant| {
-            (
+        .filter_map(|constant| {
+            matches!(
                 constant.kind,
-                constant.snippet.to_owned(),
-                constant.line,
-                constant.column,
+                ConstantKind::FunctionNumberLiteral | ConstantKind::NegativeLiteral
             )
+            .then(|| {
+                (
+                    constant.kind,
+                    constant.snippet.to_owned(),
+                    constant.line,
+                    constant.column,
+                )
+            })
         })
         .collect()
 }

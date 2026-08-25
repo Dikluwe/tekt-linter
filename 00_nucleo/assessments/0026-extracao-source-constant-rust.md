@@ -16,7 +16,7 @@
 | prompt reader | `00_nucleo/prompts/contracts/prompt-reader.md` | `5ded333b4ef0da943355962da5de202f7a5b8a4aa6d885236f215e3a3884f219` |
 | snapshot reader | `00_nucleo/prompts/contracts/prompt-snapshot-reader.md` | `80b6f7ab9fbb0f97fa085d7a34802792eb6fce4834ac204775b47749c77985be` |
 | crate registry | `00_nucleo/prompts/crate-registry.md` | `2eae38e14e797f21b7f217403f6a421c9eb2ceedf871936df2c4630499d06116` |
-| parser Rust | `00_nucleo/prompts/parsers/rust.md` | `fb53ba474a47ad53f3f6de49342d5c425ed6c6c5eb2162324df649731af053b0` |
+| parser Rust | `00_nucleo/prompts/parsers/rust.md` | `80d1bb090717719befe293aba04b3ff22496f15caa5db1820827843c2fea796d` |
 | arquitetura Tekt | `00_nucleo/prompts/linter-core.md` | `9446277167f07dc5290617855cff456f061aa052ce8bd51ecf980530800b8c00` |
 | protocolo segregado | `00_nucleo/prompts/segregated-materialization.md` | `366fd0855c6b04e533f4f4a477a73d7e5ec65f24c056720c61fca906bb5299a4` |
 | ADR segregado | `00_nucleo/adr/0020-piloto-materializacao-segregada.md` | `ee1a4a7f3665674b008d127373ed23fc6762d0ff13b2ca83efe5d2ace1539d23` |
@@ -86,11 +86,24 @@ RED funcional; B1/B2 devem revalidar seus arquivos após este resselamento.
 
 | Gate | Arquivo | SHA-256 | RED |
 |---|---|---|---|
-| B1 — identidade | `tests/rust_source_constant_identity_assessment.rs` | `cf563420830c30cd3fbaf2f5db04682a16454362118bb557c6d61a6a356acd72` | 0/3 PASS |
-| B2 — exclusões | `tests/rust_source_constant_context_assessment.rs` | `92e4eb6ada862174030d34c04c7860aaa8a934e06de2b6cd379ccab90b14da4b` | 1/3 PASS |
+| B1 — identidade | `tests/rust_source_constant_identity_assessment.rs` | `cc596d876bcfbcacbf3688bd9a1aa1b875928bcb53f77abe1544af5100fd3dcb` | RED histórico 0/3; GREEN 3/3 |
+| B2 — exclusões | `tests/rust_source_constant_context_assessment.rs` | `dc50ebb0b3913a108c09a0b5e2dc81d6918ac622d7ab8a4159340a1c818237dd` | RED histórico 1/3; GREEN 3/3 |
 
 B1 observou colunas zero-based e emissão de strings/não numéricos. B2 confirmou colunas
 zero-based, emissão de contextos excluídos e `SyntaxError` sem IR parcial já conforme.
 O harness provisório B2 usava `Box::leak`; foi classificado `GATE-DEFECT` e removido antes
 do congelamento. Os gates finais não importam V21/V22, não observam campos excluídos e
 mantêm `SourceFile` vivo lexicalmente.
+
+## GATE-DEFECT de projeção no confronto C
+
+A primeira formulação exigia coleção inteira vazia para formas não numéricas. Ao ficar
+verde, ela removeu kinds históricos e quebrou regressão direta do parser, invadindo
+citações/V22 fora do lote. O L0 foi corrigido: B1/B2 devem filtrar somente
+`FunctionNumberLiteral` e `NegativeLiteral`; outros kinds coexistem opacos. Os hashes dos
+gates acima ficam invalidados até nova identidade e novo RED.
+
+Os gates foram resselados com projeção numérica. O RED histórico continua causal para as
+mesmas observações autorizadas: coluna zero-based e numeral dentro de macro. A correção C
+passou a usar coluna 1-based e não desce em `macro_invocation`, preservando os demais kinds
+históricos. B1/B2 finais estão 3/3 cada.
