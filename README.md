@@ -49,6 +49,9 @@ crystalline-lint --update-snapshot --dry-run .
 
 # Comparar dois snapshots semânticos sob um contrato direcional
 crystalline-lint refine --before before.json --after after.json --contract refinement.toml
+
+# Comparar duas revisões Git locais e imutáveis
+crystalline-lint refine-revisions <repository-root> --before-ref <sha-ou-ref> --after-ref <sha-ou-ref> --contract refinement.toml
 ```
 
 ---
@@ -88,7 +91,8 @@ crystalline-lint refine --before before.json --after after.json --contract refin
 
 `refine` compara fatos explícitos de um artefato fonte e alvo. O resultado é
 `PRESERVED` (exit 0), `VIOLATED` com testemunha (exit 1) ou `UNKNOWN` com razão
-acionável (exit 2). O modo não lê Git, não executa comandos e não usa SMT.
+acionável (exit 2). O subcomando `refine` compara snapshots fornecidos, não lê Git,
+não executa comandos e não usa SMT.
 
 ```bash
 crystalline-lint refine \
@@ -106,6 +110,29 @@ crystalline-lint snapshot . \
   --artifact-id working-tree \
   --output working-tree.refinement.json
 ```
+
+### Comparação de revisões Git locais
+
+```bash
+crystalline-lint refine-revisions <repository-root> \
+  --before-ref <sha-ou-ref> --after-ref <sha-ou-ref> \
+  --contract refinement.toml
+```
+
+Esse subcomando requer Git local 2.43 ou compatibilidade demonstrada com
+`--batch-command` e `--end-of-options`. Cada ref é resolvida uma única vez para um
+commit OID, e depois somente esses OIDs imutáveis são usados. A leitura aceita apenas
+blobs regulares e objetos locais, sem shell, rede, fetch, protocolos externos, build ou
+temporários de diagnóstico e sem alterar checkout,
+working tree, índice, HEAD, branch, refs ou stash. Hooks, filtros, textconv, LFS,
+symlinks e submódulos não são executados nem atravessados.
+
+Os limites são 512 paths observáveis, 4 MiB por blob, 32 MiB por revisão e 10 segundos
+por operação Git. Arquivo realmente ausente no tree segue `on_missing`; objeto
+ilegível, tipo proibido, framing inválido ou budget excedido produz erro de entrada ou
+`Unknown`, nunca ausência conhecida nem conteúdo truncado. Para o mesmo conteúdo, o
+resultado deve ser equivalente a `snapshot + refine`. A matriz completa de exits de
+`refine-revisions` será reconciliada em F09.
 
 Consulte [USAGE.md](USAGE.md) para os formatos de snapshot e contrato.
 

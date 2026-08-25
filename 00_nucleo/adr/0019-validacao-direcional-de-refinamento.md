@@ -3,7 +3,7 @@
 **Status:** ACEITO — aprovado pelo humano em 2026-08-23
 **Data:** 2026-08-23  
 **Origem operacional:** `tekt-linter-passo-validacao-de-refinamento.md`  
-**Escopo desta revisão:** Etapas A e B1 autorizadas; Git, wrapper e SMT não autorizados
+**Escopo desta revisão:** Etapas A, B1 e B2 autorizadas; wrapper e SMT não autorizados
 
 ## Contexto
 
@@ -175,7 +175,11 @@ crystalline-lint refine \
 Exit codes: `0` para `Preserved`, `1` para qualquer `Violated`, `2` para `Unknown`
 sem violação e para erro de entrada/configuração. Formatos iniciais: `text` e `sarif`.
 
-## Gate
+## Gate histórico — Etapas A e B1
+
+Este texto preserva o limite aprovado em 2026-08-23 para as Etapas A e B1. Ele foi
+posteriormente ampliado, somente para o envelope descrito pela adenda B2 aceita em
+2026-08-24, e não representa o limite vigente dessa adenda.
 
 Gate aprovado pelo humano em 2026-08-23. A materialização fica limitada à Etapa A:
 
@@ -185,7 +189,7 @@ Gate aprovado pelo humano em 2026-08-23. A materialização fica limitada à Eta
 - wrapper, SMT e extração interprocedural continuam não autorizados.
 - leitura de Git continua não autorizada; B1 recebe somente um diretório explícito.
 
-## Adenda proposta B2 — fonte imutável de revisões Git
+## Adenda B2 aceita — fonte imutável de revisões Git
 
 **Estado da adenda:** ACEITA — aprovada pelo humano em 2026-08-24 após o ensaio
 ponta a ponta. A materialização está autorizada no branch dedicado, dentro dos limites
@@ -238,7 +242,7 @@ desconhecida, não ausência. Arquivo realmente ausente no tree continua obedece
 
 ### Orçamentos e atomicidade
 
-Valores iniciais propostos: no máximo 512 paths observáveis, 4 MiB por blob, 32 MiB
+Valores iniciais: no máximo 512 paths observáveis, 4 MiB por blob, 32 MiB
 somados por revisão e 10 segundos por operação Git. Exceder qualquer limite produz
 `Unknown(BudgetExhausted)` ou erro de entrada antes de publicar resultado; conteúdo
 nunca é truncado silenciosamente. O processo deve ser encerrado no timeout e toda
@@ -259,15 +263,16 @@ o extrator/comparador únicos. A equivalência entre `refine-revisions` e
 
 Linux, macOS e Windows são suportáveis via `std::process::Command`, stdin/stdout em
 bytes e ausência de shell; a materialização deve testar os três. O requisito externo
-proposto é Git 2.43 ou compatibilidade demonstrada com `--batch-command` e
+é Git 2.43 ou compatibilidade demonstrada com `--batch-command` e
 `--end-of-options`. Repositórios SHA-1 e SHA-256 devem tratar OIDs como strings opacas;
 alternates e shallow clones ficam a cargo da leitura local do Git, sempre sem fetch.
 
-### Condição para aprovação
+### Registro de aprovação
 
-Se aprovada, a B2 será materializada em commit separado com fixtures RED para
-imutabilidade, refs hostis, objetos ausentes, budgets, symlinks, submódulos e
-equivalência B1/B2. Até essa aprovação, o gate anterior permanece vigente.
+A B2 foi aprovada em 2026-08-24 e está vigente somente nos limites desta adenda.
+Fixtures e confronto funcional de imutabilidade, refs hostis, objetos ausentes,
+budgets, symlinks, submódulos e equivalência B1/B2 pertencem a F05; sua ausência não
+revoga a autoridade normativa aqui registrada.
 
 ## Referências
 
