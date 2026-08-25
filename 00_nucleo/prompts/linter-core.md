@@ -71,7 +71,8 @@ que opera sobre directórios. `lib.rs` na raiz excluído via
 - **Representação intermediária**: `ParsedFile<'a>` com
   lifetimes. `Token.symbol: Cow<'a, str>`,
   `Location.path: Cow<'a, Path>`.
-- **Saída**: SARIF 2.1.0 primário, `--format text` para terminal.
+- **Saída**: SARIF 2.1.0 primário, `--format text` para terminal e
+  `--format n16-summary` opt-in quando V16 estiver habilitada.
 - **Ordenação de violations**: após o pipeline Map-Reduce e as
   verificações globais (V7, V8, V11), violations são ordenadas
   em L4 antes de serem passadas ao formatter:
@@ -202,7 +203,7 @@ ARGS:
   [PATH]    Raiz do projeto a analisar [padrão: .]
 
 OPTIONS:
-  --format <fmt>         sarif | text | json             [padrão: text]
+  --format <fmt>         sarif | text | json | n16-summary [padrão: text]
   --fail-on <level>      error | warning                [padrão: error]
   --checks <list>        v0,v1,...,v15                  [padrão: all]
   --no-drift             desabilita V5
