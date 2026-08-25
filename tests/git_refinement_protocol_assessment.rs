@@ -5,8 +5,8 @@ use crystalline_lint::infra::git_refinement::{
 };
 use std::ffi::OsStr;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
@@ -43,14 +43,15 @@ impl Harness {
         fs::create_dir_all(root.join(".git/objects/pack")).unwrap();
         fs::write(root.join(format!("scenario_{scenario}")), b"").unwrap();
         let git = root.join("hostile-git");
-        fs::copy(
-            Path::new("tests/fixtures/git_refinement_protocol/hostile_git.sh"),
-            &git,
-        )
-        .unwrap();
-        let mut permissions = fs::metadata(&git).unwrap().permissions();
-        permissions.set_mode(0o700);
-        fs::set_permissions(&git, permissions).unwrap();
+        let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+        let status = Command::new(rustc)
+            .arg("--edition=2021")
+            .arg("tests/fixtures/git_refinement_protocol/hostile_git.rs")
+            .arg("-o")
+            .arg(&git)
+            .status()
+            .unwrap();
+        assert!(status.success());
         Self { root, git }
     }
 

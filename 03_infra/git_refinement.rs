@@ -1,13 +1,15 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/refinement-validator.md
-//! @prompt-hash e3576989
+//! @prompt-hash 3c48be66
 //! @layer L3
 //! @updated 2026-08-24
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsStr;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Output, Stdio};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -19,6 +21,478 @@ const MAX_BLOB_BYTES: usize = 4 * 1024 * 1024;
 const MAX_TOTAL_BYTES: usize = 32 * 1024 * 1024;
 const GIT_TIMEOUT: Duration = Duration::from_secs(10);
 const BLOB_BUDGET_ERROR: &str = "refinement Git blob budget exhausted";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GitRevisionContent {
+    pub oid: String,
+    pub paths: BTreeMap<PathBuf, GitPathContent>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GitPathContent {
+    Blob(Vec<u8>),
+    Missing,
+    Unknown(GitUnknownReason),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GitUnknownReason {
+    MissingObject,
+    ForbiddenObjectKind,
+    BudgetExhausted,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GitRevisionError {
+    InvalidInput,
+    MissingRef,
+    InvalidFraming,
+    Timeout,
+    ProcessFailure,
+    ContainmentFailure,
+}
+
+const GIT_PREFIX: [&str; 16] = [
+    "-c",
+    "protocol.allow=never",
+    "-c",
+    "core.hooksPath=",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "credential.helper=",
+    "-c",
+    "diff.external=",
+    "-c",
+    "filter.lfs.process=",
+    "-c",
+    "filter.lfs.smudge=",
+    "-c",
+    "filter.lfs.clean=",
+];
+
+fn valid_oid(bytes: &[u8]) -> bool {
+    matches!(bytes.len(), 40 | 64)
+        && bytes
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+}
+
+fn controlled_command(executable: &Path, repository: &Path) -> Command {
+    let mut command = Command::new(executable);
+    command
+        .current_dir(repository)
+        .env_clear()
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_NO_LAZY_FETCH", "1")
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .env("GIT_NO_REPLACE_OBJECTS", "1")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env(
+            "GIT_CONFIG_GLOBAL",
+            if cfg!(windows) { "NUL" } else { "/dev/null" },
+        )
+        .env("LC_ALL", "C")
+        .args(GIT_PREFIX);
+    command
+}
+
+#[cfg(unix)]
+fn isolate(command: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    command.process_group(0);
+}
+
+#[cfg(not(unix))]
+fn isolate(_command: &mut Command) {}
+
+#[cfg(unix)]
+fn terminate_group(child: &mut Child) -> Result<(), GitRevisionError> {
+    extern "C" {
+        fn kill(pid: i32, signal: i32) -> i32;
+    }
+    const SIGKILL: i32 = 9;
+    let pid = i32::try_from(child.id()).map_err(|_| GitRevisionError::ContainmentFailure)?;
+    // SAFETY: `pid` is the positive PID returned for our own child. The child was
+    // placed in a fresh process group whose id is that PID before it executed.
+    let result = unsafe { kill(-pid, SIGKILL) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(GitRevisionError::ContainmentFailure)
+    }
+}
+
+#[cfg(not(unix))]
+fn terminate_group(child: &mut Child) -> Result<(), GitRevisionError> {
+    child
+        .kill()
+        .map_err(|_| GitRevisionError::ContainmentFailure)
+}
+
+fn run_controlled(
+    mut command: Command,
+    stdin: Option<Vec<u8>>,
+    stdout_cap: usize,
+) -> Result<Output, GitRevisionError> {
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    command.stdin(if stdin.is_some() {
+        Stdio::piped()
+    } else {
+        Stdio::null()
+    });
+    isolate(&mut command);
+    let mut child = command
+        .spawn()
+        .map_err(|_| GitRevisionError::ProcessFailure)?;
+    if let Some(input) = stdin {
+        let mut pipe = child.stdin.take().ok_or(GitRevisionError::ProcessFailure)?;
+        pipe.write_all(&input)
+            .map_err(|_| GitRevisionError::ProcessFailure)?;
+    }
+    drop(child.stdin.take());
+
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or(GitRevisionError::ProcessFailure)?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or(GitRevisionError::ProcessFailure)?;
+    let (overflow_sender, overflow_receiver) = mpsc::sync_channel(1);
+    let stdout_overflow = overflow_sender.clone();
+    let stdout_reader = thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let mut buffer = [0u8; 8192];
+        let mut exceeded = false;
+        loop {
+            let count = stdout.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            let available = stdout_cap.saturating_sub(bytes.len());
+            bytes.extend_from_slice(&buffer[..count.min(available)]);
+            if count > available && !exceeded {
+                exceeded = true;
+                let _ = stdout_overflow.try_send(());
+            }
+        }
+        std::io::Result::Ok((bytes, exceeded))
+    });
+    let stderr_reader = thread::spawn(move || {
+        let mut observed = false;
+        let mut buffer = [0u8; 1024];
+        loop {
+            let count = stderr.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            if !observed {
+                observed = true;
+                let _ = overflow_sender.try_send(());
+            }
+        }
+        std::io::Result::Ok(observed)
+    });
+    let started = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if overflow_receiver.try_recv().is_ok() => {
+                terminate_group(&mut child)?;
+                child
+                    .wait()
+                    .map_err(|_| GitRevisionError::ContainmentFailure)?;
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
+                return Err(GitRevisionError::InvalidFraming);
+            }
+            Ok(None) if started.elapsed() < GIT_TIMEOUT => thread::sleep(Duration::from_millis(10)),
+            Ok(None) => {
+                terminate_group(&mut child)?;
+                child
+                    .wait()
+                    .map_err(|_| GitRevisionError::ContainmentFailure)?;
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
+                return Err(GitRevisionError::Timeout);
+            }
+            Err(_) => return Err(GitRevisionError::ProcessFailure),
+        }
+    };
+    let (stdout, stdout_exceeded) = stdout_reader
+        .join()
+        .map_err(|_| GitRevisionError::ProcessFailure)?
+        .map_err(|_| GitRevisionError::ProcessFailure)?;
+    let stderr_observed = stderr_reader
+        .join()
+        .map_err(|_| GitRevisionError::ProcessFailure)?
+        .map_err(|_| GitRevisionError::ProcessFailure)?;
+    if stdout_exceeded {
+        return Err(GitRevisionError::InvalidFraming);
+    }
+    Ok(Output {
+        status,
+        stdout,
+        stderr: if stderr_observed { vec![1] } else { Vec::new() },
+    })
+}
+
+fn validate_public_inputs(
+    executable: &Path,
+    repository: &Path,
+    revision: &OsStr,
+    paths: &[PathBuf],
+) -> Result<(String, Vec<String>), GitRevisionError> {
+    if !executable.is_absolute()
+        || !repository.is_absolute()
+        || executable.canonicalize().ok().as_deref() != Some(executable)
+        || repository.canonicalize().ok().as_deref() != Some(repository)
+        || !executable.is_file()
+        || paths.len() > MAX_PATHS
+    {
+        return Err(GitRevisionError::InvalidInput);
+    }
+    let git_dir = repository.join(".git");
+    let objects = git_dir.join("objects");
+    let contained = |path: &Path, parent: &Path| {
+        std::fs::symlink_metadata(path)
+            .ok()
+            .is_some_and(|metadata| metadata.is_dir() && !metadata.file_type().is_symlink())
+            && path
+                .canonicalize()
+                .ok()
+                .is_some_and(|canonical| canonical.starts_with(parent))
+    };
+    if !contained(&git_dir, repository) || !contained(&objects, &git_dir) {
+        return Err(GitRevisionError::ContainmentFailure);
+    }
+    for directory in [objects.join("info"), objects.join("pack")] {
+        match std::fs::symlink_metadata(&directory) {
+            Ok(metadata)
+                if metadata.is_dir()
+                    && !metadata.file_type().is_symlink()
+                    && directory
+                        .canonicalize()
+                        .ok()
+                        .is_some_and(|canonical| canonical.starts_with(&objects)) => {}
+            Ok(_) => return Err(GitRevisionError::ContainmentFailure),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err(GitRevisionError::ContainmentFailure),
+        }
+    }
+    for name in ["alternates", "http-alternates"] {
+        match std::fs::symlink_metadata(objects.join("info").join(name)) {
+            Ok(_) => return Err(GitRevisionError::ContainmentFailure),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err(GitRevisionError::ContainmentFailure),
+        }
+    }
+    let revision = revision.to_str().ok_or(GitRevisionError::InvalidInput)?;
+    if revision.is_empty()
+        || revision.len() > 255
+        || revision
+            .bytes()
+            .any(|byte| matches!(byte, 0 | b'\n' | b'\r'))
+    {
+        return Err(GitRevisionError::InvalidInput);
+    }
+    let mut logical = Vec::with_capacity(paths.len());
+    let mut unique = BTreeSet::new();
+    for path in paths {
+        let path = path.to_str().ok_or(GitRevisionError::InvalidInput)?;
+        let components: Vec<&str> = path.split('/').collect();
+        if path.is_empty()
+            || path.len() > 4096
+            || path.starts_with('/')
+            || path.ends_with('/')
+            || path.bytes().any(|byte| matches!(byte, 0 | b'\n' | b'\r'))
+            || components.iter().any(|part| {
+                part.is_empty() || *part == "." || *part == ".." || part.starts_with(':')
+            })
+            || !unique.insert(path.to_string())
+        {
+            return Err(GitRevisionError::InvalidInput);
+        }
+        logical.push(path.to_string());
+    }
+    logical.sort_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
+    Ok((revision.to_string(), logical))
+}
+
+pub fn load_revision_with_git(
+    git_executable: &Path,
+    repository_root: &Path,
+    revision: &OsStr,
+    logical_paths: &[PathBuf],
+) -> Result<GitRevisionContent, GitRevisionError> {
+    let (revision, logical_paths) =
+        validate_public_inputs(git_executable, repository_root, revision, logical_paths)?;
+
+    let mut rev_parse = controlled_command(git_executable, repository_root);
+    rev_parse
+        .args(["rev-parse", "--verify", "--end-of-options"])
+        .arg(format!("{revision}^{{commit}}"));
+    let output = run_controlled(rev_parse, None, 65)?;
+    if !output.status.success() {
+        return Err(GitRevisionError::MissingRef);
+    }
+    if !output.stderr.is_empty()
+        || output.stdout.last() != Some(&b'\n')
+        || output.stdout[..output.stdout.len().saturating_sub(1)].contains(&b'\n')
+    {
+        return Err(GitRevisionError::InvalidFraming);
+    }
+    let oid_bytes = &output.stdout[..output.stdout.len().saturating_sub(1)];
+    if !valid_oid(oid_bytes) {
+        return Err(GitRevisionError::InvalidFraming);
+    }
+    let oid =
+        String::from_utf8(oid_bytes.to_vec()).map_err(|_| GitRevisionError::InvalidFraming)?;
+
+    let mut ls_tree = controlled_command(git_executable, repository_root);
+    ls_tree.args(["ls-tree", "-rz", "--full-tree", &oid, "--"]);
+    for path in &logical_paths {
+        ls_tree.arg(format!(":(top,literal){path}"));
+    }
+    let output = run_controlled(ls_tree, None, 2_200_000)?;
+    if !output.status.success() {
+        return Err(GitRevisionError::ProcessFailure);
+    }
+    if !output.stderr.is_empty() || (!output.stdout.is_empty() && output.stdout.last() != Some(&0))
+    {
+        return Err(GitRevisionError::InvalidFraming);
+    }
+    let requested: BTreeSet<&str> = logical_paths.iter().map(String::as_str).collect();
+    let mut paths: BTreeMap<PathBuf, GitPathContent> = logical_paths
+        .iter()
+        .map(|path| (PathBuf::from(path), GitPathContent::Missing))
+        .collect();
+    let mut blobs_by_path = Vec::new();
+    let mut previous: Option<String> = None;
+    for record in output
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|record| !record.is_empty())
+    {
+        let tab = record
+            .iter()
+            .position(|byte| *byte == b'\t')
+            .ok_or(GitRevisionError::InvalidFraming)?;
+        let meta =
+            std::str::from_utf8(&record[..tab]).map_err(|_| GitRevisionError::InvalidFraming)?;
+        let path = std::str::from_utf8(&record[tab + 1..])
+            .map_err(|_| GitRevisionError::InvalidFraming)?;
+        let fields: Vec<&str> = meta.split(' ').collect();
+        if fields.len() != 3
+            || !requested.contains(path)
+            || previous.as_deref().is_some_and(|old| old >= path)
+        {
+            return Err(GitRevisionError::InvalidFraming);
+        }
+        previous = Some(path.to_string());
+        if fields[0].len() != 6
+            || !fields[0].bytes().all(|byte| (b'0'..=b'7').contains(&byte))
+            || !fields[1].is_ascii()
+            || !valid_oid(fields[2].as_bytes())
+        {
+            return Err(GitRevisionError::InvalidFraming);
+        }
+        let regular = matches!((fields[0], fields[1]), ("100644" | "100755", "blob"));
+        if regular {
+            blobs_by_path.push((path.to_string(), fields[2].to_string()));
+        } else {
+            paths.insert(
+                PathBuf::from(path),
+                GitPathContent::Unknown(GitUnknownReason::ForbiddenObjectKind),
+            );
+        }
+    }
+
+    let mut ordered_oids = Vec::new();
+    let mut seen = BTreeSet::new();
+    for (_, blob) in &blobs_by_path {
+        if seen.insert(blob.clone()) {
+            ordered_oids.push(blob.clone());
+        }
+    }
+    let mut input = Vec::new();
+    for blob in &ordered_oids {
+        input.extend_from_slice(format!("contents {blob}\n").as_bytes());
+    }
+    input.extend_from_slice(b"flush\n");
+    let mut cat_file = controlled_command(git_executable, repository_root);
+    cat_file.args(["cat-file", "--batch-command", "--buffer"]);
+    let output = run_controlled(cat_file, Some(input), 33_600_000)?;
+    if !output.status.success() {
+        return Err(GitRevisionError::ProcessFailure);
+    }
+    if !output.stderr.is_empty() {
+        return Err(GitRevisionError::InvalidFraming);
+    }
+    let mut cursor = 0usize;
+    let mut blobs = BTreeMap::new();
+    let mut budget_exhausted = false;
+    for expected in &ordered_oids {
+        let relative_newline = output.stdout[cursor..]
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .ok_or(GitRevisionError::InvalidFraming)?;
+        let newline = cursor + relative_newline;
+        let header = std::str::from_utf8(&output.stdout[cursor..newline])
+            .map_err(|_| GitRevisionError::InvalidFraming)?;
+        if header == format!("{expected} missing") {
+            blobs.insert(expected.clone(), None);
+            cursor = newline + 1;
+            continue;
+        }
+        let fields: Vec<&str> = header.split(' ').collect();
+        if fields.len() != 3 || fields[0] != expected || fields[1] != "blob" {
+            return Err(GitRevisionError::InvalidFraming);
+        }
+        let size: usize = fields[2]
+            .parse()
+            .map_err(|_| GitRevisionError::InvalidFraming)?;
+        if size.to_string() != fields[2] {
+            return Err(GitRevisionError::InvalidFraming);
+        }
+        if size > MAX_BLOB_BYTES {
+            budget_exhausted = true;
+            break;
+        }
+        let start = newline + 1;
+        let end = start
+            .checked_add(size)
+            .ok_or(GitRevisionError::InvalidFraming)?;
+        if end >= output.stdout.len() || output.stdout[end] != b'\n' {
+            return Err(GitRevisionError::InvalidFraming);
+        }
+        blobs.insert(expected.clone(), Some(output.stdout[start..end].to_vec()));
+        cursor = end + 1;
+    }
+    if !budget_exhausted && cursor != output.stdout.len() {
+        return Err(GitRevisionError::InvalidFraming);
+    }
+    let total = blobs_by_path
+        .iter()
+        .filter_map(|(_, oid)| blobs.get(oid).and_then(Option::as_ref).map(Vec::len))
+        .sum::<usize>();
+    budget_exhausted |= total > MAX_TOTAL_BYTES;
+    for (path, blob) in blobs_by_path {
+        let value = if budget_exhausted {
+            GitPathContent::Unknown(GitUnknownReason::BudgetExhausted)
+        } else {
+            match blobs.get(&blob) {
+                Some(Some(bytes)) => GitPathContent::Blob(bytes.clone()),
+                Some(None) => GitPathContent::Unknown(GitUnknownReason::MissingObject),
+                None => return Err(GitRevisionError::InvalidFraming),
+            }
+        };
+        paths.insert(PathBuf::from(path), value);
+    }
+    Ok(GitRevisionContent { oid, paths })
+}
 
 #[derive(Clone, Debug)]
 enum TreeEntry {

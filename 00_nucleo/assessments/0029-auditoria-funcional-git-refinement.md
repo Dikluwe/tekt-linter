@@ -105,3 +105,44 @@ congelamento foi corrigido um `GATE-DEFECT`: a fixture B2 identificava o subcoma
 O RED causal comum está preservado: `load_revision_with_git`, `GitRevisionContent`,
 `GitPathContent`, `GitUnknownReason` e `GitRevisionError` ainda não existem na API
 publicada. Produção está liberada somente após o commit destes hashes.
+
+## GATE-DEFECTs pós-congelamento e identidades finais
+
+Ao abrir a produção, C demonstrou dois defeitos que impediam os gates de observar os
+cenários declarados:
+
+1. B1 usava `#!/bin/sh`; o próprio shell sintetizava `PATH` após `env_clear()`, tornando
+   inválida a observação do ambiente entregue. A fixture foi substituída por binário Rust
+   nativo compilado pelo harness, sem alterar expectativas.
+2. B2 gravava `.scenario` sem newline; `read` sob `set -e` encerrava a fixture antes do
+   `case`. O gate passou a gravar uma linha completa, sem alterar expectativas.
+
+| Papel | Artefato final | SHA-256 final | GREEN |
+|---|---|---|---|
+| B1 | `tests/git_refinement_protocol_assessment.rs` | `89bdaa09f3a1e3dff7cf30be71630f1cfafbe4b0d314d74e3faa607858c41eb0` | 7/7 |
+| B1 | `tests/fixtures/git_refinement_protocol/hostile_git.rs` | `ddd96b6694d6536f5c07e49573255db025b4fb96c2bf9ff3aedabe9bd19ad366` | fixture nativa |
+| B2 | `tests/git_refinement_timeout_assessment.rs` | `076106ff4c868165634661d720b2f6e9b71851126d5f4022e1b231d9ec69c442` | 4/4 |
+| B2 | `tests/fixtures/git_refinement_timeout/hostile-git.sh` | `5f3265bdad976531da3b463732ca51801a381f570a01de3e7b9c7f9ad2b4c5b9` | fixture ativa |
+
+## Confronto C
+
+C implementou a API/tipos, validação pre-spawn, ambiente/argv, três processos, OID
+opaco, pathspec literal, framing, tipos, budgets, caps, grupo Unix e taxonomia em
+`03_infra/git_refinement.rs` (SHA-256
+`db50933e6976913a2ce0c1acb9883faf2efbab3e41135437440640027c51ef6b`). Os onze
+testes finais passam; regressões históricas Git 6/6 e CLI 10/10 passam. O reparador
+oficial atualizou os headers causais para `3c48be66`.
+
+C preservou quatro possíveis bloqueios para D:
+
+1. o caminho CLI histórico ainda usa helpers anteriores em vez de compartilhar
+   integralmente `load_revision_with_git`;
+2. fora de Unix, a implementação mata apenas o filho e não materializa Job Object para
+   descendentes;
+3. header de blob acima de 4 MiB seguido de pipe aberto pode terminar como `Timeout`, não
+   `BudgetExhausted` imediato;
+4. autocontenção valida diretórios fixos, mas não prova recursivamente ausência de symlink
+   em cada loose object/pack acessado.
+
+Esses pontos não são declarados resíduos aceitos. D deve classificá-los contra o L0; F05
+só fecha se não houver `RED` material ou se houver correção causal dentro da fronteira.
