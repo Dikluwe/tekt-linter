@@ -575,7 +575,10 @@ fn main() {
             return;
         }
 
-        let unfixable = entries.iter().filter(|e| e.new_hash.is_none()).count();
+        let unfixable = entries
+            .iter()
+            .filter(|e| matches!(e, fix_hashes::FixEntry::Unavailable { .. }))
+            .count();
         let results = fix_hashes::execute(&entries, &rewriter, false);
 
         // Re-run analysis to count remaining V5
