@@ -140,6 +140,9 @@ pub fn parse_prompt_nucleus_refs(bytes: &[u8]) -> Result<Vec<PromptNucleusRef>, 
     let Some(start) = starts.first().copied() else {
         return Ok(Vec::new());
     };
+    if lines[..start].iter().any(|line| line.starts_with("## ")) {
+        return Err("Núcleos Tekt block must precede the first section".into());
+    }
     let mut refs = Vec::new();
     for line in &lines[start + 1..] {
         let Some(value) = line.strip_prefix("- ") else {
@@ -155,6 +158,9 @@ pub fn parse_prompt_nucleus_refs(bytes: &[u8]) -> Result<Vec<PromptNucleusRef>, 
             path: path.into(),
             sha256: hash.into(),
         });
+    }
+    if refs.is_empty() {
+        return Err("empty Núcleos Tekt block".into());
     }
     if refs
         .windows(2)
@@ -299,13 +305,36 @@ pub fn audit_project(root: &Path) -> NucleusAudit {
         return audit;
     }
     let mut cache = BTreeMap::new();
-    for entry in walkdir::WalkDir::new(root.join("00_nucleo"))
+    for result in walkdir::WalkDir::new(root.join("00_nucleo"))
         .follow_links(false)
         .into_iter()
-        .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_file())
     {
+        let entry = match result {
+            Ok(entry) => entry,
+            Err(error) => {
+                audit.issues.push((
+                    error.path().unwrap_or(root).to_path_buf(),
+                    format!("nucleus inventory walk failed: {error}"),
+                ));
+                continue;
+            }
+        };
         let path = entry.path();
+        if entry.file_type().is_symlink()
+            && matches!(
+                path.extension().and_then(|value| value.to_str()),
+                Some("tekt") | Some("md")
+            )
+        {
+            audit.issues.push((
+                path.to_path_buf(),
+                "symlink forbidden in nucleus inventory".into(),
+            ));
+            continue;
+        }
+        if !entry.file_type().is_file() {
+            continue;
+        }
         let logical = path
             .strip_prefix(root)
             .unwrap_or(path)
