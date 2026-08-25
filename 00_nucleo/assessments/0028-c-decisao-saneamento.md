@@ -198,3 +198,7 @@ necessária em `linter-core.md`, porém, altera um prompt causal compartilhado e
 migração mecânica de headers em produção para não deixar V5 em drift. P0099 proíbe essa
 migração. O passo permanece bloqueado até autorização explícita para ampliar o escopo
 somente aos headers/hash derivados, sem mudança comportamental.
+
+O usuário autorizou explicitamente essa ampliação mínima em 2026-08-25. O executor pode
+corrigir somente a frase B1/B2 de `linter-core.md` e aplicar o reparador oficial de hashes
+aos headers causalmente derivados. Qualquer outro delta em produção permanece proibido.
