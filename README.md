@@ -54,6 +54,12 @@ crystalline-lint refine --before before.json --after after.json --contract refin
 crystalline-lint refine-revisions <repository-root> --before-ref <sha-ou-ref> --after-ref <sha-ou-ref> --contract refinement.toml
 ```
 
+`refine-revisions` é um modo de engenharia local. Ele neutraliza configuração externa,
+hooks, alternates e framing inseguro, mas confia no Git instalado, no usuário local e na
+estabilidade do repositório durante a leitura. Resistência a executável adulterado,
+mutação local sincronizada ou processos deliberadamente evasivos fica reservada a um
+futuro modo selado/certificador, ainda não implementado.
+
 ---
 
 ## Verificações

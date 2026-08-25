@@ -1,6 +1,6 @@
 # Assessment 0030 — fechamento dos REDs Git de F05
 
-**Estado:** FECHADO `BLOCKED` — F05 aberto; merge proibido
+**Estado:** HISTÓRICO — `BLOCKED` sob modelo hostil; reclassificado pelo ADR-0021
 **Data:** 2026-08-25
 **Passo:** P0101
 **Baseline funcional:** `ba6f3a1c6cf0142ff44075fce6cd903a5f3d1dcf`
@@ -125,3 +125,11 @@ autoriza declarar R4 fechado.
 
 Resultado: **F05 `BLOCKED`**. R1 e R3 são melhorias reais preserváveis, mas R2/R4/R5
 impedem fechamento e integração deste branch.
+
+## Reclassificação humana P0103
+
+Em 2026-08-25, o mantenedor escolheu separar o linter local de um futuro modo selado.
+O ADR-0021 coloca Git, usuário local e estabilidade concorrente na base confiável de
+`refine-revisions`. Assim, este `BLOCKED` permanece verdadeiro para o modelo hostil que
+P0101 confrontou, mas não bloqueia o produto local. R2/R4/R5 tornam-se requisitos
+candidatos do futuro certificador; R1/R3 e as defesas locais são integráveis.

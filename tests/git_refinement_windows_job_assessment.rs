@@ -167,6 +167,7 @@ fn assert_job_contract(root: &Path) {
 }
 
 #[test]
+#[ignore = "future sealed verification: mandatory Job Object is outside local mode"]
 fn timeout_kills_leader_and_pipe_independent_descendant_and_closes_handles() {
     let before = handle_count();
     let harness = Harness::new(false);
@@ -184,6 +185,7 @@ fn timeout_kills_leader_and_pipe_independent_descendant_and_closes_handles() {
 }
 
 #[test]
+#[ignore = "future sealed verification: mandatory Job Object is outside local mode"]
 fn leader_exit_cannot_leave_a_descendant_alive_or_block_the_caller() {
     let harness = Harness::new(true);
     let (result, elapsed) = harness.invoke();
