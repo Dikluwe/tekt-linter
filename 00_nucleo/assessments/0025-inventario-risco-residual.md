@@ -1,6 +1,6 @@
 # Assessment 0025 — inventário de risco residual
 
-**Estado:** PREFLIGHT CONGELADO — A/B1/B2 autorizados; produção proibida
+**Estado:** READY WITH RESIDUAL AUDIT
 **Data:** 2026-08-25
 **Passo:** P0096
 **Baseline:** `75c076951b2a873b74bfbe163fef34c4ca5f2800`
@@ -73,3 +73,15 @@ B2 identificou `SPEC-GAP` na associação compartilhada de citações: V21 aceit
 `ref:/spec:/rationale:`, enquanto o histórico V22 reconhece evidência mais ampla e a IR
 possui um único `citation`. O candidato só permanece elegível se excluir associação,
 janela e semântica de citações, limitando-se à extração estrutural de `SourceConstant`.
+
+## Fechamento D3
+
+Após dois bloqueios adversariais e resselamentos, D confirmou hashes, universo
+`04_wiring`, cobertura histórica, busca reversa, pontuação e delta exclusivamente
+documental. A matriz final recomenda S5a — extração estrutural Rust de `SourceConstant`
+compartilhada por V21/V22 — com risco 10, médio. O recorte exclui citações, frescura,
+configuração global, wiring, apresentação, exit e os dois classificadores como oráculo.
+
+Parecer: `READY WITH RESIDUAL AUDIT`. Residual obrigatório: associação/janela de citações
+e agregação semântica V22 permanecem fora do P0097 até saneamento L0. Nenhum arquivo de
+produção ou teste foi alterado.
