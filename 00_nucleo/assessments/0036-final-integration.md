@@ -47,3 +47,11 @@ Os hashes dos 44 pares foram calculados na ordem do manifesto 0034 sobre bytes e
 B reconcilia documentos; C classifica 44 pares antes de qualquer enriquecimento; D prova
 formatação cosmética; E ressela e fecha o branch; F faz merge e repete os gates. RED e
 SPEC-GAP permanecem bloqueantes até classificação explícita.
+
+## C — auditoria semântica dos 44 prompts
+
+O manifesto `0036-prompt-contracts.tsv` cobre exatamente os 44 pares: 14 são
+`SUFFICIENT`; 30 são `ENRICH` porque têm owner/fronteira corretos, mas critério observável
+apenas implícito. Zero `CONTRADICTION`, zero `SPEC-GAP`. Os classificadores 0034 continuam
+autoridades e nenhum Núcleo Tekt é necessário. Enriquecimento permanece pendente neste
+checkpoint.

@@ -1,0 +1,45 @@
+consumer	owner_prompt	initial_verdict	final_verdict	evidence
+01_core/contracts/citation_freshness.rs	00_nucleo/prompts/contracts/citation-freshness.md	SUFFICIENT	SUFFICIENT	explicit owner/instruction/restrictions/criteria
+03_infra/citation_freshness.rs	00_nucleo/prompts/infra/citation-freshness.md	SUFFICIENT	SUFFICIENT	explicit owner/instruction/restrictions/criteria
+01_core/contracts/prompt_reader.rs	00_nucleo/prompts/contracts/prompt-reader.md	SUFFICIENT	SUFFICIENT	explicit owner/instruction/restrictions/criteria
+03_infra/prompt_reader.rs	00_nucleo/prompts/infra/prompt-reader.md	SUFFICIENT	SUFFICIENT	explicit owner/instruction/restrictions/criteria
+01_core/contracts/prompt_snapshot_reader.rs	00_nucleo/prompts/contracts/prompt-snapshot-reader.md	SUFFICIENT	SUFFICIENT	explicit owner/instruction/restrictions/criteria
+03_infra/prompt_snapshot_reader.rs	00_nucleo/prompts/infra/prompt-snapshot-reader.md	SUFFICIENT	SUFFICIENT	explicit owner/instruction/restrictions/criteria
+01_core/entities/l1_allowed_external.rs	00_nucleo/prompts/entities/l1-allowed-external.md	SUFFICIENT	SUFFICIENT	explicit owner/instruction/restrictions/criteria
+01_core/rules/external_type_in_contract.rs	00_nucleo/prompts/rules/external-type-in-contract.md	SUFFICIENT	SUFFICIENT	explicit owner/instruction/restrictions/criteria
+02_shell/cli.rs	00_nucleo/prompts/sarif-formatter.md	SUFFICIENT	SUFFICIENT	explicit owner/instruction/restrictions/criteria
+02_shell/path_encoding.rs	00_nucleo/prompts/shell/path-encoding.md	SUFFICIENT	SUFFICIENT	explicit owner/instruction/restrictions/criteria
+01_core/entities/refinement_seal.rs	00_nucleo/prompts/segregated-materialization.md	SUFFICIENT	SUFFICIENT	explicit owner/instruction/restrictions/criteria
+03_infra/refinement_seal.rs	00_nucleo/prompts/infra/refinement-seal.md	SUFFICIENT	SUFFICIENT	explicit owner/instruction/restrictions/criteria
+01_core/rules/provenance_inventory.rs	00_nucleo/prompts/rules/provenance-inventory.md	SUFFICIENT	SUFFICIENT	explicit owner/instruction/restrictions/criteria
+01_core/rules/unsourced_constant.rs	00_nucleo/prompts/unsourced-constant.md	SUFFICIENT	SUFFICIENT	explicit owner/instruction/restrictions/criteria
+01_core/entities/layer.rs	00_nucleo/prompts/entities/layer.md	ENRICH	PENDING	added observable round-trip/domain criterion
+01_core/entities/mod.rs	00_nucleo/prompts/entities/module.md	ENRICH	PENDING	added facade/import boundary criterion
+01_core/entities/parsed_file.rs	00_nucleo/prompts/entities/parsed-file.md	ENRICH	PENDING	added IR preservation criterion
+01_core/entities/violation.rs	00_nucleo/prompts/violation-types.md	ENRICH	PENDING	added variant/order criterion
+03_infra/prompt_io.rs	00_nucleo/prompts/infra/prompt-io.md	ENRICH	PENDING	added confinement/byte criterion
+03_infra/walker.rs	00_nucleo/prompts/file-walker.md	ENRICH	PENDING	added deterministic inventory criterion
+02_shell/fix_hashes.rs	00_nucleo/prompts/fix-hashes.md	ENRICH	PENDING	added plan/dry-run criterion
+02_shell/update_snapshot.rs	00_nucleo/prompts/update-snapshot.md	ENRICH	PENDING	added snapshot planning criterion
+03_infra/hash_writer.rs	00_nucleo/prompts/infra/hash-writer.md	ENRICH	PENDING	added atomic byte preservation criterion
+03_infra/snapshot_writer.rs	00_nucleo/prompts/infra/snapshot-writer.md	ENRICH	PENDING	added marker-only criterion
+01_core/rules/compound_guard.rs	00_nucleo/prompts/rules/compound-guard.md	ENRICH	PENDING	added V17 activation criterion
+01_core/rules/deep_pattern_nesting.rs	00_nucleo/prompts/rules/deep-pattern-nesting.md	ENRICH	PENDING	added V20 threshold criterion
+01_core/rules/or_pattern_alternatives.rs	00_nucleo/prompts/rules/or-pattern-alternatives.md	ENRICH	PENDING	added V19 multiplicity criterion
+01_core/rules/range_pattern.rs	00_nucleo/prompts/rules/range-pattern.md	ENRICH	PENDING	added V18 IR-only criterion
+01_core/rules/wildcard_saturation.rs	00_nucleo/prompts/rules/wildcard-saturation.md	ENRICH	PENDING	added V16 body-form criterion
+01_core/entities/refinement.rs	00_nucleo/prompts/refinement-validator.md	ENRICH	PENDING	added verdict table criterion
+02_shell/refinement.rs	00_nucleo/prompts/shell/refinement.md	ENRICH	PENDING	added CLI exit/presentation criterion
+03_infra/git_refinement.rs	00_nucleo/prompts/infra/git-refinement.md	ENRICH	PENDING	added hostile Git criterion
+03_infra/refinement_extractor.rs	00_nucleo/prompts/infra/refinement-extractor.md	ENRICH	PENDING	added deterministic extraction criterion
+03_infra/refinement_snapshot.rs	00_nucleo/prompts/infra/refinement-snapshot.md	ENRICH	PENDING	added snapshot state criterion
+01_core/contracts/mod.rs	00_nucleo/prompts/contracts/module.md	ENRICH	PENDING	added contract facade criterion
+01_core/rules/mod.rs	00_nucleo/prompts/rules/module.md	ENRICH	PENDING	added rule facade criterion
+02_shell/mod.rs	00_nucleo/prompts/shell/module.md	ENRICH	PENDING	added shell facade criterion
+02_shell/n16_summary.rs	00_nucleo/prompts/shell/n16-summary.md	ENRICH	PENDING	added aggregation/presentation criterion
+03_infra/config.rs	00_nucleo/prompts/infra/config.md	ENRICH	PENDING	added strict config criterion
+03_infra/elixir_parser.rs	00_nucleo/prompts/parsers/elixir.md	ENRICH	PENDING	added parser IR criterion
+03_infra/go_parser.rs	00_nucleo/prompts/parsers/go.md	ENRICH	PENDING	added parser IR criterion
+03_infra/java_parser.rs	00_nucleo/prompts/parsers/java.md	ENRICH	PENDING	added parser IR criterion
+03_infra/mod.rs	00_nucleo/prompts/infra/module.md	ENRICH	PENDING	added infra facade criterion
+04_wiring/main.rs	00_nucleo/prompts/linter-core.md	ENRICH	PENDING	added composition/ordering criterion
