@@ -1,6 +1,6 @@
 # Assessment 0024 — loader de snapshots e contratos de refinamento
 
-**Estado:** PREFLIGHT SANEADO — B1/B2 autorizados; produção proibida
+**Estado:** READY WITH RESIDUAL AUDIT
 **Data:** 2026-08-25
 **Passo:** P0095
 **Baseline:** `4408649`
@@ -100,3 +100,18 @@ fechamento inicial do loader de relações admitia apenas `id` e `relation`. O c
 saneado para reconhecer a extensão raiz `observable` sem materializá-la neste loader;
 sua validação continua exclusiva do loader de extração L3. Campos raiz diferentes desses
 três permanecem fechados. B1/B2 continuaram verdes após a correção.
+
+## Fechamento D
+
+O primeiro parecer D encontrou `RED`: strings `state` e `reason` excessivas eram
+classificadas como `schema:` antes do limite normativo. A reauditoria generalizou a causa
+para strings presentes em variantes proibidas. A correção final mede toda chave/string
+JSON no pré-passe duplicate-safe e percorre recursivamente toda árvore TOML antes da
+conversão tipada. Regressões D cobrem discriminantes, payload proibido, campo desconhecido
+JSON e campo proibido TOML. Os gates B1/B2 permaneceram hash-frozen e verdes.
+
+Parecer final: `READY WITH RESIDUAL AUDIT`. Não restou `RED`, `SPEC-GAP` bloqueante ou
+`GATE-DEFECT` sem mitigação. Residuais: sentinel textual interno da classe `limit:` JSON,
+janela TOCTOU entre inspeção de componentes e `open`, alterações concorrentes de mesmo
+tamanho/mtime não necessariamente observáveis e drift histórico do `cargo fmt --all` fora
+do lote. O loader continua L3, read-only e sem produzir veredito.
