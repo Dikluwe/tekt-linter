@@ -1,5 +1,5 @@
 # Prompt: regra V18 DeepPatternNesting
-Hash do Código: PENDING_P0106
+Hash do Código: 0c1aae71
 
 Owner exclusivo: `01_core/rules/deep_pattern_nesting.rs`.
 

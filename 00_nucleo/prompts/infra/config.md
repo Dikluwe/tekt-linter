@@ -1,5 +1,5 @@
 # Prompt: carregamento estrito de configuração
-Hash do Código: PENDING_P0106
+Hash do Código: 6686bac6
 
 Owner exclusivo: `03_infra/config.rs`.
 

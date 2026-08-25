@@ -1,5 +1,5 @@
 # Prompt: regra V20 RangePattern
-Hash do Código: PENDING_P0106
+Hash do Código: 228c7dc6
 
 Owner exclusivo: `01_core/rules/range_pattern.rs`.
 

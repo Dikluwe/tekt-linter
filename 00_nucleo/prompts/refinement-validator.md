@@ -1,5 +1,5 @@
 # Prompt: domínio puro de refinamento
-Hash do Código: PENDING_P0106
+Hash do Código: bad3960f
 
 Owner exclusivo: `01_core/entities/refinement.rs`.
 

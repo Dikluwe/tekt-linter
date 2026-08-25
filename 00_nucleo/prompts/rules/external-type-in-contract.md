@@ -1,5 +1,5 @@
 # Prompt: regra V14 ExternalTypeInContract
-Hash do Código: PENDING_P0106
+Hash do Código: 568e36c7
 
 ## Owner
 

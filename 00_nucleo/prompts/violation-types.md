@@ -1,5 +1,5 @@
 # Prompt: tipos de violação
-Hash do Código: PENDING_P0106
+Hash do Código: 5cdf39c4
 
 Owner exclusivo: `01_core/entities/violation.rs`.
 

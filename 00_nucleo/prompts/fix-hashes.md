@@ -1,5 +1,5 @@
 # Prompt: planejamento de fix-hashes
-Hash do Código: PENDING_P0106
+Hash do Código: 527fbbd1
 
 Owner exclusivo: `02_shell/fix_hashes.rs`.
 

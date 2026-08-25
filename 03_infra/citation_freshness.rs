@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/infra/citation-freshness.md
-//! @prompt-hash PENDING
+//! @prompt-hash f0941333
 //! @layer L3
 //! @updated 2026-08-24
 

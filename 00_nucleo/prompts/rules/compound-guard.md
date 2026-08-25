@@ -1,5 +1,5 @@
 # Prompt: regra V17 CompoundGuard
-Hash do Código: PENDING_P0106
+Hash do Código: 28ae2b6c
 
 Owner exclusivo: `01_core/rules/compound_guard.rs`.
 

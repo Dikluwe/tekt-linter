@@ -1,5 +1,5 @@
 # Prompt: política pura do selo de refinamento
-Hash do Código: PENDING_P0106
+Hash do Código: 309f7ad4
 
 ## Owner
 

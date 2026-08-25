@@ -1,5 +1,5 @@
 # Prompt: fachada das regras L1
-Hash do Código: PENDING_P0106
+Hash do Código: f836837c
 
 Owner exclusivo: `01_core/rules/mod.rs`.
 

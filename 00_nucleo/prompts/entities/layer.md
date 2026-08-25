@@ -1,5 +1,5 @@
 # Prompt: linguagem e camada arquitetural
-Hash do Código: PENDING_P0106
+Hash do Código: 09edb04d
 
 Owner exclusivo: `01_core/entities/layer.rs`.
 
