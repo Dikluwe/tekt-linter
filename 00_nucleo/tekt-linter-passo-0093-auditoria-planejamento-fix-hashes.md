@@ -31,7 +31,7 @@ corrigíveis, alterar cardinalidade ou apresentar dry-run como escrita realizada
 
 | Unidade | Caminho | SHA-256 |
 |---|---|---|
-| fluxo fix/update | `00_nucleo/prompts/fix-hashes.md` | `dd987d35beced5bd7fb6a0961f1e2cfa08d85d4c6f8a3702f797f7a6f32e8024` |
+| fluxo fix/update | `00_nucleo/prompts/fix-hashes.md` | `d6cc361ed70301c002717b6e80a6c166a0ba1f149084c0f3000c373ba5d1daf9` |
 | apresentação/CLI | `00_nucleo/prompts/sarif-formatter.md` | `959d6e56785e6c32087fcae361300304d4a8197a2669f9df7f2b4809a4842605` |
 | arquitetura do pipeline | `00_nucleo/prompts/linter-core.md` | `908a00fd7e4eaa985b755682fb73984cbb886496ce988070f176ad307ec24446` |
 | tipos V5 | `00_nucleo/prompts/violation-types.md` | `147afa0d8f3f3e6e30e050590dad0b99c7da8486d3565e3f6c42f7fa883ea4dc` |
