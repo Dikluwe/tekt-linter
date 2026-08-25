@@ -12,6 +12,9 @@
 | protocolo P0097 | `00_nucleo/tekt-linter-passo-0097-auditoria-extracao-source-constant-rust.md` | `3aa2bee69002528787837583a2c97f279793dc1fa1f682e9050da7b4dc29a921` |
 | contrato V21 | `00_nucleo/prompts/unsourced-constant.md` | `9560ecbcdc3a5f5eec14e0cabe96062b274504f92e1f009188c6dbc2f59fa174` |
 | traits/IR | `00_nucleo/prompts/contracts/rule-traits.md` | `cdba18365badfb56288480f683451914d88b0df07201acc43ee8334d22289ba3` |
+| source file | `00_nucleo/prompts/contracts/file-provider.md` | `1574ce788513573901376fc80933464cca5e7b6bc17acf5af8bfcd28e4d7335d` |
+| prompt reader | `00_nucleo/prompts/contracts/prompt-reader.md` | `5ded333b4ef0da943355962da5de202f7a5b8a4aa6d885236f215e3a3884f219` |
+| snapshot reader | `00_nucleo/prompts/contracts/prompt-snapshot-reader.md` | `80b6f7ab9fbb0f97fa085d7a34802792eb6fce4834ac204775b47749c77985be` |
 | parser Rust | `00_nucleo/prompts/parsers/rust.md` | `a661c8f226849b55fb83f3f50e5d8ea37c082852b21432c5fb24917e272c4aac` |
 | arquitetura Tekt | `00_nucleo/prompts/linter-core.md` | `9446277167f07dc5290617855cff456f061aa052ce8bd51ecf980530800b8c00` |
 | protocolo segregado | `00_nucleo/prompts/segregated-materialization.md` | `366fd0855c6b04e533f4f4a477a73d7e5ec65f24c056720c61fca906bb5299a4` |
@@ -58,7 +61,7 @@ Resultados: `PASS`, `RED`, `SPEC-GAP`, `GATE-DEFECT`. Fechamento somente
 
 ## Parecer A e saneamento
 
-A validou os doze hashes. G1–G9 eram `SPEC-GAP`; G10 foi `PASS` apenas como separação de
+A validou os doze hashes iniciais. G1–G9 eram `SPEC-GAP`; G10 foi `PASS` apenas como separação de
 escopo. O L0 foi reduzido e saneado para literais numéricos dentro de `function_item`,
 kind positivo/negativo, snippet byte-exato, linha/coluna 1-based em bytes UTF-8, preorder,
 multiplicidade e erro sintático sem IR parcial.
@@ -67,3 +70,7 @@ Origem teste, return type, scaling, context var, geometric sink, data-table e ci
 foram removidos do oráculo. B1 cobre casos positivos/identidade; B2 cobre exclusões e erro.
 Ambos usam somente `RustParser::new` + `LanguageParser::parse`, mocks locais dos readers e
 `CrystallineConfig::default()`. V21/V22 continuam apenas regressões.
+
+B1 e B2 recusaram começar porque `SourceFile`, `PromptReader` e `PromptSnapshotReader`
+eram apenas referenciados, não autorizados. Os três contratos nominais foram adicionados
+com hash e passam a integrar o pacote L0 resselado. Eles não ampliam o oráculo funcional.
