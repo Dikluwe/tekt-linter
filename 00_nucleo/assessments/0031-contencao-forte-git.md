@@ -1,6 +1,6 @@
 # Assessment 0031 — contenção forte do Git
 
-**Estado:** PROTOCOLO CONGELADO — produção e gates proibidos até A
+**Estado:** A E GATES CONGELADOS — C `BLOCKED` por SG-1/SG-2
 **Data:** 2026-08-25
 **Passo:** P0102
 **Baseline funcional:** `c681c7a8fd419c48683553f88b6a3bf391f2032b`
@@ -52,3 +52,44 @@ Produção reabre somente após RED reproduzível, ou após `SPEC-GAP` ser resol
 separado. D é somente leitura e não promove teste pulado ou cleanup da fixture a prova.
 
 Sem merge, push ou fechamento de F05 antes das cinco linhas `PASS`.
+
+## Resultado A
+
+Mapa congelado em `09425ec`; SHA-256
+`0f1c2cecd490d7c86ffa8566681ccf18fdbd5417ab8a1e4d4feefecd5947f326`.
+
+- SG-1 `SPEC-GAP`: contenção Unix depois de `setsid` exige decisão de mecanismo,
+  plataforma, privilégio e cleanup.
+- SG-2 `SPEC-GAP`: contenção forte do object database exige decidir entre staging,
+  sandbox ou backend controlado, com política de I/O/budget/portabilidade.
+- Job Object é normativo, mas runtime Windows continua indisponível.
+- deadline de readers é implementável, mas não fecha isoladamente R5.
+
+A autorizou somente B1–B4. Produção permanece proibida nesta execução.
+
+## Gates P0102 congelados
+
+| Gate | SHA-256 | Resultado inicial | Classificação |
+|---|---|---|---|
+| B1 `tests/git_refinement_transient_object_race_assessment.rs` | `628d6286e119a0e562169c4067758b747ad0f347de8f00d283148e0152606ae4` | 3 controles PASS; 3/3 confrontos RED | R4 `RED` |
+| B2 `tests/git_refinement_session_escape_assessment.rs` | `261c2d76d71fe6d2164d169848c8caf62191b553434f9f8d75d7e37084f316fb` | 0/4 PASS | R5 `RED` |
+| B3 `tests/git_refinement_windows_job_v2_assessment.rs` | `f2c0c89068721ddfb86ec4f62411e49a4885eb1b3fe56fcf1b7e6c8f2909ea50` | Linux 0 testes; Windows compile-RED por seam ausente | R2 `RED / BLOCKED` |
+| B4 gates P0101 rota/protocolo/stream | hashes P0101 preservados | 3/3 + 7/7 + 4/4 | R1/R3 continuam `PASS` |
+
+B1 sincroniza troca e restauração antes do retorno em loose object, fanout e par
+pack/idx. Marcadores provam a corrida; nos três casos o adapter retorna `Ok` contendo
+exatamente a sentinela externa, em vez de `ContainmentFailure`.
+
+B2 confronta `setsid` com pipes abertos/fechados, escape durante timeout e cadeia com
+intermediário encerrado. Três casos excedem watchdog externo de 15 segundos; o caso que
+fecha pipes retorna `ProcessFailure` em vez de `ContainmentFailure`. A fixture registra
+identidade `(PID, starttime)` antes do cleanup e nenhum processo próprio restou vivo.
+
+B3 não constitui prova runtime: no Linux descobre zero testes. Em Windows, a compilação
+permanece intencionalmente RED até existir seam privada para injetar falhas separadas de
+criação, configuração e atribuição do Job. O gate ainda precisará ganhar os seis cenários
+runtime após a seam; não pode ser promovido diretamente a PASS.
+
+Não há `GATE-DEFECT` observado em B1/B2. B3 é evidência válida da seam ausente, mas ainda
+não é gate runtime completo. SG-1 e SG-2 bloqueiam C conforme o protocolo; não se altera
+produção parcialmente para contorná-los.
