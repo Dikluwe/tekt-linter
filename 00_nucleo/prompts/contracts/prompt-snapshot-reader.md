@@ -116,12 +116,14 @@ crystalline-lint --update-snapshot .
 ```
 
 O linter lê a interface pública atual de cada arquivo com V6,
-serializa via `PromptSnapshotReader::serialize_snapshot()`,
+serializa via port L2 `SnapshotRewriter::serialize_snapshot()`, implementado pelo mesmo
+adapter L3 que conhece o formato canônico,
 e reescreve a seção `## Interface Snapshot` do prompt correspondente.
 Atualiza também `@updated` no header do prompt.
 
-Requer prompt `fix-hashes.md` (revisão) para registrar
-`--update-snapshot` como novo comando de mutação em L2/L3.
+Requer prompt `fix-hashes.md` como autoridade do planejamento e execução do comando em
+L2/L3. `PromptSnapshotReader` permanece o contrato de leitura; não possui ownership do
+caso de uso de mutação.
 
 ---
 

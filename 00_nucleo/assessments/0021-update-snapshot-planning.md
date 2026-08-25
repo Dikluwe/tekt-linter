@@ -1,6 +1,6 @@
 # Assessment 0021 — planejamento e execução de update-snapshot
 
-**Estado:** PREFLIGHT — SPEC-GAP congelado; produção ainda não confrontada
+**Estado:** PREFLIGHT — SPEC-GAP saneado; produção ainda não confrontada
 **Data:** 2026-08-24
 **Passo:** P0092
 **Baseline:** `aee1344`
@@ -10,14 +10,14 @@
 
 | Unidade | Caminho | SHA-256 |
 |---|---|---|
-| fluxo fix/update | `00_nucleo/prompts/fix-hashes.md` | `7933d862fa3b27f4fb0cda36c654c96041c2b85ef5141e202717a770d3a138c7` |
-| contrato snapshot | `00_nucleo/prompts/contracts/prompt-snapshot-reader.md` | `94ba7d51f32778d7bf74a89b16920e3b22078ebc79a7a6cd70cbad767f6add21` |
+| fluxo fix/update | `00_nucleo/prompts/fix-hashes.md` | `dd987d35beced5bd7fb6a0961f1e2cfa08d85d4c6f8a3702f797f7a6f32e8024` |
+| contrato snapshot | `00_nucleo/prompts/contracts/prompt-snapshot-reader.md` | `80b6f7ab9fbb0f97fa085d7a34802792eb6fce4834ac204775b47749c77985be` |
 | tipos V6/IR | `00_nucleo/prompts/violation-types.md` | `147afa0d8f3f3e6e30e050590dad0b99c7da8486d3565e3f6c42f7fa883ea4dc` |
-| apresentação/CLI | `00_nucleo/prompts/sarif-formatter.md` | `2d4ccf4d260337199146ce75b8b80a8b51d01cb685273b2aab5d7b9ae8d733a7` |
+| apresentação/CLI | `00_nucleo/prompts/sarif-formatter.md` | `959d6e56785e6c32087fcae361300304d4a8197a2669f9df7f2b4809a4842605` |
 | arquitetura do pipeline | `00_nucleo/prompts/linter-core.md` | `908a00fd7e4eaa985b755682fb73984cbb886496ce988070f176ad307ec24446` |
 | protocolo segregado | `00_nucleo/prompts/segregated-materialization.md` | `366fd0855c6b04e533f4f4a477a73d7e5ec65f24c056720c61fca906bb5299a4` |
 | ADR segregado | `00_nucleo/adr/0020-piloto-materializacao-segregada.md` | `ee1a4a7f3665674b008d127373ed23fc6762d0ff13b2ca83efe5d2ace1539d23` |
-| protocolo P0092 | `00_nucleo/tekt-linter-passo-0092-auditoria-planejamento-update-snapshot.md` | `1a37cbf51d7a35f4d789c5985160b690c3e785bd7748b876b5a6a44228650deb` |
+| protocolo P0092 | `00_nucleo/tekt-linter-passo-0092-auditoria-planejamento-update-snapshot.md` | `7263ca5e668d3377af85c5590fea2937a7228853b59bd654865fc468922d3ec7` |
 
 ## Alegações candidatas
 
@@ -87,6 +87,25 @@ hashes resselados. A decisão recomendada, sujeita ao adversário A, é:
 - dry-run como resultado explícito distinto de escrita realizada;
 - execução estável, uma chamada por acionável e continuação após falha;
 - zero I/O em L2; apenas o port pode produzir efeito externo.
+
+## Parecer adversarial A e saneamento
+
+O adversário A validou os oito hashes iniciais e concluiu `SPEC-GAP / BLOCKED`, com
+G1–G5 confirmados. Qualquer gate anterior ao saneamento seria `GATE-DEFECT`.
+
+O L0 foi saneado antes de ler produção:
+
+- API única `SnapshotRewriter` com serialização e escrita separadas;
+- enums públicos e comparáveis `SnapshotUnreadable`, `SnapshotEntry` e
+  `SnapshotResult`, sem combinações inválidas de `Option`s;
+- uma entrada por ocorrência V6, ordem e duplicatas preservadas;
+- primeiro `ParsedFile` de path integralmente igual, sem normalização;
+- estados distintos para missing parsed/header, sem serialização;
+- um resultado por entrada; dry-run distinto, escrita única, erro exato e continuação;
+- ownership L2/L3/L4 e ausência de I/O em L2 explícitos.
+
+Os hashes acima resselam o contrato. B1/B2 podem ser materializados cegamente; produção
+continua proibida até ambos serem congelados.
 
 ## Papéis
 
