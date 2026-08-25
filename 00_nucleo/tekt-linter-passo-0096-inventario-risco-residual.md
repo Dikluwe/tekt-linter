@@ -49,7 +49,7 @@ até resselamento.
 
 ## Universo e unidade de análise
 
-O universo inicial inclui produção em `01_core`, `02_shell`, `03_infra` e `04_forge`,
+O universo inicial inclui produção em `01_core`, `02_shell`, `03_infra` e `04_wiring`,
 seus comandos em `main.rs`/CLI, configuração, fixtures e consumidores externos presentes
 no workspace. Diretórios gerados, dependências vendorizadas e artefatos de build ficam
 fora.
@@ -172,7 +172,7 @@ P0096 fecha somente como:
 ## Validação mínima
 
 1. baseline e todos os insumos efetivamente usados hash-pinned;
-2. cobertura explícita de `01_core`, `02_shell`, `03_infra`, `04_forge` e CLI;
+2. cobertura explícita de `01_core`, `02_shell`, `03_infra`, `04_wiring` e CLI;
 3. busca reversa produtor→consumidor e consumidor→produtor;
 4. reconciliação de cada Assessment 0001–0024 com pelo menos uma seam ou justificativa de
    ausência;
