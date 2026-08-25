@@ -35,7 +35,8 @@ use crystalline_lint::infra::cpp_parser::CppParser;
 use crystalline_lint::infra::crate_registry::CrateRegistry;
 use crystalline_lint::infra::elixir_parser::ElixirParser;
 use crystalline_lint::infra::git_refinement::{
-    extract_revision_snapshot, require_self_contained_object_database, resolve_commit,
+    extract_revision_snapshot, extract_snapshot_from_revision_content, load_revision_with_git,
+    require_self_contained_object_database, resolve_commit, GitRevisionError,
 };
 use crystalline_lint::infra::go_parser::GoParser;
 use crystalline_lint::infra::hash_writer;
@@ -78,6 +79,24 @@ use crystalline_lint::shell::refinement::{
 };
 use crystalline_lint::shell::update_snapshot::{self, SnapshotRewriter};
 use std::collections::HashMap;
+
+fn select_git_executable() -> Result<PathBuf, String> {
+    let path = std::env::var_os("PATH").ok_or("PATH is not set")?;
+    for directory in std::env::split_paths(&path) {
+        #[cfg(windows)]
+        let candidates = [directory.join("git.exe"), directory.join("git")];
+        #[cfg(not(windows))]
+        let candidates = [directory.join("git")];
+        for candidate in candidates {
+            if candidate.is_file() {
+                return candidate
+                    .canonicalize()
+                    .map_err(|error| format!("cannot resolve Git executable: {error}"));
+            }
+        }
+    }
+    Err("Git executable not found in PATH".to_string())
+}
 
 fn main() {
     let cli = Cli::parse();
@@ -297,10 +316,6 @@ fn main() {
     }
 
     if let Some(RefinementCommand::RefineRevisions(args)) = &cli.command {
-        require_self_contained_object_database(&args.repository).unwrap_or_else(|error| {
-            eprintln!("crystalline-lint: refinement repository error: {error}");
-            process::exit(2)
-        });
         let specs = load_observable_specs(&args.contract).unwrap_or_else(|error| {
             eprintln!("crystalline-lint: refinement contract error: {error}");
             process::exit(2);
@@ -309,27 +324,56 @@ fn main() {
             eprintln!("crystalline-lint: refinement contract error: {error}");
             process::exit(2);
         });
-        let before_oid =
-            resolve_commit(&args.repository, &args.before_ref).unwrap_or_else(|error| {
-                eprintln!("crystalline-lint: before ref error: {error}");
-                process::exit(2);
-            });
-        let after_oid = resolve_commit(&args.repository, &args.after_ref).unwrap_or_else(|error| {
-            eprintln!("crystalline-lint: after ref error: {error}");
+        let git_executable = select_git_executable().unwrap_or_else(|error| {
+            eprintln!("crystalline-lint: refinement Git error: {error}");
             process::exit(2);
         });
-        let source = extract_revision_snapshot(&args.repository, &before_oid, &specs)
-            .unwrap_or_else(|error| {
-                eprintln!("crystalline-lint: before revision extraction error: {error}");
+        let logical_paths: Vec<PathBuf> = specs.iter().map(|spec| spec.file.clone()).collect();
+        let before = load_revision_with_git(
+            &git_executable,
+            &args.repository,
+            std::ffi::OsStr::new(&args.before_ref),
+            &logical_paths,
+        )
+        .unwrap_or_else(|error| {
+            if error == GitRevisionError::InvalidInput {
+                eprintln!("crystalline-lint: before revision extraction error: path budget exceeded or invalid input");
+                process::exit(2);
+            }
+            eprintln!(
+                "crystalline-lint: before revision extraction error in self-contained repository: {error:?}"
+            );
+            process::exit(2);
+        });
+        let after = load_revision_with_git(
+            &git_executable,
+            &args.repository,
+            std::ffi::OsStr::new(&args.after_ref),
+            &logical_paths,
+        )
+        .unwrap_or_else(|error| {
+            if error == GitRevisionError::InvalidInput {
+                eprintln!("crystalline-lint: after revision extraction error: path budget exceeded or invalid input");
+                process::exit(2);
+            }
+            eprintln!(
+                "crystalline-lint: after revision extraction error in self-contained repository: {error:?}"
+            );
+            process::exit(2);
+        });
+        let source =
+            extract_snapshot_from_revision_content(&before, &specs).unwrap_or_else(|error| {
+                eprintln!("crystalline-lint: before revision projection error: {error}");
                 process::exit(2);
             });
-        let target = extract_revision_snapshot(&args.repository, &after_oid, &specs)
-            .unwrap_or_else(|error| {
-                eprintln!("crystalline-lint: after revision extraction error: {error}");
+        let target =
+            extract_snapshot_from_revision_content(&after, &specs).unwrap_or_else(|error| {
+                eprintln!("crystalline-lint: after revision projection error: {error}");
                 process::exit(2);
             });
         eprintln!(
-            "crystalline-lint: comparing immutable Git objects {before_oid} -> {after_oid}; working tree ignored"
+            "crystalline-lint: comparing immutable Git objects {} -> {}; working tree ignored",
+            before.oid, after.oid
         );
         let verdict = compare_refinement(&contract, &source, &target);
         match args.format {
