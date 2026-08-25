@@ -4,7 +4,8 @@
 > original `.tekt`. ADR-0022 Rev. 1 substitui apenas a representação física por `.toml`;
 > claims, framing, hashes e gates permanecem históricos válidos.
 
-**Estado:** READY WITH RESIDUAL AUDIT — implementação verde; integração bloqueada por P0104/P0106
+**Estado atual:** SUPERSEDED FOR INTEGRATION — bloqueios fechados por P0106/P0107
+**Estado histórico em P0105:** READY WITH RESIDUAL AUDIT — integração então bloqueada por P0104/P0106
 **Data:** 2026-08-25
 **Passo:** P0105
 **Baseline:** `4765cd5`
@@ -124,5 +125,7 @@ preexistente na segunda passagem; fechado por leitor fresco em `c64b785`.
 3. Os novos headers permanecem sem resselo oficial porque o reparador corretamente bloqueia
    nos 13 V15 históricos. P0106 deve individualizar esses prompts antes de merge/instalação.
 
-P0105 está funcionalmente pronto, mas o branch não é merge-ready enquanto o bloqueio
-herdado de P0104 não for sanado.
+Na data de P0105, o branch não era merge-ready enquanto o bloqueio herdado de P0104 não
+fosse sanado. Esse estado histórico foi resolvido por P0106: Assessment 0034 fechou os 44
+owners, V15=0 e o resselo no commit `b458714`. P0107 migrou a representação para TOML e
+emitiu parecer pré-merge favorável no Assessment 0035/commit `adc7c6d`.
