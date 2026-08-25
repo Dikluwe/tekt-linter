@@ -268,6 +268,10 @@ ou um alias configurado é tratado como pacote externo (`Layer::Unknown`).
 
 ## Comandos CLI
 
+A sinopse raiz abaixo descreve o lint. Os fluxos também incluem nominalmente os
+subcomandos `snapshot`, `refine` e `refine-revisions`; a gramática CLI global será
+reconciliada em F09.
+
 ```
 crystalline-lint [OPTIONS] [PATH]
 
@@ -354,6 +358,8 @@ IDs duplicados falham como erro de configuração.
 
 ### Comparar snapshots por refinamento
 
+`refine` opera somente sobre arquivos de snapshot fornecidos e não executa Git.
+
 Gerar um snapshot Rust determinístico:
 
 ```bash
@@ -376,6 +382,35 @@ crystalline-lint refine \
   --contract refinement.toml \
   --format text
 ```
+
+#### Comparar revisões Git locais
+
+```bash
+crystalline-lint refine-revisions <repository-root> \
+  --before-ref <sha-ou-ref> --after-ref <sha-ou-ref> \
+  --contract refinement.toml
+```
+
+O requisito externo é Git local 2.43 ou compatibilidade demonstrada com
+`--batch-command` e `--end-of-options`. Cada ref é resolvida uma única vez para commit
+OID; somente esses OIDs imutáveis participam da enumeração, extração, identidade e
+testemunhas. O adapter usa argumentos separados, nunca shell, e lê somente blobs
+regulares e objetos locais. Não usa rede, fetch ou protocolos externos, não executa
+build, não grava temporários de diagnóstico, não executa nem atravessa hooks, filtros,
+textconv, LFS, symlinks ou submódulos e não altera checkout, working tree, índice, HEAD,
+branch, refs ou stash.
+
+Os budgets são 512 paths observáveis, 4 MiB por blob, 32 MiB por revisão e 10 segundos
+por operação Git. Arquivo ausente no tree segue `on_missing`; ref inexistente é erro de
+entrada. Objeto esperado ausente ou ilegível, symlink, submódulo, framing inválido ou
+budget excedido produz erro de entrada ou `Unknown`, nunca ausência conhecida. Nenhum
+resultado pode ser publicado a partir de conteúdo truncado. Para o mesmo conteúdo, o
+resultado deve ser equivalente a `snapshot + refine`.
+
+Os resultados semânticos possíveis são `Preserved`, `Violated`, `Unknown` e erro de
+entrada. A definição de códigos numéricos e precedência de `refine-revisions` pertence
+a F09; este guia não altera a tabela geral de exits do lint nem os exits já publicados
+de `refine`.
 
 Snapshot JSON, com ausência conhecida diferente de evidência desconhecida:
 
