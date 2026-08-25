@@ -35,7 +35,7 @@ ordem primária por γ absoluto, descreve percentual como secundário e formula 
 | Unidade | Caminho | SHA-256 |
 |---|---|---|
 | taxonomia N16 | `00_nucleo/adr/0017-v16-v21-diferenca-categorica.md` | `79f406654aacf3693616232a4fdbb911e359486d089ffde841af5375625104dd` |
-| especificação histórica do relatório | `00_nucleo/tekt-linter-passo-0069-relatorio-n16-por-modulo.md` | `23c19e39de0843a21ec0f55d929ce5ed71af14c635fe3a1b60c36ee7dfc328ad` |
+| especificação histórica do relatório | `00_nucleo/tekt-linter-passo-0069-relatorio-n16-por-modulo.md` | `5c2a2a7f5c82d78e3c747f9f35b93d7e0679ae6e126e6c7c28efce75d5b4f1c5` |
 | contrato V16/exceções | `00_nucleo/prompts/rules/wildcard-saturation.md` | `19f79428f1e7c9740ae7f2466f03bc82c22a5632a2388e5b2c587a3fa2588609` |
 | arquitetura do pipeline | `00_nucleo/prompts/linter-core.md` | `9446277167f07dc5290617855cff456f061aa052ce8bd51ecf980530800b8c00` |
 | apresentação pública | `00_nucleo/prompts/sarif-formatter.md` | `bd0a915c775c97482b1890a67c83b993d62a6fd0decf1dbd0f5913ade0afefa0` |
