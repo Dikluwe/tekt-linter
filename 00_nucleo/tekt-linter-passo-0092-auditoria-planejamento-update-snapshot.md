@@ -1,8 +1,8 @@
 # Passo operacional 0092 — auditoria segregada do planejamento update-snapshot
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** planejado; não executado
-> **Branch prevista:** `codex/audit-update-snapshot-planning`
+> **Estado:** executado parcialmente; `BLOCKED` pelo dry-run de apresentação
+> **Branch:** `codex/audit-update-snapshot-planning`
 > **Pré-condição:** P0091 integrado em `master`, worktree limpo e branch nova criada a
 > partir do merge
 > **Predecessor:** P0091
@@ -154,3 +154,21 @@ Fechar somente como `READY WITH RESIDUAL AUDIT` ou `BLOCKED`.
 
 P0092 não autoriza merge, push, instalação ou release. Sem integração prévia do P0091,
 a execução deve parar antes de criar branch concorrente.
+
+## Resultado
+
+O preflight encontrou cinco `SPEC-GAPs`: nome/API conflitante do port, tipos de
+plano/resultado ausentes, duplicatas sem precedência, entrada não acionável sem resultado
+e dry-run/continuação incompletos. O adversário A confirmou `SPEC-GAP / BLOCKED`; o L0
+foi saneado e resselado antes dos gates.
+
+B1 e B2 independentes congelaram RED pela ausência dos enums normativos e de suas
+variantes. O confronto mostrou structs com campos opcionais e `execute().filter_map()`
+descartando entradas não acionáveis. A correção introduziu estados tipados, preservou uma
+entrada/resultado por ocorrência V6 e manteve o port como única fronteira de efeitos.
+
+B1 passou 3/3; B2 passou 2/2. A suíte global, 83 fixtures, auto-lint V5/V6/V7/V12,
+hashes, `rustfmt` dirigido e `git diff --check` passaram. O adversário D bloqueou o
+fechamento porque o consumidor real de dry-run usa `format_plan`, que omite o
+snapshot/interface exigido pelo L0, e `format_results` rotularia dry-run como atualização
+realizada. Falta congelar e fechar esse RED. Não houve merge, push, instalação ou release.
