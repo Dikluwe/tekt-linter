@@ -1,6 +1,6 @@
 # Assessment 0030 — fechamento dos REDs Git de F05
 
-**Estado:** PROTOCOLO CONGELADO — gates e produção proibidos
+**Estado:** GATES B1–B3 CONGELADOS EM RED — produção ainda proibida até B4
 **Data:** 2026-08-25
 **Passo:** P0101
 **Baseline funcional:** `ba6f3a1c6cf0142ff44075fce6cd903a5f3d1dcf`
@@ -52,3 +52,26 @@ cross-check auxiliar sejam materializados.
 
 P0101 pode fechar melhorias Linux como evidência parcial, mas F05 só fecha com R1–R5
 `PASS`. Resultado final: `READY WITH RESIDUAL AUDIT` ou `BLOCKED`. Sem merge/push.
+
+## Materialização B1–B3
+
+| Gate | SHA-256 | Resultado inicial | Classificação |
+|---|---|---|---|
+| B1 `tests/git_refinement_stream_lifecycle_assessment.rs` | `c946032e31c083d051705f4bfe3ff66c8d03d5894822a99cb47ab8fe7af615f0` | 1/4 PASS | R3 e R5 `RED` |
+| fixture B1 `tests/fixtures/git_refinement_stream_lifecycle/fake-git.sh` | `01c05c918eaf376405e511f624f5f4837ec087f80899cff3d87020a2351fc430` | hostil reproduzível; cleanup confirmou ausência de processo remanescente | evidência |
+| B2 `tests/git_refinement_object_containment_assessment.rs` | `8d612adac31fc168b2904b4ef32c82f34573a6e753780edf9e9a8a35e4a33925` | 2/7 PASS | R4 `RED` em cinco escapes |
+| B3 `tests/git_refinement_productive_route_assessment.rs` | `5d79bc4ac2a96f3e88252b8df654bfd6f9afe7f04bc63835adb00724b8af7cf9` | 2/3 PASS | R1 `RED` |
+
+B1 prova que header oversized com pipe aberto termina em `Timeout`, que líder encerrado
+com descendente segurando pipes ultrapassa o watchdog externo e que descendente sem pipes
+permite publicação sem prova de contenção. O controle de cap de transcript já falha cedo.
+
+B2 prova publicação indevida de bytes por symlink em loose object, fanout, `.pack`, `.idx`
+e troca regular→symlink após preflight. Os dois controles internos regulares passam.
+
+B3 entra pelo comando publicado. O transcript mostra seis chamadas pelo adapter histórico,
+com argv diferente da seam L3. Framing inválido interrompe antes do comparador, e bytes
+iguais preservam equivalência semântica com a rota pública `snapshot + refine`.
+
+Nenhuma expectativa foi adaptada à produção. B1–B3 não usam código de exit como oráculo;
+não há `SPEC-GAP` nem `GATE-DEFECT` identificado nesta materialização.
