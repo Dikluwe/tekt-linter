@@ -139,7 +139,7 @@ pub type N16Stats = BTreeMap<String, N16ModuleStats>;
 pub fn extract_n16_tag(text: &str) -> Option<N16Tag>;
 pub fn extract_n16_module_name(path: &Path) -> String;
 pub fn collect_n16_stats(
-    sources: &[crystalline_lint::core::contracts::file_provider::SourceFile],
+    sources: &[crystalline_lint::contracts::file_provider::SourceFile],
     exceptions: &HashMap<String, String>,
 ) -> N16Stats;
 pub fn format_n16_summary(stats: &N16Stats, min_sample_size: usize) -> String;
@@ -162,7 +162,7 @@ pub struct SourceFile {
 }
 ```
 
-`Language` e `Layer` vivem em `crystalline_lint::core::entities::layer`; o gate usa
+`Language` e `Layer` vivem em `crystalline_lint::entities::layer`; o gate usa
 `Language::Rust` e `Layer::L1`. Esses campos são somente dados injetados: sua publicação
 não autoriza L2 a descobrir ou ler arquivos.
 
