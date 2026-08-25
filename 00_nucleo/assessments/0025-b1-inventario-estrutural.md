@@ -34,15 +34,17 @@
 - Produtor L3: `03_infra/refinement_seal.rs`.
 - Consumidor L4: bloco Seal em `04_wiring/main.rs`.
 - Efeitos: leitura/canonicalização, hashes, serialização, criação e rename.
-- Evidência: três unitários e quinze casos em `segregated_materialization_cli`.
-- Lacunas factuais: sem Assessment dedicado; leituras sem limites/regularidade explícita;
-  temporário PID-based sem preservação de modo/sync; composição/exit monolíticos em L4.
+- Evidência: três unitários e dezesseis casos em `segregated_materialization_cli`.
+- Lacunas factuais: não há Assessment individual nomeado para o módulo, mas há fechamento
+  histórico e cobertura fim-a-fim em `segregated_materialization_cli`; leituras sem limites/regularidade explícita;
+  temporário PID-based sem preservação explícita de modo nem fsync do diretório;
+  `file.sync_all()` sincroniza o arquivo; composição/exit monolíticos em L4.
 
 ### S4 — orquestração principal do lint
 
 - Coordenador L4: montagem, `run_pipeline`, `run_checks`, pós-reduce e branches mutantes em
   `04_wiring/main.rs`.
-- Consumidores: CLI/exit e adapters L3 de hash/snapshot.
+- Consumidores: CLI/exit e adapters L4 para ports L2 de hash/snapshot, delegando I/O a L3.
 - Efeitos: filesystem, Rayon, stdout/stderr, exit e rerun após escrita.
 - Evidência fragmentada pelos Assessments de walker, parser, regras, apresentação e
   writers.
@@ -57,8 +59,9 @@
 - Efeitos: tree-sitter, prompt/hash/snapshot e resolução de registry/root em variantes.
 - Evidência: gates MultiParser provam slots/propagação; unitários e fixtures de parsers são
   acoplados.
-- Lacunas factuais: nenhum Assessment dedicado à fidelidade IR por linguagem; gates das
-  regras usam IR sintético e gates de roteamento usam spies.
+- Lacunas factuais: nenhum Assessment dedicado à fidelidade IR por linguagem; gates
+  independentes de várias regras usam IR sintético e gates de roteamento usam spies,
+  embora fixtures e CLIs exercitem parsers reais transitivamente.
 
 ### S6 — argumentos/preflight e apresentação geral
 
@@ -73,8 +76,8 @@
 
 1. `compare_refinement` recebe fatos de três produtores: loader explícito, extractor local
    e extractor Git.
-2. Todas as regras recebem IR dos nove parsers concretos; gates de regra constroem IR
-   sintético.
+2. Todas as regras recebem IR dos nove parsers concretos; gates independentes de várias
+   regras constroem IR sintético, enquanto fixtures/CLIs usam parsers reais transitivamente.
 3. Writers L3 são alcançados por adapters L4 e planos L2; gates L2 usam spies e testes CLI
    são a confrontação fim-a-fim restante.
 

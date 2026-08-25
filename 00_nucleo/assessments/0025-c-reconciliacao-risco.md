@@ -1,7 +1,7 @@
 # Assessment 0025/C — reconciliação e ranking de risco
 
 **Papel:** C, somente artefatos A/B1/B2 congelados
-**Resultado:** PASS
+**Resultado:** INVALIDADO POR RED D1 — substituição obrigatória
 **Produção/testes lidos:** não
 
 ## Insumos

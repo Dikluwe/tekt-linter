@@ -9,10 +9,10 @@
 
 | Assessment | Seam | Cobertura | Resíduo/fronteira reservada |
 |---|---|---|---|
-| 0001 | Git imutável, revisões e blobs | CLOSED_WITH_RESIDUAL | matriz Windows não executada neste host |
+| 0001 | Git imutável, revisões e blobs | CLOSED | — |
 | 0002 | entidades, severidade e redução ProjectIndex | CLOSED | — |
 | 0003 | ordenação, texto, SARIF e `should_fail` | CLOSED_WITH_RESIDUAL | path Windows condicional |
-| 0004 | crate registry, ownership e V22 | CLOSED_WITH_RESIDUAL | projeto não Cargo e percentual com uma decimal |
+| 0004 | crate registry, ownership e V22 | CLOSED | — |
 | 0005 | config e descoberta walker | CLOSED_WITH_RESIDUAL | EACCES real não reproduzido portavelmente |
 | 0006 | prompt reader/walker/snapshot/hash/writers | CLOSED_WITH_RESIDUAL | frescura e TOCTOU externo |
 | 0007 | V5/V6/V7 | CLOSED_WITH_RESIDUAL | `describe()` V6 não expõe todo desempate |
@@ -21,7 +21,7 @@
 | 0010 | V3/V9 imports/evidência | CLOSED | resolução upstream fora da seam |
 | 0011 | V12/V13 | CLOSED | — |
 | 0012 | V4/V14 | CLOSED | — |
-| 0013 | fechamento transversal 0001–0012 | CLOSED_WITH_RESIDUAL | rustfmt legado, Typst e matrizes condicionais |
+| 0013 | fechamento transversal 0001–0012 e materialização/refinement | CLOSED_WITH_RESIDUAL | selo/infra/wiring fechados com gate 16/16; rustfmt legado, Typst e matrizes condicionais |
 | 0014 | V17–V20 L1 | CLOSED | — |
 | 0015 | V23–V25 L1 | CLOSED | integração/extrator/config/agregação PARTIAL |
 | 0016 | V16 L1 | CLOSED | parser `DecisionExpr` e wiring config PARTIAL |
@@ -44,6 +44,11 @@
 6. CLI versionado N16: residual;
 7. garantias fortes TOCTOU/fingerprint: residual, novo L0 se ampliadas;
 8. rustfmt global e artefatos Typst: histórico/fora do universo funcional Rust.
+
+A materialização/refinement do selo, incluindo contrato, entidade, infraestrutura e
+wiring, foi fechada pelo Assessment 0013 com `segregated_materialization_cli` 16/16. Sem
+mudança funcional ou novo consumidor demonstrado, essa seam é `CLOSED_WITH_RESIDUAL`, não
+`UNAUDITED`, e não pode ser candidata por simples renomeação da fronteira.
 
 Não foi encontrada mudança posterior que contradiga um fechamento. Classificadores L1
 fechados não podem ser reabertos ao inventariar integração upstream/downstream.
