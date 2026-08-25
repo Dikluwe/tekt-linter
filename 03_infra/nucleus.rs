@@ -259,6 +259,32 @@ pub fn effective_prompt_hash_at(root: &Path, prompt_path: &str) -> Result<String
     effective_prompt_hash(&bytes, &dependencies)
 }
 
+pub fn refresh_prompt_nucleus_pins(
+    root: &Path,
+    bytes: &[u8],
+) -> Result<(Vec<u8>, Vec<HashDependency>), String> {
+    let references = parse_prompt_nucleus_refs(bytes)?;
+    let mut text = std::str::from_utf8(bytes)
+        .map_err(|error| error.to_string())?
+        .to_owned();
+    let mut cache = BTreeMap::new();
+    let mut dependencies = Vec::new();
+    for reference in references {
+        let digest = load_effective(root, &reference.path, &mut BTreeSet::new(), &mut cache)?;
+        let old = format!("- {} sha256:{}", reference.path, reference.sha256);
+        let new = format!("- {} sha256:{}", reference.path, hex::encode(digest));
+        if !text.contains(&old) {
+            return Err(format!("nucleus reference disappeared: {}", reference.path));
+        }
+        text = text.replacen(&old, &new, 1);
+        dependencies.push(HashDependency {
+            path: reference.path,
+            digest,
+        });
+    }
+    Ok((text.into_bytes(), dependencies))
+}
+
 #[derive(Debug, Default)]
 pub struct NucleusAudit {
     pub entries: Vec<crate::rules::nucleus_integrity::NucleusGraphEntry>,

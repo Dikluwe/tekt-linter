@@ -677,6 +677,7 @@ fn main() {
                         violation.level,
                         ViolationLevel::Error | ViolationLevel::Fatal
                     )
+                    && !violation.message.starts_with("stale nucleus pin ")
             })
             .count();
         if nucleus_errors > 0 {
@@ -718,6 +719,7 @@ fn main() {
                     new_hash,
                     source_hash,
                 } => Some(hash_writer::prepare_pair(
+                    &nucleo_root,
                     source_path,
                     prompt_path,
                     &nucleo_root.join(prompt_path),
@@ -784,57 +786,62 @@ fn main() {
 
         // Re-run analysis to count remaining V5
         let remaining_v5 = {
+            let fresh_prompt_reader = std::sync::Arc::new(
+                crystalline_lint::infra::prompt_reader::CachedPromptReader::new(FsPromptReader {
+                    nucleo_root: nucleo_root.clone(),
+                }),
+            );
             let reparser = MultiParser {
                 rust: RustParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     crate_registry.clone(),
                 ),
                 ts: TsParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 py: PyParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 c: CParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 cpp: CppParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 zig: ZigParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 go: GoParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 java: JavaParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
                 ),
                 elixir: ElixirParser::new(
-                    shared_prompt_reader.clone(),
+                    fresh_prompt_reader.clone(),
                     shared_snapshot_reader.clone(),
                     config.clone(),
                     cli.path.clone(),
