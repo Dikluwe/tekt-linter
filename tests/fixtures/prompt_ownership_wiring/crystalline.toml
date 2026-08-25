@@ -1,0 +1,16 @@
+[project]
+root = "."
+
+[layers]
+L0 = "00_nucleo"
+L1 = "01_core"
+L2 = "02_shell"
+L3 = "03_infra"
+L4 = "04_wiring"
+lab = "05_lab"
+
+[excluded]
+tests = "tests"
+
+[excluded_files]
+gate_control = "01_core/excluded.rs"

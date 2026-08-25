@@ -22,3 +22,7 @@ pub mod infra;
 // ── L2: Shell ────────────────────────────────────────────────────────────────
 #[path = "02_shell/mod.rs"]
 pub mod shell;
+
+pub use rules::multi_prompt_header::{
+    check_prompt_ownership, PromptOwnership, PromptOwnershipLayer,
+};
