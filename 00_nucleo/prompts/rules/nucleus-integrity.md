@@ -1,5 +1,5 @@
 # Prompt: regra V26 — integridade de Núcleos Tekt
-Hash do Código: PENDENTE_P0105
+Hash do Código: 00000000
 
 ## Contexto
 
@@ -14,6 +14,8 @@ achados determinísticos V26 sem I/O ou normalização física.
 ## Restrições
 
 - identidade é path lógico integral e case-sensitive;
+- identidade canônica termina em `.toml` sob `_nuclei`;
+- `.tekt` legado e TOML sem schema no namespace são V26 explícitos;
 - múltiplos prompts podem usar o mesmo núcleo;
 - ordem de entrada não altera bytes de saída;
 - ausência/ciclo é Error; órfão é Warning;

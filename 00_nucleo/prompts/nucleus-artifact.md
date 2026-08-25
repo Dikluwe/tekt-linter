@@ -1,10 +1,10 @@
 # Prompt: artefato compartilhável Núcleo Tekt
-Hash do Código: PENDENTE_P0105
+Hash do Código: 00000000
 
 ## Contexto
 
 `@prompt` é ownership 1:1. Invariantes realmente comuns precisam de relação distinta que
-não gere código. ADR-0022 define `.tekt` como Núcleo Tekt compartilhável por prompts.
+não gere código. ADR-0022 Rev. 1 define TOML sob `_nuclei` como Núcleo Tekt compartilhável.
 
 ## Instrução
 
@@ -16,8 +16,9 @@ L3 lê/parseia/hasheia; L4 agrega; L2 planeja apresentação e reparo.
 
 - preservar hashes atuais de prompts sem núcleo;
 - rejeitar campos desconhecidos, ciclos, missing e paths fora do namespace;
-- não permitir `@prompt` apontando para `.tekt`;
-- não executar conteúdo `.tekt`;
+- não permitir `@prompt` apontando para `_nuclei/*.toml`;
+- rejeitar `.tekt` e `.tekt.toml` como formatos legados/ambíguos;
+- não executar conteúdo TOML;
 - não listar consumers dentro do núcleo;
 - nunca escolher ordem por filesystem ou `HashMap`;
 - não escrever antes de preflight do grafo integral.

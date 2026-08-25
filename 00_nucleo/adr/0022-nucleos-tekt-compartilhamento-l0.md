@@ -1,9 +1,9 @@
 # ADR-0022 — Núcleos Tekt para contratos L0 compartilháveis
 
-**Estado:** aceito
+**Estado:** aceito — Rev. 1
 **Data:** 2026-08-25
 **Decisor:** mantenedor humano
-**Contexto:** P0104–P0105
+**Contexto:** P0104–P0105; representação física revisada por P0107
 
 ## Contexto
 
@@ -14,9 +14,9 @@ permitir prompt plural destruiria a bijeção.
 
 ## Decisão
 
-Criar o **Núcleo Tekt**, artefato L0 declarativo `.tekt`:
+Criar o **Núcleo Tekt**, artefato L0 declarativo TOML:
 
-- localização canônica `00_nucleo/prompts/_nuclei/**/*.tekt`;
+- localização canônica `00_nucleo/prompts/_nuclei/**/*.toml`;
 - TOML 1.0 estrito, `tekt = 1`, `kind = "nucleus"`;
 - contém claims atômicas e pode depender de outros núcleos;
 - forma DAG e pode ser consumido por zero ou mais prompts;
@@ -35,13 +35,25 @@ incompleta não produzem digest e falham fechados.
 
 Claims são linguagem natural estruturada com modalidade `must`, `must-not` ou `may`. O
 linter prova estrutura, proveniência e propagação de mudança; não prova a verdade da
-claim. `.tekt` v1 não possui expressões, macros, condicionais ou execução.
+claim. Núcleo TOML v1 não possui expressões, macros, condicionais ou execução.
+
+## Revisão 1 — representação TOML
+
+A primeira implementação usava sintaxe TOML 1.0 com extensão proprietária `.tekt`. Como
+não existe linguagem própria, P0107 torna a extensão física coerente com a serialização:
+`.toml`. A identidade do artefato é dada conjuntamente pelo namespace `_nuclei`, schema
+fechado, `tekt = 1` e `kind = "nucleus"`; nenhum TOML fora desse namespace é Núcleo Tekt.
+
+`.tekt` não é alias legado: sua presença é erro V26 explícito. `.tekt.toml` também é
+inválido. A revisão não altera claims, modalidades, DAG, limites, hashing transitivo ou a
+proibição de código referenciar núcleo diretamente.
 
 ## Consequências
 
 Prompts proprietários ficam menores sem perder contratos comuns. Mudança compartilhada
 invalida todos os consumers de forma determinística. Surge um grafo L0 próprio, com custo
-de parser, walker, hashing transitivo, rollback e diagnóstico.
+de parser, walker, hashing transitivo, rollback e diagnóstico. A extensão conhecida permite
+tooling TOML comum sem sugerir uma DSL nova.
 
 ## Alternativas rejeitadas
 

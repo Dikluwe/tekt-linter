@@ -1,5 +1,8 @@
 # Passo operacional 0105 — artefato compartilhável Núcleo Tekt (`.tekt`)
 
+> **Nota histórica:** a extensão `.tekt` especificada neste passo foi superseded por
+> ADR-0022 Rev. 1/P0107. O artefato permanece Núcleo Tekt, agora serializado como `.toml`.
+
 > **Natureza:** envelope operacional temporário; a decisão permanente deve ser registrada
 > em ADR antes da produção
 > **Estado:** planejado; não executado
