@@ -1,6 +1,6 @@
 # Assessment 0030 — fechamento dos REDs Git de F05
 
-**Estado:** GATES B1–B3 CONGELADOS EM RED — produção ainda proibida até B4
+**Estado:** GATES B1–B4 CONGELADOS — produção liberada para C
 **Data:** 2026-08-25
 **Passo:** P0101
 **Baseline funcional:** `ba6f3a1c6cf0142ff44075fce6cd903a5f3d1dcf`
@@ -61,6 +61,7 @@ P0101 pode fechar melhorias Linux como evidência parcial, mas F05 só fecha com
 | fixture B1 `tests/fixtures/git_refinement_stream_lifecycle/fake-git.sh` | `01c05c918eaf376405e511f624f5f4837ec087f80899cff3d87020a2351fc430` | hostil reproduzível; cleanup confirmou ausência de processo remanescente | evidência |
 | B2 `tests/git_refinement_object_containment_assessment.rs` | `8d612adac31fc168b2904b4ef32c82f34573a6e753780edf9e9a8a35e4a33925` | 2/7 PASS | R4 `RED` em cinco escapes |
 | B3 `tests/git_refinement_productive_route_assessment.rs` | `5d79bc4ac2a96f3e88252b8df654bfd6f9afe7f04bc63835adb00724b8af7cf9` | 2/3 PASS | R1 `RED` |
+| B4 `tests/git_refinement_windows_job_assessment.rs` | `7c1541991e8b303767c3d5c0e1b8c1f89599cb4e0cd97775713bc8feed59fc35` | 0 testes neste host Linux | R2/R5 `NOT RUN / BLOCKED` |
 
 B1 prova que header oversized com pipe aberto termina em `Timeout`, que líder encerrado
 com descendente segurando pipes ultrapassa o watchdog externo e que descendente sem pipes
@@ -75,3 +76,10 @@ iguais preservam equivalência semântica com a rota pública `snapshot + refine
 
 Nenhuma expectativa foi adaptada à produção. B1–B3 não usam código de exit como oráculo;
 não há `SPEC-GAP` nem `GATE-DEFECT` identificado nesta materialização.
+
+B4 é um gate `cfg(windows)` real e compila a fixture Rust hostil no próprio runtime. Ele
+confronta associação antes do código hostil, `KILL_ON_JOB_CLOSE`, timeout com descendente
+sem pipes, líder encerrado, watchdog e contagem de handles. Neste host, `cargo test`
+descobriu zero testes: isso é `NOT RUN / BLOCKED`, jamais `PASS`. A API pública também não
+oferece fault injection para falha direta de criação/atribuição do Job; esse caminho deve
+ser confrontado no adversário Windows e não é promovido a `SPEC-GAP`.
