@@ -116,11 +116,38 @@ fn terminate_group(child: &mut Child) -> Result<(), GitRevisionError> {
     // SAFETY: `pid` is the positive PID returned for our own child. The child was
     // placed in a fresh process group whose id is that PID before it executed.
     let result = unsafe { kill(-pid, SIGKILL) };
-    if result == 0 {
+    if result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(3) {
         Ok(())
     } else {
         Err(GitRevisionError::ContainmentFailure)
     }
+}
+
+#[cfg(unix)]
+fn group_is_alive(child: &Child) -> Result<bool, GitRevisionError> {
+    extern "C" {
+        fn kill(pid: i32, signal: i32) -> i32;
+    }
+    let pid = i32::try_from(child.id()).map_err(|_| GitRevisionError::ContainmentFailure)?;
+    // SAFETY: signal zero only probes the process group created for this child.
+    let result = unsafe { kill(-pid, 0) };
+    if result == 0 {
+        Ok(true)
+    } else if std::io::Error::last_os_error().raw_os_error() == Some(3) {
+        Ok(false)
+    } else {
+        Err(GitRevisionError::ContainmentFailure)
+    }
+}
+
+#[cfg(not(unix))]
+fn group_is_alive(_child: &Child) -> Result<bool, GitRevisionError> {
+    Ok(false)
+}
+
+enum ControlledOutput {
+    Complete(Output),
+    BlobBudgetExhausted,
 }
 
 #[cfg(not(unix))]
@@ -134,7 +161,9 @@ fn run_controlled(
     mut command: Command,
     stdin: Option<Vec<u8>>,
     stdout_cap: usize,
-) -> Result<Output, GitRevisionError> {
+    deadline: Instant,
+    inspect_blob_headers: bool,
+) -> Result<ControlledOutput, GitRevisionError> {
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     command.stdin(if stdin.is_some() {
         Stdio::piped()
@@ -160,12 +189,20 @@ fn run_controlled(
         .stderr
         .take()
         .ok_or(GitRevisionError::ProcessFailure)?;
-    let (overflow_sender, overflow_receiver) = mpsc::sync_channel(1);
-    let stdout_overflow = overflow_sender.clone();
+    #[derive(Clone, Copy)]
+    enum ReaderEvent {
+        InvalidFraming,
+        BlobBudgetExhausted,
+        ContainmentFailure,
+    }
+    let (stdout_overflow, overflow_receiver) = mpsc::sync_channel(1);
     let stdout_reader = thread::spawn(move || {
         let mut bytes = Vec::new();
         let mut buffer = [0u8; 8192];
         let mut exceeded = false;
+        let mut header = Vec::new();
+        let mut payload_remaining = 0usize;
+        let mut payload_newline = false;
         loop {
             let count = stdout.read(&mut buffer)?;
             if count == 0 {
@@ -175,7 +212,39 @@ fn run_controlled(
             bytes.extend_from_slice(&buffer[..count.min(available)]);
             if count > available && !exceeded {
                 exceeded = true;
-                let _ = stdout_overflow.try_send(());
+                let _ = stdout_overflow.try_send(ReaderEvent::InvalidFraming);
+            }
+            if inspect_blob_headers {
+                for &byte in &buffer[..count] {
+                    if payload_remaining != 0 {
+                        payload_remaining -= 1;
+                        if payload_remaining == 0 {
+                            payload_newline = true;
+                        }
+                    } else if payload_newline {
+                        payload_newline = false;
+                        header.clear();
+                    } else if byte == b'\n' {
+                        if let Ok(line) = std::str::from_utf8(&header) {
+                            if let Some(size) = line
+                                .rsplit(' ')
+                                .next()
+                                .and_then(|v| v.parse::<usize>().ok())
+                            {
+                                if size > MAX_BLOB_BYTES {
+                                    let _ =
+                                        stdout_overflow.try_send(ReaderEvent::BlobBudgetExhausted);
+                                } else {
+                                    payload_remaining = size;
+                                    payload_newline = size == 0;
+                                }
+                            }
+                        }
+                        header.clear();
+                    } else {
+                        header.push(byte);
+                    }
+                }
             }
         }
         std::io::Result::Ok((bytes, exceeded))
@@ -190,25 +259,25 @@ fn run_controlled(
             }
             if !observed {
                 observed = true;
-                let _ = overflow_sender.try_send(());
             }
         }
         std::io::Result::Ok(observed)
     });
-    let started = Instant::now();
-    let status = loop {
+    let (status, event) = loop {
+        if let Ok(event) = overflow_receiver.try_recv() {
+            terminate_group(&mut child)?;
+            let status = child
+                .wait()
+                .map_err(|_| GitRevisionError::ContainmentFailure)?;
+            break (status, Some(event));
+        }
         match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) if overflow_receiver.try_recv().is_ok() => {
+            Ok(Some(status)) if group_is_alive(&child)? => {
                 terminate_group(&mut child)?;
-                child
-                    .wait()
-                    .map_err(|_| GitRevisionError::ContainmentFailure)?;
-                let _ = stdout_reader.join();
-                let _ = stderr_reader.join();
-                return Err(GitRevisionError::InvalidFraming);
+                break (status, Some(ReaderEvent::ContainmentFailure));
             }
-            Ok(None) if started.elapsed() < GIT_TIMEOUT => thread::sleep(Duration::from_millis(10)),
+            Ok(Some(status)) => break (status, None),
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
             Ok(None) => {
                 terminate_group(&mut child)?;
                 child
@@ -229,14 +298,23 @@ fn run_controlled(
         .join()
         .map_err(|_| GitRevisionError::ProcessFailure)?
         .map_err(|_| GitRevisionError::ProcessFailure)?;
+    if matches!(event, Some(ReaderEvent::BlobBudgetExhausted)) {
+        return Ok(ControlledOutput::BlobBudgetExhausted);
+    }
+    if matches!(event, Some(ReaderEvent::ContainmentFailure)) {
+        return Err(GitRevisionError::ContainmentFailure);
+    }
+    if event.is_some() {
+        return Err(GitRevisionError::InvalidFraming);
+    }
     if stdout_exceeded {
         return Err(GitRevisionError::InvalidFraming);
     }
-    Ok(Output {
+    Ok(ControlledOutput::Complete(Output {
         status,
         stdout,
         stderr: if stderr_observed { vec![1] } else { Vec::new() },
-    })
+    }))
 }
 
 fn validate_public_inputs(
@@ -327,6 +405,7 @@ pub fn load_revision_with_git(
     revision: &OsStr,
     logical_paths: &[PathBuf],
 ) -> Result<GitRevisionContent, GitRevisionError> {
+    let deadline = Instant::now() + GIT_TIMEOUT;
     let (revision, logical_paths) =
         validate_public_inputs(git_executable, repository_root, revision, logical_paths)?;
 
@@ -334,7 +413,10 @@ pub fn load_revision_with_git(
     rev_parse
         .args(["rev-parse", "--verify", "--end-of-options"])
         .arg(format!("{revision}^{{commit}}"));
-    let output = run_controlled(rev_parse, None, 65)?;
+    let ControlledOutput::Complete(output) = run_controlled(rev_parse, None, 65, deadline, false)?
+    else {
+        return Err(GitRevisionError::InvalidFraming);
+    };
     if !output.status.success() {
         return Err(GitRevisionError::MissingRef);
     }
@@ -356,7 +438,11 @@ pub fn load_revision_with_git(
     for path in &logical_paths {
         ls_tree.arg(format!(":(top,literal){path}"));
     }
-    let output = run_controlled(ls_tree, None, 2_200_000)?;
+    let ControlledOutput::Complete(output) =
+        run_controlled(ls_tree, None, 2_200_000, deadline, false)?
+    else {
+        return Err(GitRevisionError::InvalidFraming);
+    };
     if !output.status.success() {
         return Err(GitRevisionError::ProcessFailure);
     }
@@ -424,7 +510,19 @@ pub fn load_revision_with_git(
     input.extend_from_slice(b"flush\n");
     let mut cat_file = controlled_command(git_executable, repository_root);
     cat_file.args(["cat-file", "--batch-command", "--buffer"]);
-    let output = run_controlled(cat_file, Some(input), 33_600_000)?;
+    let output = run_controlled(cat_file, Some(input), 33_600_000, deadline, true)?;
+    if matches!(output, ControlledOutput::BlobBudgetExhausted) {
+        for (path, _) in blobs_by_path {
+            paths.insert(
+                PathBuf::from(path),
+                GitPathContent::Unknown(GitUnknownReason::BudgetExhausted),
+            );
+        }
+        return Ok(GitRevisionContent { oid, paths });
+    }
+    let ControlledOutput::Complete(output) = output else {
+        unreachable!("blob budget outcome handled above")
+    };
     if !output.status.success() {
         return Err(GitRevisionError::ProcessFailure);
     }
