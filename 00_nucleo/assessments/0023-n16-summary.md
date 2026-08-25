@@ -1,6 +1,6 @@
 # Assessment 0023 — relatório N16 por módulo
 
-**Estado:** PREFLIGHT SANEADO — gates B1/B2 autorizados; produção proibida
+**Estado:** READY WITH RESIDUAL AUDIT
 **Data:** 2026-08-25
 **Passo:** P0094
 **Baseline:** `fee11de`
@@ -122,3 +122,43 @@ RED de import de B1 como `GATE-DEFECT`: a crate expõe L1 diretamente por `contr
 `entities`, sem namespace `core`. O L0 foi corrigido para os caminhos arquiteturais
 reais, sem criar alias artificial. B1 deve revisar somente os imports e repetir o RED
 semântico; B2 apenas revalida hashes, pois sua expectativa não mudou.
+
+## Gates congelados e causalidade
+
+- B1 coleção: `tests/n16_summary_collection_assessment.rs`, SHA-256
+  `bb6cde4eacd724327eeecf3bbacd9867171f41ce8c17fecfa38c8e471b921c8a`,
+  congelado semanticamente em `990451c` após corrigir somente dois imports do
+  `GATE-DEFECT` registrado em `9373184`;
+- B2 apresentação: `tests/n16_summary_presentation_assessment.rs`, SHA-256
+  `d2e4e61be71001b4119e475c679bb5cfbc6f16f779d0d6603c9f025b8cdee0f4`,
+  byte-idêntico em todos os resselamentos.
+
+No commit pré-produção `990451c`, B1 ficou 0/4 e B2 2/6. Os REDs cobriram token múltiplo,
+agrupamento/`other`, parser pelo último `:`, identidade/precedência, desempate, half-up,
+total vazio e avisos para γ zero.
+
+## Confronto C e correção
+
+O commit `94d71e2` materializou a gramática total, identidade nominal, parser pelo último
+`:`, precedência da fonte, agrupamento por componentes, ordem γ/nome, percentuais
+half-up, vazio `—` e avisos totais. `validate_args` passou a rejeitar
+`n16-summary` sem V16. L4 continua somente selecionando o formato e injetando fontes e
+exceções; L3 continua responsável por leitura; L1 apenas fornece dados.
+
+Onze arquivos adicionais receberam somente refresh mecânico de `@prompt-hash`; fixtures
+históricas foram ajustadas ao agrupamento normativo por primeiro componente após `src`.
+
+## Adversário D e fechamento
+
+O adversário final validou os oito hashes, reproduziu RED→GREEN e confirmou B1 4/4 e B2
+6/6. `cargo test --workspace` passou com 629 unitários e todas as integrações/fixtures;
+auto-lint V5/V6/V7/V12 e reparador em dry-run passaram. O consumidor real retornou exit
+0 com V16, exit 1 e mensagem exata sem V16, e preservou exit 1 de outra violação mesmo
+quando o payload era somente o summary. `git diff --check` e arquitetura Tekt passaram.
+
+Veredito: `READY WITH RESIDUAL AUDIT`.
+
+Resíduos não bloqueantes: o consumidor real foi coberto por smoke adversarial, não por
+gate CLI versionado; somas públicas artificialmente acima de `usize::MAX` ainda podem
+overflow, enquanto os gates delimitam contagens não-overflowing e a coleta real não se
+aproxima desse domínio.
