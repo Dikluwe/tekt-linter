@@ -132,3 +132,91 @@ e B2 independentes.
 não determina um oráculo hostil único nem uma seam capaz de exercê-lo. Há também `RED`
 normativo explícito sobre alternates/object stores externos. Prosseguir agora produziria
 `GATE-DEFECT`, não evidência funcional independente.
+
+---
+
+## A2 — re-preflight após saneamento L0
+
+**Corpus exclusivo:** Assessment 0029 saneado, este parecer A1 e os dois L0
+resselados; produção e testes não foram lidos.
+
+**SHA-256 do contrato:**
+`86e5d4e35f0abbb8099ff0a37da25d62253cb2352b0af57582917ea508676391`
+— coincide.
+
+**SHA-256 do ADR:**
+`cdd1acfe688aabd0c2bb0b7061a55c80dc47f1d7745c8a5c2e7f7f560115485f`
+— coincide.
+
+**SHA-256 de A1 recebido pelo Assessment:**
+`afb696a894c87b3f90875fca7388c4512d7c53b9912402077164c3aad07a3a1f`
+— corresponde à identidade anterior ao presente apêndice.
+
+### Reclassificação dos doze itens
+
+| # | Item | A2 | Evidência saneada |
+|---:|---|---|---|
+| 1 | comandos, ordem, argumentos e delimitadores | `PASS` | Prefixo `-c`, três processos, ordem, `current_dir`, argv posterior, stdin de batch, flush, fechamento e molduras estão congelados. |
+| 2 | ambiente removido/forçado e `PATH`/executável | `PASS` | `env_clear()`, conjunto exato de sete variáveis, ausência de `PATH`/HOME/XDG/herança, prefixo de oito configs e executável absoluto real sem symlink estão definidos. |
+| 3 | sintaxe de ref e separação option/pathspec | `PASS` | Ref tem representação, tamanho e bytes proibidos definidos; `^{commit}` é anexado sob `--end-of-options`; paths possuem gramática fechada e recebem prefixo `:(top,literal)` após `--`. |
+| 4 | resolução única e OID opaco | `PASS` | Uma resolução produz OID hexadecimal de 40 ou 64 bytes e somente esse OID alimenta os dois processos seguintes e a identidade. |
+| 5 | blob/ausências/symlink/gitlink | `PASS` | Modos regulares são enumerados; ausência real é `Missing`; symlink, gitlink e modo/tipo não admitido são `ForbiddenObjectKind`; objeto esperado missing é `MissingObject`. |
+| 6 | framing `ls-tree`/batch | `PASS` | Gramáticas byte-level, ordem, NUL/LF, canonicalidade do tamanho, OID, duplicata, byte extra, truncamento, UTF-8 e stderr/status estão decididos. |
+| 7 | budgets e publicação | `PASS` | 512 paths distintos, duplicata inválida, limites inclusivos, soma por path lógico, caps incrementais, ordem de precedência e descarte integral estão definidos. |
+| 8 | timeout, kill, reap e descendentes | `PASS` | Operação, deadline monotônico, grupo/Job Object, pipes, ausência de grace period, espera de membros e distinção `Timeout`/`ContainmentFailure` estão congelados. |
+| 9 | neutralização de efeitos/configuração | `PASS` | Envelope autocontido e ambiente/config prefix exatos impedem herança, protocolos, hooks, filtros, lazy fetch, replace e locks opcionais; efeitos proibidos permanecem nominais. |
+| 10 | API/porta de processo hostil | `PASS` | Símbolo, módulo, assinatura e tipos públicos de `load_revision_with_git` estão publicados. O gate troca somente path absoluto e atravessa o adapter real. |
+| 11 | equivalência B2/B1 e OID | `PASS` | Conteúdo/identidade L3 alimentam o mesmo extrator e comparador; a seam não injeta respostas, política, relógio ou budgets. |
+| 12 | taxonomia entrada versus `Unknown` | `PASS` | Seis erros L3, `Missing` e três incertezas Git têm projeção fechada; textos/exits permanecem corretamente fora em F09. |
+
+**Resultado A2 dos itens:** 12 `PASS`, zero `SPEC-GAP`, zero `RED`.
+
+### Reclassificação das treze alegações
+
+| # | Alegação | A2 | Evidência saneada |
+|---:|---|---|---|
+| 1 | resolução única e uso posterior somente do OID | `PASS` | Transcript fixa `rev-parse` uma vez e os processos posteriores recebem apenas `<oid>`. |
+| 2 | OID opaco sem pressupor SHA-1 | `PASS` | OID validado pelo transcript admite 40/64 hex minúsculos e permanece opaco. |
+| 3 | estado preexistente inalterado em todo resultado | `PASS` | Envelope somente leitura e proibições de mutação permanecem; falha descarta revisão inteira. |
+| 4 | `.git`, alternates e ambiente não ampliam origem | `PASS` | `.git`/objects devem ser reais e internos; alternates, pools, linked/bare/indireto/symlink são rejeitados; ambiente herdado é apagado. |
+| 5 | argv separado e entradas hostis não reinterpretadas | `PASS` | Sem shell, gramáticas fechadas, `--end-of-options`, `--` e pathspec literal produzido pelo adapter. |
+| 6 | ambiente desabilita efeitos externos | `PASS` | Ambiente exato e prefixo de configuração são verificáveis pelo executável controlado. |
+| 7 | nenhum fetch/checkout/worktree/stash/build/filter/textconv/LFS/submódulo | `PASS` | Apenas os três comandos/argv fixados são autorizados; opções executáveis e efeitos externos são neutralizados/proibidos. |
+| 8 | timeout encerra/reap sem bloqueio ou parcial | `PASS` | Grupo/job, pipes, watchdog independente, deadline, reap e falha de contenção são requisitos diretos. |
+| 9 | somente blob regular; tipo proibido não é ausência | `PASS` | Matriz de mode/type e `GitPathContent` é fechada. |
+| 10 | framing/tamanho/truncamento/tipo/bytes hostis falham fechados | `PASS` | Molduras e caps são exatos; qualquer divergência produz erro/resultado fechado, nunca bytes parciais. |
+| 11 | budgets sem truncamento/publicação parcial | `PASS` | Contabilidade inclusiva e precedência estão definidas; excesso descarta blobs e marca todos os paths regulares como budget esgotado. |
+| 12 | ausência no tree usa `on_missing`; objeto ausente não | `PASS` | `Missing` é exclusivo de path ausente; `MissingObject` projeta incerteza, nunca ausência conhecida. |
+| 13 | equivalência com B1 sem normalizador paralelo | `PASS` | A saída L3 é conteúdo/identidade; fatos e decisão permanecem nos componentes únicos já publicados. |
+
+**Resultado A2 das alegações:** 13 `PASS`, zero `SPEC-GAP`, zero `RED`.
+
+### Confronto dos bloqueios A1
+
+- **Alternates/object stores:** o `RED` foi fechado. O ADR removeu a delegação a
+  alternates locais e faz o contrato operacional resselado prevalecer; ambos agora
+  exigem autocontenção e rejeição nominal das extensões externas.
+- **Seam/API:** fechada e executável. `load_revision_with_git` permite que B1/B2
+  indiquem executável absoluto controlado sem alterar respostas/política e sem conhecer
+  a implementação. Os tipos observáveis bastam para distinguir blob, ausência,
+  incerteza e erro.
+- **Transcript e ambiente:** fechados em nível byte/argv e verificáveis diretamente
+  pelo processo hostil.
+- **Budgets e atomicidade:** contagem, inclusividade, duplicatas, caps, precedência e
+  descarte estão determinados.
+- **Lifecycle:** timeout, isolamento de descendentes, fechamento/drenagem, reap e falha
+  de contenção estão determinados para Unix e Windows.
+- **Taxonomia:** cada classe pertence unicamente a erro L3, ausência ou incerteza; não
+  sobra alternativa “erro ou Unknown” para o gate escolher.
+
+Portabilidade concreta e suporte real do Git são objetos de confronto, não lacunas do
+oráculo. B1/B2 devem continuar independentes, não usar exit global, não substituir o
+processo por mock e não inferir expectativas de código existente.
+
+### Veredito A2
+
+`PASS`. O L0 resselado fornece oráculo independente suficiente e seam L3 executável.
+Ficam liberados B1 e B2, condicionados a consumirem exatamente os hashes acima e a
+congelarem seus próprios arquivos/fixtures antes de qualquer leitura ou alteração da
+produção. Este `PASS` atesta suficiência normativa e testabilidade; não antecipa a
+conformidade funcional da implementação.
