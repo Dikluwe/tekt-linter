@@ -3,7 +3,8 @@
 > **Nota de supersessão (P0107):** este relatório descreve a implementação original
 > `.tekt`. ADR-0022 Rev. 1 migra a extensão para `.toml` sem alterar o conceito ou schema.
 
-**Estado:** READY WITH RESIDUAL AUDIT — não merge-ready por bloqueio P0104/P0106
+**Estado atual:** SUPERSEDED FOR INTEGRATION — bloqueios fechados por P0106/P0107
+**Estado histórico em P0105:** READY WITH RESIDUAL AUDIT — então não merge-ready por P0104/P0106
 **Data:** 2026-08-25
 **Branch:** `codex/tekt-nucleus-artifact`
 
@@ -61,10 +62,11 @@ Não foi criado núcleo real no próprio linter. O piloto exigiria individualiza
 um dos 13 grupos de P0104, decisão reservada a P0106. Também não houve verificador por agente
 independente nesta execução.
 
-O auto-lint V15 continua encontrando os mesmos 13 prompts compartilhados, e
+No baseline histórico de P0105, o auto-lint V15 encontrava os mesmos 13 prompts compartilhados, e
 `--fix-hashes --dry-run` bloqueia antes de qualquer write. Consequentemente, headers novos
 não podem ser resselados pelo fluxo oficial ainda.
 
-Próximo passo: P0106 deve classificar os 13 grupos, extrair somente claims comuns para
-Núcleos Tekt, criar prompts proprietários 1:1 e então resselar V1/V5/V7/V15/V26. Somente
-depois cabem merge, instalação e retorno ao Typst/Bateia.
+Esse era o próximo passo na data de P0105. P0106 classificou os 13 grupos, individualizou
+44 owners e fechou V1/V5/V7/V15/V26 no Assessment 0034/commit `b458714`. P0107 substituiu
+a extensão proprietária por TOML e emitiu parecer pré-merge favorável no Assessment
+0035/commit `adc7c6d`. Portanto este relatório não constitui bloqueio ativo de integração.
