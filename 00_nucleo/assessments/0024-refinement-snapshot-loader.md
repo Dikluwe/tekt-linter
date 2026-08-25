@@ -1,6 +1,6 @@
 # Assessment 0024 — loader de snapshots e contratos de refinamento
 
-**Estado:** PREFLIGHT — produção proibida
+**Estado:** PREFLIGHT SANEADO — B1/B2 autorizados; produção proibida
 **Data:** 2026-08-25
 **Passo:** P0095
 **Baseline:** `4408649`
@@ -10,7 +10,7 @@
 | Unidade | Caminho | SHA-256 |
 |---|---|---|
 | ADR refinamento | `00_nucleo/adr/0019-validacao-direcional-de-refinamento.md` | `c2607ff2feb044487b454b3dc3115c9613d8124faebc415dc889eb717038e376` |
-| contrato refinamento | `00_nucleo/prompts/refinement-validator.md` | `a3a1eb935f5c79e698e0b4a792f36ec70f67c53c9db65c345b27e347c2bcba7d` |
+| contrato refinamento | `00_nucleo/prompts/refinement-validator.md` | `398a4678b853c6ed2d7a80b77398ad0cbfd8a1c6d9a71acd45eb815073f11106` |
 | arquitetura | `00_nucleo/prompts/linter-core.md` | `9446277167f07dc5290617855cff456f061aa052ce8bd51ecf980530800b8c00` |
 | diagnósticos | `00_nucleo/prompts/violation-types.md` | `147afa0d8f3f3e6e30e050590dad0b99c7da8486d3565e3f6c42f7fa883ea4dc` |
 | protocolo segregado | `00_nucleo/prompts/segregated-materialization.md` | `366fd0855c6b04e533f4f4a477a73d7e5ec65f24c056720c61fca906bb5299a4` |
@@ -18,7 +18,7 @@
 | Git fechado | `00_nucleo/assessments/0001-git-refinement.md` | `5a38f20563a865a12dc0c052a2b7a5dd0d46cb17452600c183c8781bce8a5d17` |
 | fechamento anterior | `00_nucleo/assessments/0013-fechamento-pre-merge.md` | `3d8d4d1aba216f03d3384ade951a9a46015411c6d4edb53e075e7f29813c5dd9` |
 | Etapa A histórica | `00_nucleo/tekt-linter-passo-validacao-de-refinamento.md` | `0364668e0adfa53d01f6d17cab9a7298839e9935c4286b4a412f04df559db9bd` |
-| protocolo P0095 | `00_nucleo/tekt-linter-passo-0095-auditoria-loader-snapshots-refinamento.md` | `0fc61c8b295c1c0d585c6a8c385dbd6a371d14a17b5b7961e246ffad67555e14` |
+| protocolo P0095 | `00_nucleo/tekt-linter-passo-0095-auditoria-loader-snapshots-refinamento.md` | `a66d403c9b2ac74df0f27460e3bae46a81c5119914e3f26af5db56f3be43c1df` |
 
 ## Alegações candidatas
 
@@ -79,3 +79,15 @@ públicos necessários para B1/B2 cegos.
 
 Resultados: `PASS`, `RED`, `SPEC-GAP`, `GATE-DEFECT`. Fechamento somente
 `READY WITH RESIDUAL AUDIT` ou `BLOCKED`, sem merge/push.
+
+## Parecer A e saneamento
+
+A validou os dez hashes e classificou G1–G7 como `SPEC-GAP` bloqueante. Nenhuma
+contradição completa foi encontrada. O L0 foi saneado com schemas fechados JSON/TOML,
+identidade preservada, regras condicionais por relação, duplicatas/conflitos, limites,
+leitura explícita regular sem symlink, classes estáveis de erro por prefixo e quatro APIs
+públicas, incluindo `load_snapshot_from_bytes` para B1.
+
+Foi escolhida deliberadamente a API `Result<_, String>` existente, com prefixos
+normativos, em vez de ampliar este lote com novo enum público de erros. L3 continua sem
+veredito. Após resselamento, B1/B2 podem começar; produção permanece proibida.
