@@ -102,17 +102,10 @@ de linha e referências internas, mas não pode acrescentar semântica além des
 
 ### 2. `00_nucleo/prompts/refinement-validator.md`
 
-1. Preservar o cabeçalho vigente, a Etapa B2 e o histórico de aprovação.
-2. Na Etapa B2, explicitar em uma frase que `refine` nunca executa Git e que somente
-   `refine-revisions` possui autoridade para executar Git local no envelope descrito.
-3. Tornar explícitos na Etapa B2 o requisito “Git 2.43 ou compatibilidade demonstrada
-   com `--batch-command` e `--end-of-options`” e o timeout de 10 segundos por operação,
-   que constam da adenda mas estão ausentes do resumo atual do prompt.
-4. Declarar que o mapeamento completo de exits do subcomando permanece reservado ao
-   F09; P0099 confirma resultados semânticos (`Preserved`, `Violated`, `Unknown` e erro
-   de entrada), mas não cria precedência ou códigos globais.
-5. Não modificar relações, loader, extrator, formatos ou critérios funcionais fora da
-   reconciliação B2.
+Preservar sem alteração. O prompt já registra B2 como vigente, sua sintaxe, envelope e
+histórico de aprovação. O executor confirmou que qualquer alteração, ainda que apenas
+explicativa, mudaria o hash L0 e exigiria atualizar cinco headers de produção, operação
+proibida por P0099. As clarificações de superfície pertencem ao ADR, README e USAGE.
 
 ### 3. `README.md`
 
@@ -179,3 +172,15 @@ alterar backend/budget ou prometer conformidade da implementação, deve classif
 
 Este parecer não autoriza alteração funcional, teste executável, fixture, configuração,
 dependência, merge, push ou release.
+
+## RED do executor e resselamento
+
+O patch nominal inicial previa três clarificações no prompt. O executor as aplicou
+provisoriamente e o gate V5 acusou drift causal em cinco arquivos de produção. Atualizar
+esses headers violaria a fronteira documental de P0099; deixar o drift violaria a
+validação mínima. Como A já demonstrou que o prompt vigente confirma B2 sem lacuna de
+autoridade, o delta não era necessário à decisão.
+
+As mudanças provisórias no prompt foram integralmente descartadas. Esta versão
+resselada autoriza alterações somente no ADR-0019, README e USAGE. A decisão continua
+`CONFIRMED`, sem expansão semântica e sem migração de hashes de produção.
