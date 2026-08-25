@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/nucleus-integrity.md
-//! @prompt-hash 00000000
+//! @prompt-hash 7f3c396b
 //! @layer L1
 
 use std::collections::{BTreeMap, BTreeSet};

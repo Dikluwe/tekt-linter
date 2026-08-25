@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/nucleus-artifact.md
-//! @prompt-hash 00000000
+//! @prompt-hash c5aa3078
 //! @layer L3
 
 use serde::Deserialize;
