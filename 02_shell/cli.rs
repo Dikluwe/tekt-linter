@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/sarif-formatter.md
-//! @prompt-hash 28d9d748
+//! @prompt-hash 13ebb573
 //! @layer L2
 //! @updated 2026-03-22
 
@@ -86,6 +86,11 @@ pub fn validate_args(cli: &Cli) -> Result<(), String> {
     }
     if cli.dry_run && !cli.fix_hashes && !cli.update_snapshot {
         return Err("--dry-run requires --fix-hashes or --update-snapshot".to_string());
+    }
+    if cli.format == OutputFormat::N16Summary
+        && !EnabledChecks::from_cli(&cli.checks, cli.no_drift, cli.no_stale).v16
+    {
+        return Err("--format n16-summary requires V16 in --checks".to_string());
     }
     Ok(())
 }
@@ -745,6 +750,26 @@ mod tests {
             ..base_cli()
         };
         assert!(validate_args(&cli).is_err());
+    }
+
+    #[test]
+    fn n16_summary_requires_v16() {
+        let without_v16 = Cli {
+            format: OutputFormat::N16Summary,
+            checks: "v1,v2".to_string(),
+            ..base_cli()
+        };
+        assert_eq!(
+            validate_args(&without_v16),
+            Err("--format n16-summary requires V16 in --checks".to_string())
+        );
+
+        let with_v16 = Cli {
+            format: OutputFormat::N16Summary,
+            checks: "v1,v16".to_string(),
+            ..base_cli()
+        };
+        assert!(validate_args(&with_v16).is_ok());
     }
 
     #[test]

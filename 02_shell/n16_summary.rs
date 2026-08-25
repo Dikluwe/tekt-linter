@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 48ec6e1d
+//! @prompt-hash 10f02f10
 //! @layer L2
 //! @updated 2026-08-18
 
@@ -8,7 +8,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
 use crate::contracts::file_provider::SourceFile;
-use crate::shell::path_encoding::human_path;
 
 /// Tag de classificação da taxonomia N16 (ADR-0017 / Passo 0068 / Passo 0069).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,7 +24,7 @@ impl N16Tag {
     pub fn as_str(&self) -> &'static str {
         match self {
             N16Tag::Alpha => "α",
-            N16Tag::Beta  => "β",
+            N16Tag::Beta => "β",
             N16Tag::Gamma => "γ",
         }
     }
@@ -56,11 +55,9 @@ impl N16ModuleStats {
     pub fn gamma_pct_str(&self) -> String {
         let tot = self.total();
         if tot == 0 {
-            "0.0%".to_string()
-        } else if self.gamma == 0 && self.beta == 0 {
             "—".to_string()
         } else {
-            format!("{:.1}%", self.gamma_pct())
+            percentage_tenths(self.gamma, tot)
         }
     }
 }
@@ -69,136 +66,94 @@ pub type N16Stats = BTreeMap<String, N16ModuleStats>;
 
 /// Extrai tag N16 a partir de uma linha de texto ou justificativa.
 pub fn extract_n16_tag(text: &str) -> Option<N16Tag> {
-    let start_idx = text.find("N16[")?;
-    let rest = &text[start_idx + 4..];
-    let end_idx = rest.find(']')?;
-    let inner = rest[..end_idx].trim();
-
-    match inner {
-        "α" | "A" | "a" => Some(N16Tag::Alpha),
-        "β" | "B" | "b" => Some(N16Tag::Beta),
-        "γ" | "C" | "c" => Some(N16Tag::Gamma),
-        _ => None,
+    let mut remaining = text;
+    let mut found = None;
+    while let Some(start) = remaining.find("N16[") {
+        let candidate = &remaining[start..];
+        let matched = [
+            ("N16[α]", N16Tag::Alpha),
+            ("N16[β]", N16Tag::Beta),
+            ("N16[γ]", N16Tag::Gamma),
+            ("N16[A]", N16Tag::Alpha),
+            ("N16[a]", N16Tag::Alpha),
+            ("N16[B]", N16Tag::Beta),
+            ("N16[b]", N16Tag::Beta),
+            ("N16[C]", N16Tag::Gamma),
+            ("N16[c]", N16Tag::Gamma),
+        ]
+        .into_iter()
+        .find(|(token, _)| candidate.starts_with(token));
+        if let Some((token, tag)) = matched {
+            if found.is_some() {
+                return None;
+            }
+            found = Some(tag);
+            remaining = &candidate[token.len()..];
+        } else {
+            remaining = &candidate[4..];
+        }
     }
+    found
 }
 
-/// Normaliza o caminho do arquivo para uma chave canônica relativa à camada.
-pub fn normalize_loc_path(path: &Path) -> String {
-    let p_str = human_path(path).replace('\\', "/");
-    let all_comps: Vec<String> = p_str
-        .split('/')
-        .map(|s| s.to_string())
-        .filter(|s| !s.is_empty() && s != "." && s != "..")
-        .collect();
-
-    if let Some(idx) = all_comps.iter().position(|c| {
-        c == "01_core" || c == "02_shell" || c == "03_infra" || c == "04_wiring" || c == "00_nucleo"
-    }) {
-        all_comps[idx..].join("/")
-    } else {
-        all_comps.join("/")
-    }
+fn nominal_path(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
 }
 
 /// Extrai o nome canônico do módulo para fins de agrupamento N16.
 pub fn extract_n16_module_name(path: &Path) -> String {
-    let p_str = human_path(path).replace('\\', "/");
-
-    if p_str.contains("math/layout/") || p_str.ends_with("math/layout.rs") || p_str.ends_with("math/layout") {
-        return "math/layout/".to_string();
-    }
-    if p_str.contains("export/") {
-        return "export/".to_string();
-    }
-
-    let all_comps: Vec<String> = p_str
-        .split('/')
-        .map(|s| s.to_string())
-        .filter(|s| !s.is_empty() && s != "." && s != "..")
+    let path = path.to_string_lossy();
+    let components: Vec<&str> = path
+        .split(['/', '\\'])
+        .filter(|component| !component.is_empty() && *component != ".")
         .collect();
-
-    if all_comps.is_empty() {
-        return "root/".to_string();
-    }
-
-    let layer_idx = all_comps.iter().position(|c| {
-        c == "01_core" || c == "02_shell" || c == "03_infra" || c == "04_wiring" || c == "00_nucleo"
-    });
-
-    let comps = if let Some(idx) = layer_idx {
-        &all_comps[idx..]
-    } else {
-        &all_comps[..]
+    let Some(layer_index) = components.iter().position(|component| {
+        matches!(
+            *component,
+            "00_nucleo" | "01_core" | "02_shell" | "03_infra" | "04_wiring"
+        )
+    }) else {
+        return "other/".to_string();
     };
-
-    // Camadas de nível superior
-    if comps[0] == "03_infra" {
-        return "03_infra/".to_string();
+    let layer = components[layer_index];
+    if layer != "01_core" {
+        return format!("{layer}/");
     }
-    if comps[0] == "02_shell" {
-        return "02_shell/".to_string();
+    let Some(src_offset) = components[layer_index + 1..]
+        .iter()
+        .position(|c| *c == "src")
+    else {
+        return "01_core/".to_string();
+    };
+    let module_index = layer_index + src_offset + 2;
+    let Some(module) = components.get(module_index) else {
+        return "01_core/".to_string();
+    };
+    if *module != ".." && module.contains('.') {
+        return "01_core/".to_string();
     }
-    if comps[0] == "04_wiring" {
-        return "04_wiring/".to_string();
+    if *module == "math" && components.get(module_index + 1) == Some(&"layout") {
+        "math/layout/".to_string()
+    } else {
+        format!("{module}/")
     }
-    if comps[0] == "00_nucleo" {
-        return "00_nucleo/".to_string();
-    }
-
-    // Camada 01_core
-    if comps[0] == "01_core" {
-        let mut idx = 1;
-        if idx < comps.len() && comps[idx] == "src" {
-            idx += 1;
-        }
-        if idx >= comps.len() {
-            return "01_core/".to_string();
-        }
-        if comps[idx] == "compiler" || comps[idx] == "engine" {
-            idx += 1;
-            if idx >= comps.len() {
-                return "01_core/".to_string();
-            }
-        }
-
-        let mut mod_name = comps[idx].clone();
-        if let Some(pos) = mod_name.find('.') {
-            mod_name.truncate(pos);
-        }
-        return format!("{mod_name}/");
-    }
-
-    // Workspace geral: primeiro diretório
-    let mut root_mod = comps[0].clone();
-    if let Some(pos) = root_mod.find('.') {
-        root_mod.truncate(pos);
-    }
-    format!("{root_mod}/")
 }
 
 /// Coleta e agrega todas as anotações N16 de fontes e de exceções declaradas,
 /// garantindo deduplicação estrita quando a mesma localização (path:linha) possui
 /// anotação tanto no código-fonte quanto no `crystalline.toml`.
-pub fn collect_n16_stats(
-    sources: &[SourceFile],
-    exceptions: &HashMap<String, String>,
-) -> N16Stats {
-    let mut seen_locs: HashSet<(String, usize)> = HashSet::new();
+pub fn collect_n16_stats(sources: &[SourceFile], exceptions: &HashMap<String, String>) -> N16Stats {
+    let mut source_locs: HashSet<(String, usize)> = HashSet::new();
     let mut stats: N16Stats = BTreeMap::new();
 
     // 1. Varrer linhas de código-fonte
     for sf in sources {
-        let norm_path = normalize_loc_path(&sf.path);
+        let source_path = nominal_path(&sf.path);
         for (idx, line) in sf.content.lines().enumerate() {
             let line_num = idx + 1;
             if let Some(tag) = extract_n16_tag(line) {
-                seen_locs.insert((norm_path.clone(), line_num));
-                let module = extract_n16_module_name(&sf.path);
-                let entry = stats.entry(module).or_default();
-                match tag {
-                    N16Tag::Alpha => entry.alpha += 1,
-                    N16Tag::Beta  => entry.beta += 1,
-                    N16Tag::Gamma => entry.gamma += 1,
+                if source_locs.insert((source_path.clone(), line_num)) {
+                    increment(&mut stats, extract_n16_module_name(&sf.path), tag);
                 }
             }
         }
@@ -207,20 +162,18 @@ pub fn collect_n16_stats(
     // 2. Varrer exceções de crystalline.toml (wildcard_exceptions)
     for (loc_key, justification) in exceptions {
         if let Some(tag) = extract_n16_tag(justification) {
-            let parts: Vec<&str> = loc_key.split(':').collect();
-            let raw_path = parts[0];
-            let norm_path = normalize_loc_path(Path::new(raw_path));
-            let line_num = parts.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
-
-            // Deduplicação: se a localização já foi contabilizada via código-fonte, não conta 2x
-            if seen_locs.insert((norm_path, line_num)) {
-                let module = extract_n16_module_name(Path::new(raw_path));
-                let entry = stats.entry(module).or_default();
-                match tag {
-                    N16Tag::Alpha => entry.alpha += 1,
-                    N16Tag::Beta  => entry.beta += 1,
-                    N16Tag::Gamma => entry.gamma += 1,
-                }
+            let Some((raw_path, raw_line)) = loc_key.rsplit_once(':') else {
+                continue;
+            };
+            let Ok(line_num) = raw_line.parse::<usize>() else {
+                continue;
+            };
+            if !source_locs.contains(&(raw_path.to_string(), line_num)) {
+                increment(
+                    &mut stats,
+                    extract_n16_module_name(Path::new(raw_path)),
+                    tag,
+                );
             }
         }
     }
@@ -228,19 +181,29 @@ pub fn collect_n16_stats(
     stats
 }
 
+fn increment(stats: &mut N16Stats, module: String, tag: N16Tag) {
+    let entry = stats.entry(module).or_default();
+    match tag {
+        N16Tag::Alpha => entry.alpha += 1,
+        N16Tag::Beta => entry.beta += 1,
+        N16Tag::Gamma => entry.gamma += 1,
+    }
+}
+
+fn percentage_tenths(numerator: usize, denominator: usize) -> String {
+    let tenths = ((numerator as u128) * 1000 + denominator as u128 / 2) / denominator as u128;
+    format!("{}.{:01}%", tenths / 10, tenths % 10)
+}
+
 /// Formata o relatório consolidado N16 por módulo (Passo 0069).
 pub fn format_n16_summary(stats: &N16Stats, min_sample_size: usize) -> String {
     let mut rows: Vec<(&String, &N16ModuleStats)> = stats.iter().collect();
 
-    // Ordenação por γ absoluto decrescente, depois % γ decrescente, depois total decrescente, depois nome
+    // Ordenação normativa: γ absoluto decrescente, depois nome por bytes UTF-8.
     rows.sort_by(|(name_a, stats_a), (name_b, stats_b)| {
-        stats_b.gamma.cmp(&stats_a.gamma)
-            .then_with(|| {
-                let pct_a = stats_a.gamma_pct();
-                let pct_b = stats_b.gamma_pct();
-                pct_b.partial_cmp(&pct_a).unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .then_with(|| stats_b.total().cmp(&stats_a.total()))
+        stats_b
+            .gamma
+            .cmp(&stats_a.gamma)
             .then_with(|| name_a.cmp(name_b))
     });
 
@@ -270,8 +233,8 @@ pub fn format_n16_summary(stats: &N16Stats, min_sample_size: usize) -> String {
         ));
 
         // Linha de aviso obrigatória para qualquer módulo com total < min_sample_size
-        if tot < min_sample_size && tot > 0 && s.gamma > 0 {
-            let pp = (100.0 / tot as f64).round() as usize;
+        if tot < min_sample_size && tot > 0 {
+            let pp = (100usize + tot / 2) / tot;
             small_sample_warnings.push(format!(
                 "⚠ amostra pequena em `{}` (n={}) — percentual pouco confiável, 1 caso muda o resultado em ~{}pp",
                 module_name, tot, pp
@@ -281,9 +244,9 @@ pub fn format_n16_summary(stats: &N16Stats, min_sample_size: usize) -> String {
 
     let total_all = total_alpha + total_beta + total_gamma;
     let total_pct_str = if total_all == 0 {
-        "0.0%".to_string()
+        "—".to_string()
     } else {
-        format!("{:.1}%", (total_gamma as f64 / total_all as f64) * 100.0)
+        percentage_tenths(total_gamma, total_all)
     };
 
     out.push_str(&format!(
@@ -305,52 +268,110 @@ pub fn format_n16_summary(stats: &N16Stats, min_sample_size: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
     use crate::entities::layer::{Language, Layer};
+    use std::path::PathBuf;
 
     #[test]
     fn extract_n16_tag_recognizes_greek_and_ascii_variants() {
-        assert_eq!(extract_n16_tag("// neutro: N16[α] — fechamento"), Some(N16Tag::Alpha));
-        assert_eq!(extract_n16_tag("// neutro: N16[β] — uniforme"), Some(N16Tag::Beta));
-        assert_eq!(extract_n16_tag("// neutro: N16[γ] — fallback"), Some(N16Tag::Gamma));
-        assert_eq!(extract_n16_tag("// neutro: N16[A] — fechamento"), Some(N16Tag::Alpha));
-        assert_eq!(extract_n16_tag("// neutro: N16[B] — uniforme"), Some(N16Tag::Beta));
-        assert_eq!(extract_n16_tag("// neutro: N16[C] — fallback"), Some(N16Tag::Gamma));
-        assert_eq!(extract_n16_tag("// neutro: N16[a] — fechamento"), Some(N16Tag::Alpha));
-        assert_eq!(extract_n16_tag("// neutro: N16[b] — uniforme"), Some(N16Tag::Beta));
-        assert_eq!(extract_n16_tag("// neutro: N16[c] — fallback"), Some(N16Tag::Gamma));
+        assert_eq!(
+            extract_n16_tag("// neutro: N16[α] — fechamento"),
+            Some(N16Tag::Alpha)
+        );
+        assert_eq!(
+            extract_n16_tag("// neutro: N16[β] — uniforme"),
+            Some(N16Tag::Beta)
+        );
+        assert_eq!(
+            extract_n16_tag("// neutro: N16[γ] — fallback"),
+            Some(N16Tag::Gamma)
+        );
+        assert_eq!(
+            extract_n16_tag("// neutro: N16[A] — fechamento"),
+            Some(N16Tag::Alpha)
+        );
+        assert_eq!(
+            extract_n16_tag("// neutro: N16[B] — uniforme"),
+            Some(N16Tag::Beta)
+        );
+        assert_eq!(
+            extract_n16_tag("// neutro: N16[C] — fallback"),
+            Some(N16Tag::Gamma)
+        );
+        assert_eq!(
+            extract_n16_tag("// neutro: N16[a] — fechamento"),
+            Some(N16Tag::Alpha)
+        );
+        assert_eq!(
+            extract_n16_tag("// neutro: N16[b] — uniforme"),
+            Some(N16Tag::Beta)
+        );
+        assert_eq!(
+            extract_n16_tag("// neutro: N16[c] — fallback"),
+            Some(N16Tag::Gamma)
+        );
         assert_eq!(extract_n16_tag("// neutro: N16[INVALID]"), None);
         assert_eq!(extract_n16_tag("// neutro: sem tag"), None);
     }
 
     #[test]
     fn extract_n16_module_name_maps_canonical_directories() {
-        assert_eq!(extract_n16_module_name(Path::new("01_core/src/compiler/introspect/labelled.rs")), "introspect/");
-        assert_eq!(extract_n16_module_name(Path::new("/abs/path/01_core/src/compiler/introspect.rs")), "introspect/");
-        assert_eq!(extract_n16_module_name(Path::new("01_core/src/compiler/math/layout/attach.rs")), "math/layout/");
-        assert_eq!(extract_n16_module_name(Path::new("01_core/src/compiler/math/layout/mod.rs")), "math/layout/");
-        assert_eq!(extract_n16_module_name(Path::new("01_core/src/compiler/layout/columns.rs")), "layout/");
-        assert_eq!(extract_n16_module_name(Path::new("01_core/src/entities/value.rs")), "entities/");
-        assert_eq!(extract_n16_module_name(Path::new("01_core/src/compiler/stdlib/calc.rs")), "stdlib/");
-        assert_eq!(extract_n16_module_name(Path::new("01_core/src/compiler/eval/math.rs")), "eval/");
-        assert_eq!(extract_n16_module_name(Path::new("01_core/src/compiler/parse/math.rs")), "parse/");
-        assert_eq!(extract_n16_module_name(Path::new("03_infra/src/export/stream.rs")), "export/");
-        assert_eq!(extract_n16_module_name(Path::new("/abs/path/03_infra/src/font_metrics.rs")), "03_infra/");
+        assert_eq!(
+            extract_n16_module_name(Path::new("01_core/src/compiler/introspect/labelled.rs")),
+            "compiler/"
+        );
+        assert_eq!(
+            extract_n16_module_name(Path::new("/abs/path/01_core/src/compiler/introspect.rs")),
+            "compiler/"
+        );
+        assert_eq!(
+            extract_n16_module_name(Path::new("01_core/src/compiler/math/layout/attach.rs")),
+            "compiler/"
+        );
+        assert_eq!(
+            extract_n16_module_name(Path::new("01_core/src/compiler/math/layout/mod.rs")),
+            "compiler/"
+        );
+        assert_eq!(
+            extract_n16_module_name(Path::new("01_core/src/compiler/layout/columns.rs")),
+            "compiler/"
+        );
+        assert_eq!(
+            extract_n16_module_name(Path::new("01_core/src/entities/value.rs")),
+            "entities/"
+        );
+        assert_eq!(
+            extract_n16_module_name(Path::new("01_core/src/compiler/stdlib/calc.rs")),
+            "compiler/"
+        );
+        assert_eq!(
+            extract_n16_module_name(Path::new("01_core/src/compiler/eval/math.rs")),
+            "compiler/"
+        );
+        assert_eq!(
+            extract_n16_module_name(Path::new("01_core/src/compiler/parse/math.rs")),
+            "compiler/"
+        );
+        assert_eq!(
+            extract_n16_module_name(Path::new("03_infra/src/export/stream.rs")),
+            "03_infra/"
+        );
+        assert_eq!(
+            extract_n16_module_name(Path::new("/abs/path/03_infra/src/font_metrics.rs")),
+            "03_infra/"
+        );
     }
 
     #[test]
     fn collect_n16_stats_deduplicates_overlapping_source_and_toml() {
         // Cenário de sobreposição: mesmo arquivo e linha têm comentário no código E entrada no toml
         let source_code = "fn foo() {\n    match x {\n        _ => None, // neutro: N16[β] — comentário inline\n    }\n}";
-        let sources = vec![
-            SourceFile {
-                path: PathBuf::from("/workspace/01_core/src/compiler/stdlib/calc.rs"),
-                content: source_code.to_string(),
-                language: Language::Rust,
-                layer: Layer::L1,
-                has_adjacent_test: true,
-            }
-        ];
+        let sources = vec![SourceFile {
+            path: PathBuf::from("/workspace/01_core/src/compiler/stdlib/calc.rs"),
+            content: source_code.to_string(),
+            language: Language::Rust,
+            layer: Layer::L1,
+            has_adjacent_test: true,
+        }];
 
         let mut exceptions = HashMap::new();
         // Entrada no TOML referenciando a mesma linha 3
@@ -365,20 +386,48 @@ mod tests {
         );
 
         let stats = collect_n16_stats(&sources, &exceptions);
-        let stdlib = stats.get("stdlib/").expect("expected stdlib/");
-        // Total deve ser 2 (1 da linha 3 deduplicada + 1 da linha 10), NÃO 3!
-        assert_eq!(stdlib.total(), 2, "Deduplicação deve contar linha 3 exatamente uma vez");
-        assert_eq!(stdlib.beta, 1);
-        assert_eq!(stdlib.gamma, 1);
+        let compiler = stats.get("compiler/").expect("expected compiler/");
+        // Paths absoluto e relativo são identidades nominais distintas no P0094.
+        assert_eq!(compiler.total(), 3);
+        assert_eq!(compiler.beta, 2);
+        assert_eq!(compiler.gamma, 1);
     }
 
     #[test]
     fn format_n16_summary_sorts_by_gamma_descending() {
         let mut stats = N16Stats::new();
-        stats.insert("introspect/".to_string(), N16ModuleStats { alpha: 0, beta: 1, gamma: 2 });
-        stats.insert("layout/".to_string(), N16ModuleStats { alpha: 1, beta: 15, gamma: 4 });
-        stats.insert("math/layout/".to_string(), N16ModuleStats { alpha: 0, beta: 1, gamma: 1 });
-        stats.insert("entities/".to_string(), N16ModuleStats { alpha: 0, beta: 28, gamma: 0 });
+        stats.insert(
+            "introspect/".to_string(),
+            N16ModuleStats {
+                alpha: 0,
+                beta: 1,
+                gamma: 2,
+            },
+        );
+        stats.insert(
+            "layout/".to_string(),
+            N16ModuleStats {
+                alpha: 1,
+                beta: 15,
+                gamma: 4,
+            },
+        );
+        stats.insert(
+            "math/layout/".to_string(),
+            N16ModuleStats {
+                alpha: 0,
+                beta: 1,
+                gamma: 1,
+            },
+        );
+        stats.insert(
+            "entities/".to_string(),
+            N16ModuleStats {
+                alpha: 0,
+                beta: 28,
+                gamma: 0,
+            },
+        );
 
         let out = format_n16_summary(&stats, 5);
 
@@ -404,8 +453,22 @@ mod tests {
     #[test]
     fn format_n16_summary_with_custom_min_sample_size() {
         let mut stats = N16Stats::new();
-        stats.insert("layout/".to_string(), N16ModuleStats { alpha: 1, beta: 15, gamma: 4 }); // n=20
-        stats.insert("03_infra/".to_string(), N16ModuleStats { alpha: 0, beta: 11, gamma: 1 }); // n=12
+        stats.insert(
+            "layout/".to_string(),
+            N16ModuleStats {
+                alpha: 1,
+                beta: 15,
+                gamma: 4,
+            },
+        ); // n=20
+        stats.insert(
+            "03_infra/".to_string(),
+            N16ModuleStats {
+                alpha: 0,
+                beta: 11,
+                gamma: 1,
+            },
+        ); // n=12
 
         let out = format_n16_summary(&stats, 25);
         assert!(out.contains("⚠ amostra pequena em `layout/` (n=20) — percentual pouco confiável, 1 caso muda o resultado em ~5pp"));
