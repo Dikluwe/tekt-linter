@@ -1190,15 +1190,15 @@ fn n16_summary_emits_small_sample_warning_for_synthetic_fixture() {
 
     let stats = collect_n16_stats(&source_files, &HashMap::new());
     assert_eq!(stats.len(), 1);
-    let sample_stat = stats.get("synthetic/").expect("expected synthetic/ module");
+    let sample_stat = stats.get("compiler/").expect("expected compiler/ module");
     assert_eq!(sample_stat.total(), 3);
     assert_eq!(sample_stat.alpha, 1);
     assert_eq!(sample_stat.beta, 1);
     assert_eq!(sample_stat.gamma, 1);
 
     let summary = format_n16_summary(&stats, 5);
-    assert!(summary.contains("| `synthetic/` | 3 | 1 | 1 | 1 | 33.3% |"));
-    assert!(summary.contains("⚠ amostra pequena em `synthetic/` (n=3) — percentual pouco confiável, 1 caso muda o resultado em ~33pp"));
+    assert!(summary.contains("| `compiler/` | 3 | 1 | 1 | 1 | 33.3% |"));
+    assert!(summary.contains("⚠ amostra pequena em `compiler/` (n=3) — percentual pouco confiável, 1 caso muda o resultado em ~33pp"));
 }
 
 #[test]
@@ -1225,5 +1225,5 @@ fn n16_summary_custom_min_sample_size_threshold() {
 
     // Com min_sample_size = 10, n=3 DEVE emitir aviso
     let summary_high_threshold = format_n16_summary(&stats, 10);
-    assert!(summary_high_threshold.contains("⚠ amostra pequena em `synthetic/` (n=3)"));
+    assert!(summary_high_threshold.contains("⚠ amostra pequena em `compiler/` (n=3)"));
 }
