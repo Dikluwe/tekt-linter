@@ -1,6 +1,6 @@
 # Assessment 0026 — extração estrutural Rust de `SourceConstant`
 
-**Estado:** PREFLIGHT CONGELADO — somente A autorizado
+**Estado:** PREFLIGHT SANEADO — B1/B2 autorizados; produção proibida
 **Data:** 2026-08-25
 **Passo:** P0097
 **Baseline:** `3a5ffbec3968230f8fda29dff329c476fa73be39`
@@ -9,10 +9,10 @@
 
 | Unidade | Caminho | SHA-256 |
 |---|---|---|
-| protocolo P0097 | `00_nucleo/tekt-linter-passo-0097-auditoria-extracao-source-constant-rust.md` | `aba07156b3dc79ec23d2425bbb6041e3de9294c385b2f7948281454570c8c59c` |
+| protocolo P0097 | `00_nucleo/tekt-linter-passo-0097-auditoria-extracao-source-constant-rust.md` | `3aa2bee69002528787837583a2c97f279793dc1fa1f682e9050da7b4dc29a921` |
 | contrato V21 | `00_nucleo/prompts/unsourced-constant.md` | `9560ecbcdc3a5f5eec14e0cabe96062b274504f92e1f009188c6dbc2f59fa174` |
 | traits/IR | `00_nucleo/prompts/contracts/rule-traits.md` | `cdba18365badfb56288480f683451914d88b0df07201acc43ee8334d22289ba3` |
-| parser Rust | `00_nucleo/prompts/parsers/rust.md` | `f9b620ae1a377a9deca44a1a9ba80437097dbd254eb8664cf597d2a85e8ae0d3` |
+| parser Rust | `00_nucleo/prompts/parsers/rust.md` | `a661c8f226849b55fb83f3f50e5d8ea37c082852b21432c5fb24917e272c4aac` |
 | arquitetura Tekt | `00_nucleo/prompts/linter-core.md` | `9446277167f07dc5290617855cff456f061aa052ce8bd51ecf980530800b8c00` |
 | protocolo segregado | `00_nucleo/prompts/segregated-materialization.md` | `366fd0855c6b04e533f4f4a477a73d7e5ec65f24c056720c61fca906bb5299a4` |
 | ADR segregado | `00_nucleo/adr/0020-piloto-materializacao-segregada.md` | `ee1a4a7f3665674b008d127373ed23fc6762d0ff13b2ca83efe5d2ace1539d23` |
@@ -55,3 +55,15 @@ oráculos. Filesystem, config, wiring, apresentação e exit estão fora.
 
 Resultados: `PASS`, `RED`, `SPEC-GAP`, `GATE-DEFECT`. Fechamento somente
 `READY WITH RESIDUAL AUDIT` ou `BLOCKED`, sem merge/push.
+
+## Parecer A e saneamento
+
+A validou os doze hashes. G1–G9 eram `SPEC-GAP`; G10 foi `PASS` apenas como separação de
+escopo. O L0 foi reduzido e saneado para literais numéricos dentro de `function_item`,
+kind positivo/negativo, snippet byte-exato, linha/coluna 1-based em bytes UTF-8, preorder,
+multiplicidade e erro sintático sem IR parcial.
+
+Origem teste, return type, scaling, context var, geometric sink, data-table e citation
+foram removidos do oráculo. B1 cobre casos positivos/identidade; B2 cobre exclusões e erro.
+Ambos usam somente `RustParser::new` + `LanguageParser::parse`, mocks locais dos readers e
+`CrystallineConfig::default()`. V21/V22 continuam apenas regressões.
