@@ -69,6 +69,9 @@ impl<'de> Visitor<'de> for DuplicateVisitor {
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
         let mut keys = HashSet::new();
         while let Some(key) = map.next_key::<String>()? {
+            if key.len() > MAX_STRING {
+                return Err(de::Error::custom("limit: string exceeds 64 KiB"));
+            }
             if !keys.insert(key.clone()) {
                 return Err(de::Error::custom(format!("duplicate key `{key}`")));
             }
@@ -92,11 +95,14 @@ impl<'de> Visitor<'de> for DuplicateVisitor {
     fn visit_f64<E: de::Error>(self, _: f64) -> Result<Self::Value, E> {
         Ok(DuplicateSafe)
     }
-    fn visit_str<E: de::Error>(self, _: &str) -> Result<Self::Value, E> {
+    fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+        if value.len() > MAX_STRING {
+            return Err(E::custom("limit: string exceeds 64 KiB"));
+        }
         Ok(DuplicateSafe)
     }
-    fn visit_string<E: de::Error>(self, _: String) -> Result<Self::Value, E> {
-        Ok(DuplicateSafe)
+    fn visit_string<E: de::Error>(self, value: String) -> Result<Self::Value, E> {
+        self.visit_str(&value)
     }
     fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
         Ok(DuplicateSafe)
@@ -170,7 +176,9 @@ pub fn load_snapshot(path: &Path) -> Result<ArtifactFacts, String> {
 pub fn load_snapshot_from_bytes(bytes: &[u8], source: &str) -> Result<ArtifactFacts, String> {
     let content = bounded(bytes, source)?;
     if let Err(error) = serde_json::from_str::<DuplicateSafe>(content) {
-        let class = if error.classify() == serde_json::error::Category::Data {
+        let class = if error.to_string().contains("limit: string exceeds 64 KiB") {
+            "limit"
+        } else if error.classify() == serde_json::error::Category::Data {
             "schema"
         } else {
             "json-syntax"
@@ -203,17 +211,13 @@ pub fn load_snapshot_from_bytes(bytes: &[u8], source: &str) -> Result<ArtifactFa
             return Err(format!("limit: {source}: string exceeds 64 KiB"));
         }
         if value.state.len() > MAX_STRING
+            || value.value.as_ref().is_some_and(|v| v.len() > MAX_STRING)
             || value.reason.as_ref().is_some_and(|r| r.len() > MAX_STRING)
         {
             return Err(format!("limit: {source}: string exceeds 64 KiB"));
         }
         let value = match (value.state.as_str(), value.value, value.reason) {
-            ("known", Some(value), None) => {
-                if value.len() > MAX_STRING {
-                    return Err(format!("limit: {source}: string exceeds 64 KiB"));
-                }
-                ObservableValue::Known(value)
-            }
+            ("known", Some(value), None) => ObservableValue::Known(value),
             ("absent", None, None) => ObservableValue::Absent,
             ("unknown", None, Some(reason_value)) => {
                 ObservableValue::Unknown(reason(&reason_value, source)?)
@@ -246,6 +250,7 @@ pub fn load_contract_from_bytes(bytes: &[u8], source: &str) -> Result<Refinement
         };
         format!("{class}: {source}: {e}")
     })?;
+    ensure_toml_string_limits(&value, source)?;
     let dto: ContractDto = value
         .try_into()
         .map_err(|e| format!("schema: {source}: {e}"))?;
@@ -354,6 +359,30 @@ pub fn load_contract_from_bytes(bytes: &[u8], source: &str) -> Result<Refinement
     })
 }
 
+fn ensure_toml_string_limits(value: &toml::Value, source: &str) -> Result<(), String> {
+    match value {
+        toml::Value::String(value) if value.len() > MAX_STRING => {
+            Err(format!("limit: {source}: string exceeds 64 KiB"))
+        }
+        toml::Value::Array(values) => {
+            for value in values {
+                ensure_toml_string_limits(value, source)?;
+            }
+            Ok(())
+        }
+        toml::Value::Table(table) => {
+            for (key, value) in table {
+                if key.len() > MAX_STRING {
+                    return Err(format!("limit: {source}: string exceeds 64 KiB"));
+                }
+                ensure_toml_string_limits(value, source)?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -368,12 +397,12 @@ mod tests {
 
     #[test]
     fn oversized_observable_discriminants_are_limits() {
-        for field in ["state", "reason"] {
+        for field in ["state", "reason", "prohibited-value"] {
             let oversized = "x".repeat(MAX_STRING + 1);
-            let observable = if field == "state" {
-                serde_json::json!({"state": oversized})
-            } else {
-                serde_json::json!({"state": "unknown", "reason": oversized})
+            let observable = match field {
+                "state" => serde_json::json!({"state": oversized}),
+                "reason" => serde_json::json!({"state": "unknown", "reason": oversized}),
+                _ => serde_json::json!({"state": "absent", "value": oversized}),
             };
             let snapshot = serde_json::json!({
                 "format_version": 1,
@@ -384,5 +413,29 @@ mod tests {
             let error = load_snapshot_from_bytes(snapshot.to_string().as_bytes(), "m").unwrap_err();
             assert!(error.starts_with("limit:"), "{field}: {error}");
         }
+    }
+
+    #[test]
+    fn oversized_strings_precede_closed_schema_validation() {
+        let oversized = "x".repeat(MAX_STRING + 1);
+        let snapshot = serde_json::json!({
+            "format_version": 1,
+            "artifact_id": "a",
+            "extractor_version": "e",
+            "observables": {},
+            "unknown": oversized
+        });
+        assert!(
+            load_snapshot_from_bytes(snapshot.to_string().as_bytes(), "m")
+                .unwrap_err()
+                .starts_with("limit:")
+        );
+
+        let contract = format!(
+            "id='c'\n[[relation]]\nkind='must-not-invent'\ntarget='t'\nsource='{oversized}'\n"
+        );
+        assert!(load_contract_from_bytes(contract.as_bytes(), "m")
+            .unwrap_err()
+            .starts_with("limit:"));
     }
 }
