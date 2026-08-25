@@ -1,6 +1,6 @@
 # Assessment 0032 — propriedade biunívoca de prompts
 
-**Estado:** PROTOCOLO CONGELADO — produção e gates proibidos até A
+**Estado:** RED SEGREGADO CONGELADO — produção liberada para C
 **Data:** 2026-08-25
 **Passo:** P0104
 **Baseline funcional:** `84fa3006ad6557722cfbe4d10c78c7d0de6b4195`
@@ -50,3 +50,56 @@ próprio linter depois da regra, sem exceções. E é somente leitura.
 
 O Typst Crystalline permanece fora da superfície de escrita. Sem merge, push, release ou
 instalação neste passo.
+
+## A — inventário integral
+
+O inventário somente leitura está congelado em
+`00_nucleo/assessments/0032-a-inventario-ownership-prompts.md` (SHA-256
+`fde7ac62afc69a6aaa14dbb0aaf334d1441e0d19ea9bd51482ec36187a909e66`, commit
+`81d2cf1`). Ele encontrou 76 consumers produtivos, 45 prompts distintos, 32 relações
+1:1 e 13 prompts compartilhados por 44 consumers. A individualização mínima exigirá 31
+novos prompts proprietários.
+
+Não há multi-`@prompt` local nem órfão após as exceções vigentes. A assimetria dos
+parsers foi congelada: todos publicam `prompt_header`, mas somente Rust preserva todas
+as referências; Go, Java e Elixir preservam a canônica; os demais deixam `prompt_refs`
+vazio. A seam autorizada preserva `(prompt, source_path)` no índice local, reduz em L4 e
+decide puramente em L1.
+
+Os 13 compartilhamentos constituem `SPEC-GAP` apenas para a individualização semântica
+do próprio repositório. Eles não bloqueiam implementar nem testar a regra global; bloqueiam
+declarar o auto-lint `READY` sem D.
+
+## B — gates congelados antes de produção
+
+| Gate | Evidência | Resultado inicial |
+|---|---|---|
+| B1 bijeção in-memory | `tests/prompt_ownership_bijection_assessment.rs` — `d0c9850fda426cf7210dc5617f3f48e4f554f0145823deb21f076632312d9eaf` | compile-RED causal: seam L1 global ausente |
+| B2 wiring real | `tests/prompt_ownership_wiring_assessment.rs` — `f212348a1d25fe615b7667cd5d8d8c7f030821c9a438b383341674662f7deb64` | RED funcional esperado sob o binário atual |
+| B2 fixture | `tests/fixtures/prompt_ownership_wiring/00_nucleo/prompts/shared.md` — `2df2e6796076e4817ce3ee0a501a7d2f1ebc2ea5c50df6898f130c629d316b52` | entrada exclusiva do gate |
+| B3 transação | `tests/fix_hashes_bijection_assessment.rs` — `7d7ed0691656517c91a846d7f442d9d506e2e3f1b3dcd968a008ef15d32ac3d2` | compile-RED causal: seam transacional ausente |
+
+B1 cobre oito propriedades normativas. B2 executa o binário real, incluindo todos os
+parsers declarados. B3 cobre preflight integral, colisões determinísticas, rollback,
+falha de rollback, validação reversa e reprodução mínima do falso fechamento P1179.
+`rustfmt --check` dirigido e `git diff --check` passaram antes de C.
+
+### B4 — Typst Crystalline somente leitura
+
+O manifesto foi revalidado sem alteração externa: 421 consumers, 336 prompts, 22 prompts
+compartilhados por 107 consumers, 314 prompts únicos e 78 consumers sem metadata. O
+dry-run atual emitiu 421 linhas, SHA-256
+`518825da010e5124649a6287eaaf39f5f6d8c0b30c7cbfcf0d4dc8d762581c78`.
+O hash do status Git antes/depois permaneceu
+`1c3ff45d79b2eb82706490f155ed919b9d3e759f73fb843d09adb20642750548` e o hash do
+diff binário dos seis paths rastreados permaneceu
+`102831d5574f5d3580797670a67742875a63517701e4f984f601eb31a92854be`.
+
+## Classificação causal antes de C
+
+- `R1`: RED de produção confirmado pelos gates B1/B2.
+- `R2`: risco congelado; B1 exige bytes invariantes por permutação.
+- `R3`–`R5`: RED contratual/estrutural confirmado por B3 e P1179.
+- `R6`: confirmado pelo inventário A; saneamento D permanece `SPEC-GAP` semântico.
+
+Nenhuma expectativa dos gates pode ser alterada durante C.
