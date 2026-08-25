@@ -1,5 +1,5 @@
 # Prompt: Validador direcional de refinamento
-Hash do Código: ac51c390
+Hash do Código: 4e99a22c
 
 > **Estado:** VIGENTE — ADR-0019 aprovado pelo humano em 2026-08-23
 > **Camadas:** L1–L4
@@ -282,6 +282,199 @@ paths, 4 MiB por blob e 32 MiB por revisão. Excesso produz
 `Unknown(BudgetExhausted)` sem truncamento. O backend não adiciona biblioteca Git e
 mantém `snapshot + refine` como fallback sem autoridade de subprocesso.
 
+### Contrato operacional B2 resselado — saneamento P0100/P0103
+
+Esta seção substitui qualquer alternativa anterior dentro de B2. Não altera exits,
+precedência ou apresentação de F09, nem move fatos, comparação ou `UnknownReason` para
+fora de L1.
+
+#### Envelope autocontido e seam pública L3
+
+`repository_root` deve ser absoluto e apontar para diretório real, sem symlink em seus
+componentes. Seu filho `.git` deve ser diretório real interno, também sem symlink. São
+rejeitados arquivo `.git` indireto, bare repository, linked worktree, object pool,
+symlink e a presença de `.git/objects/info/alternates`. Todos os objetos aceitos devem
+estar sob `.git/objects`; nenhum alternate ou object store externo é permitido. Como o
+ambiente do filho é limpo, overrides herdados como `GIT_DIR`, `GIT_WORK_TREE`,
+`GIT_COMMON_DIR`, `GIT_OBJECT_DIRECTORY` e `GIT_ALTERNATE_OBJECT_DIRECTORIES` nunca
+chegam ao Git. No instante das verificações defensivas, `.git/objects` e seus
+componentes observados devem ser reais e internos, sem symlink persistente.
+
+#### Base confiável do modo local
+
+`refine-revisions` é uma conveniência do linter para engenharia local, não um executor
+de código não confiável nem um certificador contra adversário local ativo. Pertencem à
+base confiável deste modo o executável Git selecionado no `PATH`, o usuário e os
+processos locais com acesso ao repositório e a estabilidade do repositório durante cada
+operação.
+
+Refs, paths, conteúdo dos objetos, configuração persistente e framing continuam entradas
+não confiáveis e são validados defensivamente. O adapter rejeita alternates, symlinks
+persistentes, hooks/extensões, configuração e protocolos externos, budgets excedidos e
+respostas malformadas.
+
+O modo local não promete resistir a Git adulterado, troca de filesystem sincronizada
+durante a leitura, descendente deliberadamente escapando por `setsid` ou interferência
+de outro processo do mesmo usuário. Esses cenários pertencem a um futuro modo
+selado/certificador, com comando, modelo de ameaça, sandbox e critérios de release
+próprios. Esse modo futuro não é implementado nem implicitamente ativado por
+`refine-revisions`.
+
+O ponto único de auditoria é público em `crystalline_lint::infra::git_refinement`:
+
+```rust
+pub fn load_revision_with_git(
+    git_executable: &Path,
+    repository_root: &Path,
+    revision: &OsStr,
+    logical_paths: &[PathBuf],
+) -> Result<GitRevisionContent, GitRevisionError>;
+
+pub struct GitRevisionContent {
+    pub oid: String,
+    pub paths: BTreeMap<PathBuf, GitPathContent>,
+}
+
+pub enum GitPathContent {
+    Blob(Vec<u8>),
+    Missing,
+    Unknown(GitUnknownReason),
+}
+
+pub enum GitUnknownReason {
+    MissingObject,
+    ForbiddenObjectKind,
+    BudgetExhausted,
+}
+
+pub enum GitRevisionError {
+    InvalidInput,
+    MissingRef,
+    InvalidFraming,
+    Timeout,
+    ProcessFailure,
+    ContainmentFailure,
+}
+```
+
+Os tipos são públicos, comparáveis por igualdade e depuráveis; variantes não carregam
+texto do Git. O default produtivo resolve `git` uma vez para path absoluto e chama a
+mesma função. O gate fornece somente um path absoluto para um executável controlado;
+não injeta respostas, relógio, orçamento ou política. A função pertence a L3 e não
+decide `Preserved`, `Violated`, `Unknown` de domínio ou exit.
+
+#### Gramáticas de entrada e transcript
+
+O executável do gate deve ser path absoluto para arquivo regular, sem symlink em seus
+componentes. `revision` deve ser representável em UTF-8, conter de 1 a 255 bytes e não
+conter NUL, LF ou CR; o adapter acrescenta `^{commit}` no mesmo argumento. Cada path
+lógico deve ser relativo, não vazio, representável em UTF-8, ter no máximo 4096 bytes,
+usar `/` como separador protocolar e não conter NUL, LF, CR, componente vazio, `.`,
+`..`, componente iniciado por `:` nem barra inicial/final. Backslash é byte comum e não
+separador. Entradas inválidas falham antes de iniciar processo.
+
+Cada processo recebe `current_dir(repository_root)`, argumentos separados e nenhum
+shell. O ambiente começa com `env_clear()` e contém exatamente:
+
+```text
+GIT_TERMINAL_PROMPT=0
+GIT_NO_LAZY_FETCH=1
+GIT_OPTIONAL_LOCKS=0
+GIT_NO_REPLACE_OBJECTS=1
+GIT_CONFIG_NOSYSTEM=1
+GIT_CONFIG_GLOBAL=/dev/null (Unix/macOS) ou NUL (Windows)
+LC_ALL=C
+```
+
+Não há `PATH`, `HOME`, `XDG_CONFIG_HOME` ou variável herdada. Todo argv começa, nesta
+ordem, por:
+
+```text
+-c protocol.allow=never
+-c core.hooksPath=
+-c core.fsmonitor=false
+-c credential.helper=
+-c diff.external=
+-c filter.lfs.process=
+-c filter.lfs.smudge=
+-c filter.lfs.clean=
+```
+
+Depois desse prefixo, uma revisão executa exatamente três processos, nesta ordem:
+
+```text
+rev-parse --verify --end-of-options <revision>^{commit}
+ls-tree -rz --full-tree <oid> -- <:(top,literal)path para cada path distinto em ordem lexical de bytes>
+cat-file --batch-command --buffer
+```
+
+`rev-parse` deve terminar com status zero, stderr vazio e stdout exatamente
+`<oid>\n`; `oid` é ASCII hexadecimal minúsculo com 40 ou 64 bytes e permanece opaco.
+`ls-tree` deve terminar com status zero, stderr vazio e emitir zero ou mais registros
+`<mode> SP <type> SP <oid> TAB <path> NUL`. `mode` tem seis dígitos octais; `type` e
+`oid` são ASCII; `path` deve coincidir byte a byte com uma entrada solicitada. Registro
+duplicado, não solicitado, fora de ordem lexical de path, campo extra, UTF-8 inválido,
+OID inválido ou ausência do NUL final é framing inválido. Path solicitado sem registro
+vira `Missing`. Apenas `100644 blob` e `100755 blob` são regulares; `120000`, `160000`
+ou qualquer outro mode/type viram `ForbiddenObjectKind` para o path.
+
+O prefixo `:(top,literal)` é criado pelo adapter e nunca vem da entrada; portanto os
+paths são literais, não glob/pathspec. Para OIDs de blobs regulares distintos, em ordem
+da primeira ocorrência na ordem dos paths, stdin de `cat-file` recebe `contents
+<oid>\n`; após todas as requisições recebe um único `flush\n`, é efetivamente
+descarregado e fechado. Cada resposta, na ordem pedida, é exatamente `<oid> SP blob SP
+<size> LF <size bytes> LF` ou `<oid> SP missing LF`; depois da última não pode haver
+byte adicional. `size` é decimal ASCII canônico sem sinal nem zero à esquerda, salvo
+`0`. Resposta `missing` para OID esperado vira `MissingObject`; tipo diferente de
+`blob`, OID divergente, tamanho inválido, truncamento, byte extra, status não zero ou
+stderr não vazio falham fechados conforme a taxonomia abaixo. Um mesmo OID é lido uma
+vez e seus bytes podem alimentar múltiplos paths, sem alterar multiplicidade lógica.
+
+#### Budgets, atomicidade e lifecycle
+
+O limite de 512 conta paths lógicos distintos depois de validar a lista; duplicatas de
+path são `InvalidInput`. O limite de 4 MiB é inclusivo por blob (`size <= 4_194_304`) e
+o de 32 MiB é inclusivo por revisão (`soma dos tamanhos por path regular <=
+33_554_432`); um blob compartilhado conta uma vez para cada path lógico que publica.
+Os limites são verificados pela moldura declarada antes de alocar/publicar os bytes.
+Qualquer excesso marca todos os paths regulares da revisão como
+`Unknown(BudgetExhausted)` e descarta todos os blobs já lidos; não há snapshot nem
+resultado parcial. Validação de entrada precede budget; depois do spawn, contenção,
+timeout, status e framing precedem budget.
+
+Leitura é incremental e limitada: `rev-parse` admite no máximo 65 bytes de stdout,
+`ls-tree` 2.200.000 bytes e `cat-file` 33.600.000 bytes, incluindo molduras; stderr
+admite zero bytes. Ultrapassar cap de transcript encerra e reap o grupo/job e retorna
+`InvalidFraming`, sem acumular o excedente. Um `size` que por si só exceda budget é
+`BudgetExhausted`: o processo é encerrado/reaped sem esperar o payload declarado.
+
+Uma operação Git é um dos três processos acima, desde `spawn` até stdin fechado,
+stdout/stderr drenados, status coletado e contenção encerrada. Cada operação tem
+deadline de 10 segundos medido por relógio monotônico próprio da L3. Antes de liberar o
+filho, o adapter aplica a contenção normal disponível na plataforma: process group no
+Unix e encerramento do líder no backend Windows vigente. No deadline fecha stdin,
+encerra a contenção conhecida e conclui os readers sem publicar conteúdo. Falha
+observável ao preparar ou encerrar essa contenção retorna `ContainmentFailure`; deadline
+do processo confiável retorna `Timeout` depois do cleanup conhecido.
+
+Reap integral de descendente deliberadamente dissociado da contenção normal não é
+garantia do modo local. O adapter deve evitar espera ilimitada causada por subprocesso
+cooperativo ou falha ordinária, mas não incorpora cgroup, namespace, subreaper, Job
+Object obrigatório ou sandbox multiplataforma nesta modalidade.
+
+#### Taxonomia fechada
+
+`InvalidInput`, `MissingRef`, `InvalidFraming`, `Timeout`, `ProcessFailure` e
+`ContainmentFailure` são erros L3 e nunca viram `Unknown` de domínio nem ausência.
+`Missing` é somente ausência real de path no tree e segue `on_missing` no extrator B1.
+`MissingObject`, `ForbiddenObjectKind` e `BudgetExhausted` são as únicas incertezas da
+fonte Git. L4 projeta as duas primeiras em `Unknown(PartialContract)` com a classe L3
+preservada na proveniência, e a última em `Unknown(BudgetExhausted)`; nenhuma pode virar
+ausência conhecida ou sucesso. Status não zero ou spawn/I/O falho é `MissingRef`
+apenas no `rev-parse`, e `ProcessFailure` nos demais processos. Moldura, stdout, stderr
+ou tipo de resposta inválidos são `InvalidFraming`. Uma falha impede a publicação de
+toda a revisão. O texto e o exit global continuam reservados a F09.
+
 ## Limites da primeira versão
 
 - fatos finitos previamente extraídos;
@@ -317,3 +510,4 @@ fonte única e a apresentação deve evitar duplicidade.
 | 2026-08-23 | Vigente | Humano aprovou materialização segura da Etapa A em branch dedicado |
 | 2026-08-24 | Vigente | Humano aprovou Etapa B1: snapshot Rust por queries explícitas, sem Git |
 | 2026-08-24 | Vigente | Humano aprovou Etapa B2: leitura imutável por Git batch, sem checkout ou rede |
+| 2026-08-25 | Vigente | P0103 separa o linter local de futuro modo selado e explicita a base confiável |

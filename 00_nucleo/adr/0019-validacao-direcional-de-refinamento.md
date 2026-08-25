@@ -265,7 +265,25 @@ Linux, macOS e Windows são suportáveis via `std::process::Command`, stdin/stdo
 bytes e ausência de shell; a materialização deve testar os três. O requisito externo
 é Git 2.43 ou compatibilidade demonstrada com `--batch-command` e
 `--end-of-options`. Repositórios SHA-1 e SHA-256 devem tratar OIDs como strings opacas;
-alternates e shallow clones ficam a cargo da leitura local do Git, sempre sem fetch.
+shallow clones são aceitos somente quando todos os objetos esperados estão no object
+database interno. Alternates, object pools, linked worktrees, bare repositories,
+arquivo `.git` indireto e qualquer object store externo são rejeitados; não ficam a
+cargo da leitura local do Git.
+
+### Resselamento operacional P0100
+
+O contrato byte-level, a seam pública L3, o envelope autocontido, o ambiente exato, as
+gramáticas de ref/path, os três argvs, a contabilidade, o lifecycle e a taxonomia
+normativa são os da seção **Contrato operacional B2 resselado — saneamento P0100** de
+`prompts/refinement-validator.md`. Esse contrato é parte desta decisão e prevalece
+sobre formulações alternativas anteriores desta adenda.
+
+A seam troca exclusivamente o path absoluto do executável e atravessa o mesmo adapter
+concreto de produção. Ela não injeta respostas ou política e não cria uma porta Git em
+L1. Conteúdo e identidade imutável saem de L3; fatos e razões de domínio permanecem em
+L1; apresentação/exits permanecem em L2/F09; L4 apenas compõe revisões, extrator e
+comparador. O envelope B2 não autoriza rede, escrita, checkout, build, filtros, hooks,
+temporários ou um backend adicional.
 
 ### Registro de aprovação
 
