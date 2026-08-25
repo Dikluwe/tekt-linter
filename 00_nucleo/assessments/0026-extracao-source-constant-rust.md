@@ -81,3 +81,16 @@ B1 então revelou que o construtor vigente possui quarto argumento `CrateRegistr
 no contrato do parser. `crate-registry.md` foi adicionado ao pacote e o construtor L0 foi
 corrigido para `CrateRegistry::default()`. O RED de compilação provisório não conta como
 RED funcional; B1/B2 devem revalidar seus arquivos após este resselamento.
+
+## Gates congelados e RED inicial
+
+| Gate | Arquivo | SHA-256 | RED |
+|---|---|---|---|
+| B1 — identidade | `tests/rust_source_constant_identity_assessment.rs` | `cf563420830c30cd3fbaf2f5db04682a16454362118bb557c6d61a6a356acd72` | 0/3 PASS |
+| B2 — exclusões | `tests/rust_source_constant_context_assessment.rs` | `92e4eb6ada862174030d34c04c7860aaa8a934e06de2b6cd379ccab90b14da4b` | 1/3 PASS |
+
+B1 observou colunas zero-based e emissão de strings/não numéricos. B2 confirmou colunas
+zero-based, emissão de contextos excluídos e `SyntaxError` sem IR parcial já conforme.
+O harness provisório B2 usava `Box::leak`; foi classificado `GATE-DEFECT` e removido antes
+do congelamento. Os gates finais não importam V21/V22, não observam campos excluídos e
+mantêm `SourceFile` vivo lexicalmente.
