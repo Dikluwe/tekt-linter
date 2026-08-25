@@ -1,5 +1,5 @@
 # Prompt: Crystalline Linter (crystalline-lint)
-Hash do Código: 189991f6
+Hash do Código: cba9d9ce
 
 **Camada**: L1 → L4 (sistema completo)
 **Criado em**: 2025-03-13
@@ -120,8 +120,9 @@ que opera sobre directórios. `lib.rs` na raiz excluído via
   `declared_traits`, `implemented_traits` e `declarations`.
   Para TypeScript e Python: resolve imports fisicamente via
   `normalize` + `resolve_file_layer`.
-- **L4**: instancia e injeta todos os componentes. Selecciona
-  o parser correcto por `file.language`. Orquestra pipeline
+- **L4**: instancia e injeta todos os componentes, incluindo o `ParserSet` L1 com um
+  adapter L3 obrigatório por slot. A política pura L1 selecciona o parser correcto por
+  `file.language`; L4 não repete essa decisão. Orquestra pipeline
   Map-Reduce via rayon. Ordena violations após reduce.
   Zero lógica de negócio.
   Para V21, instancia o adapter de frescura sob a raiz do projeto e o injeta no
@@ -358,16 +359,8 @@ let (mut all_violations, project_index) = walker
     .map(|result| -> (Vec<Violation>, LocalIndex) {
         match result {
             Ok(source) => {
-                // Selecção do parser por file.language (ADR-0009)
-                let parse_result = match source.language {
-                    Language::Rust       => rust_parser.parse(&source),
-                    Language::TypeScript => ts_parser.parse(&source),
-                    Language::Python     => py_parser.parse(&source),
-                    _                    => Err(ParseError::UnsupportedLanguage {
-                        path: source.path.clone(),
-                        language: source.language.clone(),
-                    }),
-                };
+                // ParserSet é L1; L4 somente constrói o registry total e inicia a chamada.
+                let parse_result = parser_set.parse(&source);
                 match parse_result {
                     Ok(parsed) => {
                         let violations = run_checks(
