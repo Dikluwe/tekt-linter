@@ -107,6 +107,24 @@ O L0 foi saneado antes de ler produção:
 Os hashes acima resselam o contrato. B1/B2 podem ser materializados cegamente; produção
 continua proibida até ambos serem congelados.
 
+## Gates B1/B2 congelados — RED
+
+Dois verificadores independentes validaram os oito hashes atuais e criaram arquivos
+separados sem ler produção, L3 ou testes existentes.
+
+- B1 `tests/update_snapshot_planning_assessment.rs`, SHA-256
+  `09b81471d75656164df6f3332ec38c8a624c50ae961619ae61f6336a6a1a91aa`:
+  filtro/cardinalidade/ordem, paths hostis, primeiro duplicado, ausências e spy de
+  serialização;
+- B2 `tests/update_snapshot_execution_assessment.rs`, SHA-256
+  `a0c5ba16d856f730b757d24131aed25b2c9548099fbbcf3de8d32e11c8196ef7`:
+  dry-run, unreadable, ordem, duplicatas, escrita única, erro exato e continuação;
+- `rustfmt --check` dirigido: PASS nos dois;
+- compilação: RED pela ausência de `SnapshotUnreadable` e das variantes normativas de
+  `SnapshotEntry`/`SnapshotResult`.
+
+O RED está congelado. O confronto C da produção está autorizado a partir deste ponto.
+
 ## Papéis
 
 - A: adversário somente Assessment/L0 hash-pinned;
