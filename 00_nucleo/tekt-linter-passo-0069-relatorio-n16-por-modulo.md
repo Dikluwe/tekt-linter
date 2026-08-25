@@ -150,6 +150,22 @@ exceção e deduplicação podem permanecer helpers privados; seu comportamento 
 por `collect_n16_stats`. Nenhum tipo paralelo de fonte ou nova função com nomes
 inventados faz parte do contrato.
 
+Para fixtures em memória, o tipo L1 já existente é público e possui esta forma mínima:
+
+```rust
+pub struct SourceFile {
+    pub path: PathBuf,
+    pub content: String,
+    pub language: Language,
+    pub layer: Layer,
+    pub has_adjacent_test: bool,
+}
+```
+
+`Language` e `Layer` vivem em `crystalline_lint::core::entities::layer`; o gate usa
+`Language::Rust` e `Layer::L1`. Esses campos são somente dados injetados: sua publicação
+não autoriza L2 a descobrir ou ler arquivos.
+
 Um token é exatamente `N16[` + categoria + `]`. `N16` é case-sensitive; a categoria é
 `α`, `β`, `γ` ou A/B/C ASCII em qualquer case, mapeando A→α, B→β e C→γ. A varredura é
 não sobreposta, da esquerda para a direita, em qualquer posição e sem limite de palavra.
