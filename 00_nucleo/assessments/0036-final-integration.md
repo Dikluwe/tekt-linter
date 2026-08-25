@@ -1,0 +1,49 @@
+# Assessment 0036 — fechamento final e integração
+
+**Estado:** A CONGELADO — writes proibidos até reconciliação/classificação
+**Data:** 2026-08-25
+**Passo:** P0108
+**Branch:** `codex/tekt-nucleus-artifact`
+**Baseline branch:** `a61fa92fbc83435f6187a7d03c3ec934a1525489`
+**Baseline master:** `84fa3006ad6557722cfbe4d10c78c7d0de6b4195`
+**Merge-base:** `84fa3006ad6557722cfbe4d10c78c7d0de6b4195`
+
+## L0 hash-pinned
+
+| Insumo | SHA-256 |
+|---|---|
+| `0034-manifest-individualizacao.tsv` | `38b4d76c7749ab4d18b8d30d848ff07c250dcc1f074d5d72d1be54fbd369555f` |
+| Assessment 0034 | `2d528395e0822c8409cc673c0bc68d4aefe9e8e416a073de6dc5d82ba50e1817` |
+| Assessment 0035 | `5f7e671a5b44acec849af9b5ba1e3a92d3c3e80a06c926609d9ebca7e0389b87` |
+| 44 linhas `consumer→prompt→sha(code)→sha(prompt)` | `5277be3a624f16cddca1cd05debe34c45d7dc0f9db0efcfa05badfaa1b16a036` |
+| lista dos 26 paths divergentes de rustfmt | `732e5e07975e54cccebbfaae973c34be5b3e6ef274717067ec7493a939ef7f68` |
+| saída integral `cargo fmt --check` | `1395f5bdcdbceb6e43ae901d124b436eccced85cd499bf11ac462c9e906e3c78` |
+| lista ordenada dos 30 commits `master..HEAD` | `9a2d551d7ec859b87c45bde4f69fb5d3df2b775bc7284732ad9e3eb9e8e7f919` |
+
+O worktree estava limpo. `master` é ancestral direto do branch; não há divergência lateral.
+Os hashes dos 44 pares foram calculados na ordem do manifesto 0034 sobre bytes exatos.
+
+## Inventário fechado
+
+- universo semântico: 44 consumers, 44 prompts, 44 pares únicos;
+- dívida fmt: exatamente 26 paths enumerados no P0108;
+- documentos ativos obsoletos: Assessment 0033 e relatório P0105;
+- documentos P0105/P0106 permanecem históricos e não devem ter sua cronologia reescrita;
+- merge permitido somente contra `master` no OID acima ou após novo congelamento A.
+
+## Hipóteses RED
+
+| ID | Hipótese |
+|---|---|
+| R1 | bloqueio documental resolvido ainda aparece como estado atual |
+| R2 | prompt compacto omite responsabilidade, restrição ou critério observável |
+| R3 | prompt contradiz código, ADR ou classificador 0034 |
+| R4 | rustfmt toca path fora dos 26 ou altera tokens |
+| R5 | enriquecimento/fmt produz resselo fora da superfície prevista |
+| R6 | master muda, conflito surge ou pós-merge diverge do branch auditado |
+
+## Segregação
+
+B reconcilia documentos; C classifica 44 pares antes de qualquer enriquecimento; D prova
+formatação cosmética; E ressela e fecha o branch; F faz merge e repete os gates. RED e
+SPEC-GAP permanecem bloqueantes até classificação explícita.
