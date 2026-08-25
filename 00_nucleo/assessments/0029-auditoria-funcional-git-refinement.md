@@ -1,6 +1,6 @@
 # Assessment 0029 — auditoria funcional Git de `refine-revisions`
 
-**Estado:** L0 SANEADO — aguardando re-preflight A; produção e gates proibidos
+**Estado:** BLOCKED — REDs adversariais materiais; F05 não fechado
 **Data:** 2026-08-25
 **Passo:** P0100 / F05
 **Baseline:** `8c28cc01ea7cdb47aa9e8e582597085304a7ece4`
@@ -146,3 +146,36 @@ C preservou quatro possíveis bloqueios para D:
 
 Esses pontos não são declarados resíduos aceitos. D deve classificá-los contra o L0; F05
 só fecha se não houver `RED` material ou se houver correção causal dentro da fronteira.
+
+## Parecer D
+
+D confirmou os resultados executados: B1 7/7, B2 4/4 em aproximadamente 10 segundos,
+gate histórico 6/6, CLI 10/10, V5/V6/V7/V12 e `diff-check` verdes. O deadline B2 é real.
+Ainda assim, bloqueou o fechamento por seis divergências:
+
+1. o caminho produtivo em L4 continua chamando `resolve_commit` e
+   `extract_revision_snapshot` históricos, não `load_revision_with_git`; o comando real
+   não herda argv, ambiente, framing, caps e contenção confrontados pelos gates;
+2. em Windows não existe Job Object: a implementação mata apenas o filho, não
+   descendentes;
+3. header de blob oversized é classificado somente após EOF/status; mantendo o pipe
+   aberto, o resultado vira `Timeout` em vez de `BudgetExhausted` imediato;
+4. a autocontenção verifica diretórios fixos, não os loose objects/packs efetivamente
+   acessíveis por symlink;
+5. se o líder sair deixando descendente com stdout/stderr aberto, o watchdog termina e
+   os joins podem bloquear sem deadline; mesmo no timeout, esperar apenas o líder não
+   comprova reap de todos os membros do grupo;
+6. o pin final do prompt saneado estava desatualizado após a mudança do campo “Hash do
+   Código”; foi reconciliado documentalmente após D para
+   `9ab972915e8f21e6c0fc323686d507fb2cb4b590de6d987b454e05642f167818`.
+
+D classificou como `GATE-DEFECT` de cobertura a ausência de casos para oversized com
+pipe aberto, líder encerrado com descendente segurando pipes, symlinks em loose
+objects/packs e contenção Windows. O RED→GREEN prova a nova seam e seus tipos, mas não o
+caminho produtivo completo.
+
+O item 6 está fechado e não exige produção; os itens 1–5 permanecem `RED` materiais.
+
+**Veredito:** `BLOCKED`. F05 permanece aberto. A correção futura precisa ampliar gates
+antes da produção, integrar a rota real à seam única, tornar framing/lifecycle
+incrementais e decidir/provar a estratégia Windows e a autocontenção de objetos.

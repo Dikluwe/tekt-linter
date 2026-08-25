@@ -1,7 +1,7 @@
 # Passo operacional 0100 — auditoria funcional Git de `refine-revisions`
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** planejado; não executado
+> **Estado:** executado; `BLOCKED` — F05 não fechado
 > **Branch prevista:** `codex/audit-git-refinement-functional`
 > **Pré-condição:** P0099 integrado em `master`, worktree limpo e branch nova criada a
 > partir do merge
