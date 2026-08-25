@@ -1,6 +1,6 @@
 # Assessment 0036 — fechamento final e integração
 
-**Estado:** READY TO MERGE — zero RED/SPEC-GAP aberto
+**Estado:** MERGED — zero RED/SPEC-GAP aberto
 **Data:** 2026-08-25
 **Passo:** P0108
 **Branch:** `codex/tekt-nucleus-artifact`
@@ -89,6 +89,23 @@ Commits P0108:
 
 ## Parecer
 
-Branch apto a integração contra `master` congelado em
-`84fa3006ad6557722cfbe4d10c78c7d0de6b4195`. Não há conflito conhecido nem divergência
-lateral. O merge deve preservar commits e ser seguido pelos gates pós-merge do P0108.
+O branch foi integrado contra `master` congelado em
+`84fa3006ad6557722cfbe4d10c78c7d0de6b4195`. Não houve conflito nem divergência lateral;
+os commits foram preservados e os gates pós-merge do P0108 foram repetidos.
+
+## F — fechamento pós-merge
+
+- merge não fast-forward em `master`: `9daeaa1eeeb6f1fbbdd45462998262cfbb86b393`;
+- tip auditado integrado: `c9e3b50`, confirmado como ancestral do merge;
+- conflitos: zero;
+- `cargo fmt --check`: PASS;
+- `cargo test`: PASS — 630 unitários e toda a suíte de integração/doc-tests;
+- `cargo run --quiet -- . --fix-hashes --dry-run`: `Nothing to fix`;
+- auto-lint estrutural: V1/V5/V7/V15/V26 = 0;
+- auto-lint exit 1 somente pelos achados históricos V16–V25 já classificados fora do
+  escopo;
+- `git diff --check`: PASS;
+- warning residual: `print_tree` não usado, histórico e fora do escopo.
+
+R6 foi refutada. O P0108 está fechado em `master`; não resta RED, gate ou SPEC-GAP deste
+passo.
