@@ -348,6 +348,7 @@ where
     pub prompt_reader: R,
     pub snapshot_reader: S,
     pub config: CrystallineConfig,
+    pub registry: CrateRegistry,
 }
 
 impl<R: PromptReader, S: PromptSnapshotReader> RustParser<R, S> {
@@ -355,8 +356,9 @@ impl<R: PromptReader, S: PromptSnapshotReader> RustParser<R, S> {
         prompt_reader: R,
         snapshot_reader: S,
         config: CrystallineConfig,
+        registry: CrateRegistry,
     ) -> Self {
-        Self { prompt_reader, snapshot_reader, config }
+        Self { prompt_reader, snapshot_reader, config, registry }
     }
 }
 
@@ -413,7 +415,8 @@ que a implementação vigente os preencha.
 
 Harness autorizado: construir `SourceFile` pelos campos públicos publicados em
 `contracts/file-provider.md`; instanciar `RustParser::new` com mocks locais que implementem
-`PromptReader` e `PromptSnapshotReader` e `CrystallineConfig::default()`; chamar somente
+`PromptReader` e `PromptSnapshotReader`, `CrystallineConfig::default()` e
+`CrateRegistry::default()`; chamar somente
 `LanguageParser::parse(&SourceFile)`. Não há segunda API pública de extração.
 
 V21 e V22 são consumidores de regressão. É proibido chamá-los, importar suas listas ou
