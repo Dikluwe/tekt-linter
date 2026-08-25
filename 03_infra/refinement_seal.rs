@@ -1,6 +1,6 @@
 //! Crystalline Lineage
-//! @prompt 00_nucleo/prompts/segregated-materialization.md
-//! @prompt-hash d20305fb
+//! @prompt 00_nucleo/prompts/infra/refinement-seal.md
+//! @prompt-hash PENDING
 //! @layer L3
 //! @updated 2026-08-24
 //!
