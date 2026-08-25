@@ -147,6 +147,24 @@ Um verificador novo, sem contexto herdado, deve criar B2 em arquivo separado, se
 produção ou testes existentes. Cada campo de `ParsedFile` deve carregar sentinela
 observável e o retorno deve ser comparado integralmente por `PartialEq`.
 
+## B2 independente resselado
+
+Um agente novo sem contexto herdado validou os onze hashes L0 e criou somente
+`tests/multiparser_composition_assessment.rs`, sem ler produção, B1 ou testes existentes.
+
+- SHA-256:
+  `a8c8985933272cdd9d7ab5c99e29b77ab9f5baea1a884a25041ef1d3b4800e2b`;
+- nove spies independentes e nove rotas `Ok` + nove rotas `Err`;
+- sentinelas não vazias em todos os campos de `ParsedFile`, comparadas integralmente por
+  `PartialEq`;
+- mesma identidade de `SourceFile`, chamada única e zero chamadas em `Unknown`;
+- parsers reais, filesystem e implementação produtiva não foram usados como oráculo;
+- `cargo test --test multiparser_composition_assessment`: 3/3 PASS;
+- `rustfmt --check` dirigido: PASS.
+
+Os dois `GATE-DEFECTs` apontados pelo primeiro D estão fechados. O fechamento ainda exige
+repetição adversarial D sobre o novo delta e a regressão global posterior.
+
 ## Papéis e precedência
 
 - A: lê somente este Assessment e L0 hash-pinned; valida ou agrava os gaps.
