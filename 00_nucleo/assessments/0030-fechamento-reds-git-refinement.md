@@ -1,6 +1,6 @@
 # Assessment 0030 — fechamento dos REDs Git de F05
 
-**Estado:** GATES B1–B4 CONGELADOS — produção liberada para C
+**Estado:** FECHADO `BLOCKED` — F05 aberto; merge proibido
 **Data:** 2026-08-25
 **Passo:** P0101
 **Baseline funcional:** `ba6f3a1c6cf0142ff44075fce6cd903a5f3d1dcf`
@@ -83,3 +83,45 @@ sem pipes, líder encerrado, watchdog e contagem de handles. Neste host, `cargo 
 descobriu zero testes: isso é `NOT RUN / BLOCKED`, jamais `PASS`. A API pública também não
 oferece fault injection para falha direta de criação/atribuição do Job; esse caminho deve
 ser confrontado no adversário Windows e não é promovido a `SPEC-GAP`.
+
+## Correções C e confronto D
+
+| Unidade | Commit | Evidência final |
+|---|---|---|
+| stream/lifecycle | `21aa141` | B1 4/4; R3 `PASS` Unix |
+| object database | `febafc3` | B2 7/7, porém TOCTOU não fechado |
+| rota produtiva | `0b1e4a9` | B3 3/3; R1 `PASS` |
+| produção L3 | — | SHA-256 `42bab723efa948b3025a70154d2087493d7104fa9186ba02fc5347e6a4614d65` |
+| wiring L4 | — | SHA-256 `c64134adb944798050d2088921334368dde1c49be6e9f119871342a12217f2b5` |
+
+| RED | Veredito D | Causa restante |
+|---|---|---|
+| R1 | `PASS` | comando publicado usa a seam L3 única e resolve cada ref uma vez |
+| R2 | `RED / BLOCKED` | produção não implementa Job Object; B4 executou zero testes no Linux |
+| R3 | `PASS` no Unix | oversize é incremental e retorna budget antes do deadline |
+| R4 | `RED` | scan pathname antes/depois não elimina troca durante o subprocesso |
+| R5 | `RED` Unix + `BLOCKED` Windows | descendente pode escapar do process group; joins ainda podem ficar fora da contenção efetiva |
+
+### GATE-DEFECTs finais
+
+- B2 deixa o symlink instalado no cenário concorrente. Assim prova detecção pós-fato,
+  mas não prova ausência de consumo externo quando o atacante restaura a entrada antes
+  do pós-check.
+- B1 mantém o descendente no mesmo process group. Não confronta `setsid`/migração de
+  grupo segurando stdout/stderr, que pode tornar `group_is_alive` falso antes dos joins.
+
+Não há `SPEC-GAP`: os comportamentos exigidos já constam do L0. A estratégia de varrer
+todo `.git/objects` também não se torna regra arquitetural; é correção parcial e não
+autoriza declarar R4 fechado.
+
+## Regressão final
+
+- gates P0101: B1 4/4, B2 7/7, B3 3/3; B4 0/0 (`NOT RUN`);
+- P0100: 7/7 + 4/4; Git histórico 6/6; CLI 10/10;
+- suíte `cargo test --workspace`: `PASS`;
+- auto-lint V5/V6/V7/V12: nenhuma violação;
+- reparador V5 dry-run: `Nothing to fix`;
+- `rustfmt --check` dirigido e `git diff --check`: `PASS`.
+
+Resultado: **F05 `BLOCKED`**. R1 e R3 são melhorias reais preserváveis, mas R2/R4/R5
+impedem fechamento e integração deste branch.
