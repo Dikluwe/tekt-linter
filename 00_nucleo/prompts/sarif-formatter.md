@@ -113,7 +113,7 @@ internamente antes de consultar o nível SARIF.*
 
 **Quando `--update-snapshot` está presente:**
 - Filtrar violations por `rule_id == "V6"`
-- Delegar serialização + escrita para `SnapshotWriter` (via adapter L4)
+- Delegar serialização + escrita para `SnapshotRewriter` L2 (via adapter L4)
 - Se `--dry-run`: apenas reportar interface que seria escrita
 - Após atualização: re-executar análise e confirmar zero V6
 
