@@ -1,6 +1,6 @@
 # Assessment 0034 — individualização semântica de prompts
 
-**Estado:** A CONGELADO — materialização proibida até B1–B3
+**Estado:** READY WITH RESIDUAL AUDIT
 **Data:** 2026-08-25
 **Passo:** P0106
 **Baseline:** `add583d`
@@ -46,3 +46,42 @@ claim compartilhada autônoma.
 B1 valida o manifesto sem produção. B2 confronta classificadores e prompts propostos. B3
 projeta V7/V15/V26 antes de writes. Cada lote é congelado antes do seguinte; hashes somente
 no resselo global final. Projetos externos permanecem fora da superfície de escrita.
+
+## Fechamento P0106
+
+| Gate | Evidência | Resultado |
+|---|---|---|
+| A | 13 classificadores SHA-256, manifesto 44/44 | PASS |
+| B1 | totalidade, unicidade e pinning | PASS |
+| B2 | consumer presente no classificador autorizador | PASS |
+| B3 | owners projetados únicos, zero núcleos, lotes congelados | PASS |
+| C1 | V15 após lote 1 | 6 |
+| C2 | V15 após lote 2 | 2 |
+| C3 | V15 após lote 3 | 0 |
+| D | resselo dry-run/real/dry-run | 45 pares / aplicado / zero pendências |
+| E | V1/V5/V7/V15/V26 | 0/0/0/0/0 |
+| F | `cargo test` | PASS |
+
+O par adicional aos 44 do manifesto foi o débito transitive-pin de P0105 em
+`multi-prompt-header.md`; o reparador também atualizou seus dois consumers de Núcleo Tekt.
+O diff do resselo foi de 92 arquivos com exatamente uma remoção/adição de linha de
+metadado por arquivo e nenhum byte funcional.
+
+## Classificação dos achados
+
+- **RED fechado:** placeholders textuais eram inválidos antes de V5 e não entravam no
+  plano. Foram convertidos mecanicamente em `00000000`, tornando o drift observável; o
+  segundo dry-run enumerou a superfície completa antes do write.
+- **Gate fechado:** a queda observada foi exatamente 13 → 6 → 2 → 0, sem executar
+  `fix-hashes` entre os lotes.
+- **SPEC-GAP fechado:** nenhum agrupamento exigiu Núcleo Tekt; as relações comuns já são
+  governadas por entidades, portas e ADRs. A decisão ficou explícita nos 13 classificadores.
+
+## Risco residual
+
+Os prompts individualizados são contratos intencionais compactos. Uma auditoria futura
+pode ampliar critérios específicos por owner sem reunificar ownership e sem alterar a
+arquitetura. O warning histórico de `print_tree` não usado e achados informativos de
+complexidade não pertencem ao escopo P0106.
+
+Projetos Tekt, Bateia e tekt-cargo-dsm não foram modificados.
