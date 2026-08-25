@@ -1,7 +1,7 @@
 # Passo operacional 0098 — reconciliação do horizonte da auditoria
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** planejado; não executado
+> **Estado:** executado; `READY WITH RESIDUAL AUDIT`
 > **Branch prevista:** `codex/reconcile-audit-exit-criteria`
 > **Pré-condição:** P0097 integrado em `master`, worktree limpo e branch nova criada a
 > partir do merge
