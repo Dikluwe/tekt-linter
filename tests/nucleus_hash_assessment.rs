@@ -13,11 +13,11 @@ fn prompt_without_nucleus_is_bit_identical_to_legacy() {
 #[test]
 fn dependency_order_is_canonical_and_changes_propagate() {
     let a = HashDependency {
-        path: "a.tekt".into(),
+        path: "a.toml".into(),
         digest: [1; 32],
     };
     let b = HashDependency {
-        path: "b.tekt".into(),
+        path: "b.toml".into(),
         digest: [2; 32],
     };
     assert_eq!(
@@ -38,7 +38,7 @@ fn dependency_order_is_canonical_and_changes_propagate() {
 fn nucleus_hash_is_deterministic_and_transitive() {
     let leaf = effective_nucleus_hash(b"leaf", &[]);
     let dep = HashDependency {
-        path: "leaf.tekt".into(),
+        path: "leaf.toml".into(),
         digest: leaf,
     };
     assert_eq!(

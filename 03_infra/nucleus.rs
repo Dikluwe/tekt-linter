@@ -64,9 +64,10 @@ fn valid_hash(value: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
-fn valid_logical_nucleus_path(value: &str) -> bool {
+pub fn is_logical_nucleus_path(value: &str) -> bool {
     value.starts_with("00_nucleo/prompts/_nuclei/")
-        && value.ends_with(".tekt")
+        && value.ends_with(".toml")
+        && !value.ends_with(".tekt.toml")
         && !value.contains('\\')
         && !value.contains("//")
         && !value
@@ -104,7 +105,7 @@ pub fn parse_nucleus(bytes: &[u8]) -> Result<NucleusDocument, String> {
     }
     let mut deps = BTreeSet::new();
     for dependency in &document.depends {
-        if !valid_logical_nucleus_path(&dependency.path)
+        if !is_logical_nucleus_path(&dependency.path)
             || !valid_hash(&dependency.sha256)
             || !deps.insert(&dependency.path)
         {
@@ -151,7 +152,7 @@ pub fn parse_prompt_nucleus_refs(bytes: &[u8]) -> Result<Vec<PromptNucleusRef>, 
         let Some((path, hash)) = value.split_once(" sha256:") else {
             return Err("malformed nucleus reference".into());
         };
-        if !valid_logical_nucleus_path(path) || !valid_hash(hash) {
+        if !is_logical_nucleus_path(path) || !valid_hash(hash) {
             return Err("invalid nucleus reference".into());
         }
         refs.push(PromptNucleusRef {
@@ -323,7 +324,7 @@ pub fn audit_project(root: &Path) -> NucleusAudit {
         if entry.file_type().is_symlink()
             && matches!(
                 path.extension().and_then(|value| value.to_str()),
-                Some("tekt") | Some("md")
+                Some("toml") | Some("tekt") | Some("md")
             )
         {
             audit.issues.push((
@@ -342,10 +343,16 @@ pub fn audit_project(root: &Path) -> NucleusAudit {
             .replace('\\', "/");
         match path.extension().and_then(|v| v.to_str()) {
             Some("tekt") => {
-                if !logical.starts_with("00_nucleo/prompts/_nuclei/") {
+                audit.issues.push((
+                    path.to_path_buf(),
+                    "legacy .tekt nucleus extension is unsupported; use .toml".into(),
+                ));
+            }
+            Some("toml") if logical.starts_with("00_nucleo/prompts/_nuclei/") => {
+                if !is_logical_nucleus_path(&logical) {
                     audit.issues.push((
                         path.to_path_buf(),
-                        "nucleus outside canonical namespace".into(),
+                        "invalid nucleus .toml path in canonical namespace".into(),
                     ));
                     continue;
                 }

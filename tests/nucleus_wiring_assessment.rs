@@ -50,7 +50,7 @@ fn shared_nucleus_does_not_break_prompt_bijection() {
 }
 
 #[test]
-fn direct_code_reference_to_tekt_is_rejected() {
+fn direct_code_reference_to_toml_nucleus_is_rejected() {
     let root = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(root.path().join("01_core")).unwrap();
     std::fs::create_dir_all(root.path().join("00_nucleo/prompts/_nuclei")).unwrap();
@@ -59,8 +59,8 @@ fn direct_code_reference_to_tekt_is_rejected() {
         "[project]\nroot='.'\n[layers]\nL0='00_nucleo'\nL1='01_core'\n",
     )
     .unwrap();
-    std::fs::write(root.path().join("00_nucleo/prompts/_nuclei/x.tekt"), "tekt=1\nkind='nucleus'\nid='x'\ntitle='x'\n[[claims]]\nid='x'\nlevel='must'\nstatement='x'\n").unwrap();
-    std::fs::write(root.path().join("01_core/x.rs"), "//! @prompt 00_nucleo/prompts/_nuclei/x.tekt\n//! @prompt-hash 00000000\n//! @layer L1\nfn x(){}\n").unwrap();
+    std::fs::write(root.path().join("00_nucleo/prompts/_nuclei/x.toml"), "tekt=1\nkind='nucleus'\nid='x'\ntitle='x'\n[[claims]]\nid='x'\nlevel='must'\nstatement='x'\n").unwrap();
+    std::fs::write(root.path().join("01_core/x.rs"), "//! @prompt 00_nucleo/prompts/_nuclei/x.toml\n//! @prompt-hash 00000000\n//! @layer L1\nfn x(){}\n").unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_crystalline-lint"))
         .current_dir(root.path())
         .args([".", "--checks", "v1,v26", "--format", "sarif"])
@@ -74,7 +74,7 @@ fn direct_code_reference_to_tekt_is_rejected() {
 fn one_nucleus_byte_invalidates_both_pins_and_both_code_hashes() {
     let temp = tempfile::tempdir().unwrap();
     copy_tree(&fixture(), temp.path());
-    let path = temp.path().join("00_nucleo/prompts/_nuclei/path.tekt");
+    let path = temp.path().join("00_nucleo/prompts/_nuclei/path.toml");
     let changed = std::fs::read_to_string(&path)
         .unwrap()
         .replace("logical identity", "logical identity!");
@@ -96,7 +96,7 @@ fn one_nucleus_byte_invalidates_both_pins_and_both_code_hashes() {
 fn fix_hashes_updates_pins_and_effective_hashes_in_one_transaction() {
     let temp = tempfile::tempdir().unwrap();
     copy_tree(&fixture(), temp.path());
-    let path = temp.path().join("00_nucleo/prompts/_nuclei/path.tekt");
+    let path = temp.path().join("00_nucleo/prompts/_nuclei/path.toml");
     let changed = std::fs::read_to_string(&path)
         .unwrap()
         .replace("logical identity", "logical identity!");
