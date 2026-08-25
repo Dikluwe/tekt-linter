@@ -1,6 +1,6 @@
 # Assessment 0028 — vigência de `refine-revisions`
 
-**Estado:** PROTOCOLO CONGELADO — A/B autorizados
+**Estado:** READY WITH RESIDUAL AUDIT — PASS-CONFIRMED
 **Data:** 2026-08-25
 **Passo:** P0099 / F04
 **Baseline:** `6fe51ce80e953e17b990cc400fb487b119aab034`
@@ -56,3 +56,31 @@ exits continua em F09. P0099 não executa F05, F08 ou F09.
 
 Classificações: `RED`, `SPEC-GAP`, `GATE-DEFECT`, `PASS-CONFIRMED` e `PASS-REVOKED`.
 Fechamento: `READY WITH RESIDUAL AUDIT` ou `BLOCKED`. Sem merge ou push.
+
+## Fechamento
+
+A confirmou autoridade humana explícita e posterior para B2. B encontrou omissão na
+superfície pública, sem evidência de revogação. C decidiu `CONFIRMED` no envelope Git
+local, imutável e limitado da adenda aceita em 2026-08-24.
+
+O executor saneou ADR-0019, `00_nucleo/README.md`, README e USAGE. Uma tentativa inicial
+de clarificar `refinement-validator.md` foi descartada porque causaria drift V5 em cinco
+consumidores sem ser necessária à autoridade. O prompt permaneceu byte-idêntico em
+`7061d609f14343f041bb28dbee4a89589a3d68161bdb9dfb63b3e461cafcae97`.
+
+D1 bloqueou a primeira redação porque `linter-core.md` e o índice nuclear ainda
+declaravam Git fora de escopo e a superfície pública omitia build, protocolos externos e
+temporários diagnósticos. O índice e a documentação foram corrigidos dentro da fronteira
+original. A correção de `linter-core.md` exigia atualizar headers causais em produção; o
+usuário autorizou explicitamente apenas essa migração mecânica.
+
+O reparador oficial atualizou dez `@prompt-hash` de `10f02f10` para `1b09018a`, sem
+alterar corpos de produção. O novo SHA-256 completo de `linter-core.md` é
+`9027da3f425bd3a70bcb776de52e5f2703989a04a47d5ff52264795aa7a6d0a0`. D2 confirmou
+o delta mecânico, a ausência de contradições vigentes e a arquitetura Tekt.
+
+**Veredito:** `READY WITH RESIDUAL AUDIT` / `PASS-CONFIRMED`.
+
+F04 está fechado. F05 fica normativamente desbloqueado para confrontar Git/B2; F09
+continua dono dos exits e precedência; F08 recebe `refine-revisions` como comando vigente,
+sem ter suas outras dependências antecipadas.
