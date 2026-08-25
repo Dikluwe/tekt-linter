@@ -203,6 +203,7 @@ fn run_controlled(
         let mut header = Vec::new();
         let mut payload_remaining = 0usize;
         let mut payload_newline = false;
+        let mut announced_payload_bytes = 0usize;
         loop {
             let count = stdout.read(&mut buffer)?;
             if count == 0 {
@@ -235,6 +236,12 @@ fn run_controlled(
                                     let _ =
                                         stdout_overflow.try_send(ReaderEvent::BlobBudgetExhausted);
                                 } else {
+                                    announced_payload_bytes =
+                                        announced_payload_bytes.saturating_add(size);
+                                    if announced_payload_bytes > MAX_TOTAL_BYTES {
+                                        let _ = stdout_overflow
+                                            .try_send(ReaderEvent::BlobBudgetExhausted);
+                                    }
                                     payload_remaining = size;
                                     payload_newline = size == 0;
                                 }
@@ -361,7 +368,16 @@ fn validate_public_inputs(
         }
     }
     for name in ["alternates", "http-alternates"] {
-        match std::fs::symlink_metadata(objects.join("info").join(name)) {
+        let path = objects.join("info").join(name);
+        match std::fs::symlink_metadata(&path) {
+            Ok(metadata)
+                if metadata.is_file()
+                    && !metadata.file_type().is_symlink()
+                    && metadata.len() == 0
+                    && path
+                        .canonicalize()
+                        .ok()
+                        .is_some_and(|canonical| canonical.starts_with(&objects)) => {}
             Ok(_) => return Err(GitRevisionError::ContainmentFailure),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(_) => return Err(GitRevisionError::ContainmentFailure),
@@ -631,6 +647,38 @@ pub fn load_revision_with_git(
         paths.insert(PathBuf::from(path), value);
     }
     Ok(GitRevisionContent { oid, paths })
+}
+
+pub fn extract_snapshot_from_revision_content(
+    revision: &GitRevisionContent,
+    specs: &[ObservableSpec],
+) -> Result<ArtifactFacts, String> {
+    let mut snapshot = extract_snapshot_from_content(&revision.oid, specs, |path| {
+        Ok(match revision.paths.get(path) {
+            Some(GitPathContent::Blob(bytes)) => Some(bytes.clone()),
+            Some(GitPathContent::Missing | GitPathContent::Unknown(_)) | None => None,
+        })
+    })?;
+    for spec in specs {
+        let reason = match revision.paths.get(&spec.file) {
+            Some(GitPathContent::Unknown(GitUnknownReason::MissingObject)) => {
+                Some(UnknownReason::OpaqueConstruction)
+            }
+            Some(GitPathContent::Unknown(GitUnknownReason::ForbiddenObjectKind)) => {
+                Some(UnknownReason::UnsupportedParser)
+            }
+            Some(GitPathContent::Unknown(GitUnknownReason::BudgetExhausted)) => {
+                Some(UnknownReason::BudgetExhausted)
+            }
+            Some(GitPathContent::Blob(_) | GitPathContent::Missing) | None => None,
+        };
+        if let Some(reason) = reason {
+            snapshot
+                .observables
+                .insert(spec.key.clone(), ObservableValue::Unknown(reason));
+        }
+    }
+    Ok(snapshot)
 }
 
 #[derive(Clone, Debug)]
