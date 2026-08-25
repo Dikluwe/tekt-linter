@@ -47,7 +47,9 @@ impl<R: PromptReader, S: PromptSnapshotReader> JavaParser<R, S> {
 impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for JavaParser<R, S> {
     fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
         if file.content.is_empty() {
-            return Err(ParseError::EmptySource { path: file.path.clone() });
+            return Err(ParseError::EmptySource {
+                path: file.path.clone(),
+            });
         }
 
         if file.language != Language::Java {
@@ -67,14 +69,15 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for JavaParser<R, 
                 message: "Failed to load Java grammar".to_string(),
             })?;
 
-        let tree = engine
-            .parse(file.content.as_bytes(), None)
-            .ok_or_else(|| ParseError::SyntaxError {
-                path: file.path.clone(),
-                line: 0,
-                column: 0,
-                message: "Parser returned None — possible timeout".to_string(),
-            })?;
+        let tree =
+            engine
+                .parse(file.content.as_bytes(), None)
+                .ok_or_else(|| ParseError::SyntaxError {
+                    path: file.path.clone(),
+                    line: 0,
+                    column: 0,
+                    message: "Parser returned None — possible timeout".to_string(),
+                })?;
 
         let root = tree.root_node();
         let source = file.content.as_bytes();
@@ -209,7 +212,10 @@ fn collect_imports_and_decls<'a>(
 ) {
     if node.kind() == "import_declaration" {
         if let Ok(text) = node.utf8_text(source) {
-            let clean = text.trim_start_matches("import").trim_end_matches(';').trim();
+            let clean = text
+                .trim_start_matches("import")
+                .trim_end_matches(';')
+                .trim();
             let target_layer = if clean.contains("01_core") {
                 Layer::L1
             } else if clean.contains("02_shell") {

@@ -6,9 +6,9 @@
 
 use std::borrow::Cow;
 
-use crate::entities::rule_traits::HasTokens;
 use crate::entities::layer::{Language, Layer};
 use crate::entities::parsed_file::Token;
+use crate::entities::rule_traits::HasTokens;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 
 /// V4 — Impure core: forbidden I/O symbol detected in L1.
@@ -19,47 +19,121 @@ use crate::entities::violation::{Location, Violation, ViolationLevel};
 fn forbidden_symbols_for(language: &Language) -> &'static [&'static str] {
     match language {
         Language::Rust => &[
-            "std::fs", "std::io", "std::net", "std::process",
-            "tokio::fs", "tokio::io", "tokio::process",
-            "reqwest", "sqlx", "diesel",
-            "std::time::SystemTime::now", "rand::random",
+            "std::fs",
+            "std::io",
+            "std::net",
+            "std::process",
+            "tokio::fs",
+            "tokio::io",
+            "tokio::process",
+            "reqwest",
+            "sqlx",
+            "diesel",
+            "std::time::SystemTime::now",
+            "rand::random",
         ],
         Language::TypeScript => &[
-            "fs", "node:fs", "fs/promises", "node:fs/promises",
-            "child_process", "node:child_process",
-            "net", "node:net", "http", "node:http",
-            "https", "node:https", "dgram", "node:dgram",
-            "dns", "node:dns", "readline", "node:readline",
-            "process.env", "Date.now", "Math.random",
+            "fs",
+            "node:fs",
+            "fs/promises",
+            "node:fs/promises",
+            "child_process",
+            "node:child_process",
+            "net",
+            "node:net",
+            "http",
+            "node:http",
+            "https",
+            "node:https",
+            "dgram",
+            "node:dgram",
+            "dns",
+            "node:dns",
+            "readline",
+            "node:readline",
+            "process.env",
+            "Date.now",
+            "Math.random",
         ],
         Language::Python => &[
-            "os", "os.path", "pathlib", "shutil", "subprocess",
-            "socket", "urllib", "http.client", "ftplib", "smtplib",
-            "open", "random.random", "time.time", "datetime.now",
+            "os",
+            "os.path",
+            "pathlib",
+            "shutil",
+            "subprocess",
+            "socket",
+            "urllib",
+            "http.client",
+            "ftplib",
+            "smtplib",
+            "open",
+            "random.random",
+            "time.time",
+            "datetime.now",
         ],
         Language::C => &[
-            "stdio.h", "stdlib.h", "time.h", "unistd.h", "fcntl.h",
-            "sys/socket.h", "pthread.h", "sys/stat.h", "windows.h"
+            "stdio.h",
+            "stdlib.h",
+            "time.h",
+            "unistd.h",
+            "fcntl.h",
+            "sys/socket.h",
+            "pthread.h",
+            "sys/stat.h",
+            "windows.h",
         ],
         Language::Cpp => &[
-            "iostream", "fstream", "thread", "mutex", "chrono",
-            "filesystem", "net", "stdio.h", "stdlib.h", "time.h",
-            "unistd.h", "sys/socket.h", "windows.h"
+            "iostream",
+            "fstream",
+            "thread",
+            "mutex",
+            "chrono",
+            "filesystem",
+            "net",
+            "stdio.h",
+            "stdlib.h",
+            "time.h",
+            "unistd.h",
+            "sys/socket.h",
+            "windows.h",
         ],
         Language::Zig => &[
-            "std.fs", "std.io", "std.net", "std.os", "std.process",
-            "std.time", "std.crypto",
+            "std.fs",
+            "std.io",
+            "std.net",
+            "std.os",
+            "std.process",
+            "std.time",
+            "std.crypto",
         ],
         Language::Go => &[
-            "os", "net", "net/http", "io/ioutil", "os/exec", "database/sql",
+            "os",
+            "net",
+            "net/http",
+            "io/ioutil",
+            "os/exec",
+            "database/sql",
         ],
         Language::Java => &[
-            "java.io", "java.net", "java.nio.file", "java.lang.ProcessBuilder",
-            "java.sql", "javax.sql", "System.out", "System.err", "System.currentTimeMillis",
+            "java.io",
+            "java.net",
+            "java.nio.file",
+            "java.lang.ProcessBuilder",
+            "java.sql",
+            "javax.sql",
+            "System.out",
+            "System.err",
+            "System.currentTimeMillis",
         ],
         Language::Elixir => &[
-            "File", "File.Stream", "IO", "Path", "System.cmd",
-            "HTTPoison", "Req", "Ecto",
+            "File",
+            "File.Stream",
+            "IO",
+            "Path",
+            "System.cmd",
+            "HTTPoison",
+            "Req",
+            "Ecto",
         ],
         Language::Unknown => &[],
     }
@@ -95,7 +169,11 @@ fn make_violation<'a, T: HasTokens<'a>>(file: &T, token: &Token<'a>) -> Violatio
             "Núcleo Impuro: operação proibida '{}' detectada em L1",
             token.symbol
         ),
-        location: Location { path: Cow::Borrowed(file.path()), line: token.line, column: token.column },
+        location: Location {
+            path: Cow::Borrowed(file.path()),
+            line: token.line,
+            column: token.column,
+        },
     }
 }
 
@@ -170,7 +248,8 @@ mod tests {
     #[test]
     fn system_time_now_in_l1_is_violation() {
         let mut file = base_file(Layer::L1);
-        file.tokens.push(call_token("std::time::SystemTime::now", 3, 0));
+        file.tokens
+            .push(call_token("std::time::SystemTime::now", 3, 0));
         assert_eq!(check(&file).len(), 1);
     }
 
@@ -281,7 +360,11 @@ mod tests {
             path,
         };
         let violations = check(&file);
-        assert_eq!(violations.len(), 1, "\"fs\" deve ser proibido em TypeScript L1");
+        assert_eq!(
+            violations.len(),
+            1,
+            "\"fs\" deve ser proibido em TypeScript L1"
+        );
         assert_eq!(violations[0].rule_id, "V4");
     }
 
@@ -321,7 +404,11 @@ mod tests {
             path,
         };
         let violations = check(&file);
-        assert_eq!(violations.len(), 1, "\"open\" builtin deve ser proibido em Python L1");
+        assert_eq!(
+            violations.len(),
+            1,
+            "\"open\" builtin deve ser proibido em Python L1"
+        );
         assert_eq!(violations[0].rule_id, "V4");
     }
 
@@ -342,6 +429,10 @@ mod tests {
             path,
         };
         let violations = check(&file);
-        assert_eq!(violations.len(), 1, "\"subprocess.run\" deve ser proibido em Python L1");
+        assert_eq!(
+            violations.len(),
+            1,
+            "\"subprocess.run\" deve ser proibido em Python L1"
+        );
     }
 }

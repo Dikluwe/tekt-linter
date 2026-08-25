@@ -58,10 +58,18 @@ mod tests {
     }
 
     impl HasDecisionArms<'static> for MockFile {
-        fn layer(&self) -> &Layer { &Layer::L1 }
-        fn decision_exprs(&self) -> &[DecisionExpr<'static>] { &self.exprs }
-        fn path(&self) -> &'static Path { self.path }
-        fn language(&self) -> &Language { &self.language }
+        fn layer(&self) -> &Layer {
+            &Layer::L1
+        }
+        fn decision_exprs(&self) -> &[DecisionExpr<'static>] {
+            &self.exprs
+        }
+        fn path(&self) -> &'static Path {
+            self.path
+        }
+        fn language(&self) -> &Language {
+            &self.language
+        }
     }
 
     #[test]

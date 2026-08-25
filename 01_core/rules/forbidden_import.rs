@@ -6,9 +6,9 @@
 
 use std::borrow::Cow;
 
-use crate::entities::rule_traits::HasImports;
 use crate::entities::layer::Layer;
 use crate::entities::parsed_file::Import;
+use crate::entities::rule_traits::HasImports;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 
 /// V3 — Forbidden import (gravity inversion).
@@ -55,9 +55,15 @@ fn make_violation<'a, T: HasImports<'a>>(file: &T, import: &Import<'a>) -> Viola
         level: ViolationLevel::Error,
         message: format!(
             "Inversão de gravidade: {:?} não pode importar de {:?} ('{}')",
-            file.layer(), import.target_layer, import.path
+            file.layer(),
+            import.target_layer,
+            import.path
         ),
-        location: Location { path: Cow::Borrowed(file.path()), line: import.line, column: 0 },
+        location: Location {
+            path: Cow::Borrowed(file.path()),
+            line: import.line,
+            column: 0,
+        },
     }
 }
 
@@ -95,7 +101,14 @@ mod tests {
     }
 
     fn import(path: &'static str, line: usize, target_layer: Layer) -> Import<'static> {
-        Import { path, line, kind: ImportKind::Direct, target_layer, target_subdir: None, is_test_origin: false }
+        Import {
+            path,
+            line,
+            kind: ImportKind::Direct,
+            target_layer,
+            target_subdir: None,
+            is_test_origin: false,
+        }
     }
 
     #[test]
@@ -111,14 +124,16 @@ mod tests {
     #[test]
     fn l1_importing_unknown_is_not_violation() {
         let mut file = base_file(Layer::L1);
-        file.imports.push(import("reqwest::Client", 2, Layer::Unknown));
+        file.imports
+            .push(import("reqwest::Client", 2, Layer::Unknown));
         assert!(check(&file, false).is_empty());
     }
 
     #[test]
     fn l4_importing_l1_is_allowed() {
         let mut file = base_file(Layer::L4);
-        file.imports.push(import("crate::core::rules", 7, Layer::L1));
+        file.imports
+            .push(import("crate::core::rules", 7, Layer::L1));
         assert!(check(&file, false).is_empty());
     }
 
@@ -126,7 +141,8 @@ mod tests {
     fn l3_two_imports_only_one_forbidden() {
         let mut file = base_file(Layer::L3);
         file.imports.push(import("crate::shell::api", 3, Layer::L2)); // forbidden
-        file.imports.push(import("crate::core::entities", 7, Layer::L1)); // allowed
+        file.imports
+            .push(import("crate::core::entities", 7, Layer::L1)); // allowed
         let violations = check(&file, false);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].location.line, 3);
@@ -208,8 +224,15 @@ mod tests {
             target_subdir: None,
             is_test_origin: true,
         });
-        assert!(check(&file, false).is_empty(), "test-origin pulado por padrão");
-        assert_eq!(check(&file, true).len(), 1, "ligada a opção, verifica teste");
+        assert!(
+            check(&file, false).is_empty(),
+            "test-origin pulado por padrão"
+        );
+        assert_eq!(
+            check(&file, true).len(),
+            1,
+            "ligada a opção, verifica teste"
+        );
     }
 
     #[test]
