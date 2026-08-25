@@ -61,3 +61,15 @@ O protocolo foi corrigido para `04_wiring`. A deve reconciliar S3 com o Assessme
 B1 deve registrar precisamente que há sync do arquivo, mas não fsync do diretório nem
 preservação explícita de modo; C anterior está invalidado e deve ser refeito. Nenhuma
 produção mudou.
+
+## RED D2
+
+D bloqueou a segunda reconciliação porque `SourceConstant`/`HasConstants` possui dois
+consumidores diretos, V21 e V22, enquanto S5a identificava e pontuava apenas V21. O recorte
+deve incluir regressão V22, proibir ambos os classificadores como oráculo e pontuar a
+extração em memória como pura, com dois consumidores.
+
+B2 identificou `SPEC-GAP` na associação compartilhada de citações: V21 aceita somente
+`ref:/spec:/rationale:`, enquanto o histórico V22 reconhece evidência mais ampla e a IR
+possui um único `citation`. O candidato só permanece elegível se excluir associação,
+janela e semântica de citações, limitando-se à extração estrutural de `SourceConstant`.

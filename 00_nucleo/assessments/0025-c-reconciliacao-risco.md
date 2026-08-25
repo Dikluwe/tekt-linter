@@ -9,8 +9,8 @@
 | Artefato | SHA-256 |
 |---|---|
 | A — cobertura histórica | `910b47385147c9851d8a62b284fcec6dc2a77fc064adca2c26cc8aecd2fb8ccd` |
-| B1 — inventário estrutural | `9d31b84e90dc448a12461090fbe27c333db0c90f5de835678b86b8dda8a9dee0` |
-| B2 — inventário normativo | `a4772da53012c4ba90cf085a500c5a4615f15e03e62535e6f743fa665d620398` |
+| B1 — inventário estrutural | `865e19d772ced34aceee2d6322d2ba1d68bd388e633ae819aecfea4f8953d995` |
+| B2 — inventário normativo | `22247bac303a4ee999543cd0d96d9e705e6fb445bed6c50d1c723aa1de427701` |
 
 A reconciliação anterior está integralmente descartada.
 
@@ -37,12 +37,14 @@ para precedência e exit globais.
 
 | Seam estreita | Cobertura | Pontuação | Total | Risco | Confiança |
 |---|---|---|---:|---|---|
-| S5a — extração/associação Rust V21 | PARTIAL | 1/1/3/1/0/2/2 | 10 | médio | alta |
+| S5a — extração estrutural Rust `SourceConstant` | PARTIAL | 1/0/3/2/0/2/2 | 10 | médio | alta |
 | S5b — `DecisionExpr`/wiring V16 | PARTIAL | 2/1/3/2/2/2/2 | 14 | alto | média/baixa |
 
-S5a limita-se a fonte Rust→IR `SourceConstant`: direção de multiplicação/divisão, campos
-profundos, `context_var`, `geometric_sink`, teste/tabela, janela inclusiva das três linhas
-anteriores e precedência de citação. Exclui classificador como oráculo, frescura,
+S5a limita-se a fonte Rust→IR estrutural `SourceConstant`→V21/V22: literal,
+span/localização, direção de multiplicação/divisão, campos profundos, `context_var`,
+`geometric_sink` e origem em teste/tabela. A extração em memória é pura; os dois
+consumidores diretos elevam `consumidores` a 2. Exclui completamente associação, janela e
+semântica de citações, agregação V22, ambos os classificadores como oráculos, frescura,
 configuração global, wiring, apresentação e exit. S5b cruza mais consumidores e pode
 revelar SPEC-GAP no mapeamento AST→IR.
 
@@ -59,11 +61,13 @@ revelar SPEC-GAP no mapeamento AST→IR.
 
 ## Ranking e recomendação
 
-1. S5a — extração/associação Rust V21: 10, médio, confiança alta;
+1. S5a — extração estrutural Rust `SourceConstant`: 10, médio, confiança alta;
 2. S5b — extração/wiring V16: 14, alto, confiança média/baixa;
 3. S6 por comando/caso: 15, alto, ainda sem recorte exato.
 
-Recomendar **S5a — extração/associação Rust de V21** para P0097. Está `PARTIAL`, possui
-fronteira fonte→IR→consumidor delimitada, pré-condições normativas enumeradas, admite gate
-cego sem usar V21 como oráculo, exclui integração externa e tem o menor risco elegível:
+Recomendar **S5a — extração estrutural Rust de `SourceConstant` compartilhada por V21/V22**
+para P0097. Está `PARTIAL`, possui fronteira fonte→IR→dois consumidores delimitada,
+pré-condições normativas enumeradas, admite gate cego sem usar V21 ou V22 como oráculo,
+inclui regressões explícitas dos dois consumidores, exclui citações e integração externa
+e tem o menor risco elegível:
 **10, médio**. P0097 deve parar em `SPEC-GAP` se exigir decisão fora da lista fechada.
