@@ -1,7 +1,7 @@
 # Passo operacional 0097 — auditoria da extração estrutural Rust de `SourceConstant`
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** planejado; não executado
+> **Estado:** executado; `READY WITH RESIDUAL AUDIT`
 > **Branch prevista:** `codex/audit-rust-source-constant-extraction`
 > **Pré-condição:** P0096 integrado em `master`, worktree limpo e branch nova criada a
 > partir do merge
