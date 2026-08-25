@@ -80,5 +80,8 @@
    regras constroem IR sintético, enquanto fixtures/CLIs usam parsers reais transitivamente.
 3. Writers L3 são alcançados por adapters L4 e planos L2; gates L2 usam spies e testes CLI
    são a confrontação fim-a-fim restante.
+4. `SourceConstant`/`HasConstants`, produzido pelo parser Rust, é consumido diretamente
+   por V21 `unsourced_constant` e V22 `provenance_inventory`; gates independentes desses
+   classificadores usam IR sintético e não provam fidelidade da extração compartilhada.
 
 Nenhum arquivo foi alterado.
