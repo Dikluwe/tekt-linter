@@ -5,6 +5,7 @@
 //! @updated 2026-03-20
 
 use std::path::{Path, PathBuf};
+use std::{collections::BTreeMap, fmt};
 
 use colored::Colorize;
 
@@ -33,6 +34,195 @@ pub trait HashRewriter {
 
     /// Inject "Hash do Código: <hash>" into the prompt file.
     fn write_prompt_meta(&self, prompt_path: &str, code_hash: &str) -> Result<(), String>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PairSnapshot {
+    pub source_bytes: Vec<u8>,
+    pub prompt_bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BijectivePair {
+    pub source_path: PathBuf,
+    pub prompt_path: String,
+    pub old_prompt_hash: String,
+    pub new_prompt_hash: String,
+    pub new_source_hash: String,
+    pub new_source_bytes: Vec<u8>,
+    pub new_prompt_bytes: Vec<u8>,
+}
+
+pub trait TransactionalHashRewriter {
+    fn preflight(&self, pair: &BijectivePair) -> Result<PairSnapshot, String>;
+    fn apply_pair(&self, pair: &BijectivePair) -> Result<(), String>;
+    fn rollback_pair(&self, pair: &BijectivePair, snapshot: &PairSnapshot) -> Result<(), String>;
+    fn validate_pair(&self, pair: &BijectivePair) -> Result<(), String>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FixBatchPlan {
+    pub pairs: Vec<BijectivePair>,
+    snapshots: Vec<PairSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FixBatchError {
+    OwnershipCollisions {
+        collisions: Vec<(String, Vec<PathBuf>)>,
+    },
+    Preflight {
+        source_path: PathBuf,
+        reason: String,
+    },
+    Validation {
+        source_path: PathBuf,
+        reason: String,
+    },
+}
+
+impl fmt::Display for FixBatchError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::OwnershipCollisions { collisions } => {
+                write!(formatter, "ownership collisions:")?;
+                for (prompt, paths) in collisions {
+                    write!(formatter, " {prompt}=[")?;
+                    for (index, path) in paths.iter().enumerate() {
+                        if index > 0 {
+                            write!(formatter, ", ")?;
+                        }
+                        write!(formatter, "{}", path.display())?;
+                    }
+                    write!(formatter, "]")?;
+                }
+                Ok(())
+            }
+            Self::Preflight {
+                source_path,
+                reason,
+            } => write!(formatter, "preflight {}: {reason}", source_path.display()),
+            Self::Validation {
+                source_path,
+                reason,
+            } => write!(formatter, "validation {}: {reason}", source_path.display()),
+        }
+    }
+}
+
+impl std::error::Error for FixBatchError {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ApplyFailure {
+    RollbackFailed {
+        source_path: PathBuf,
+        reason: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FixBatchResult {
+    DryRun { count: usize },
+    Applied { count: usize },
+    RolledBack { reason: String },
+    Fatal(ApplyFailure),
+}
+
+impl FixBatchResult {
+    pub fn is_complete(&self) -> bool {
+        matches!(self, Self::DryRun { .. } | Self::Applied { .. })
+    }
+}
+
+pub fn plan_bijective(
+    pairs: &[BijectivePair],
+    rewriter: &dyn TransactionalHashRewriter,
+) -> Result<FixBatchPlan, FixBatchError> {
+    let mut groups: BTreeMap<&str, Vec<PathBuf>> = BTreeMap::new();
+    for pair in pairs {
+        groups
+            .entry(&pair.prompt_path)
+            .or_default()
+            .push(pair.source_path.clone());
+    }
+    let collisions = groups
+        .into_iter()
+        .filter_map(|(prompt, mut paths)| {
+            paths.sort();
+            paths.dedup();
+            (paths.len() > 1).then(|| (prompt.to_owned(), paths))
+        })
+        .collect::<Vec<_>>();
+    if !collisions.is_empty() {
+        return Err(FixBatchError::OwnershipCollisions { collisions });
+    }
+
+    let mut ordered = pairs.to_vec();
+    ordered.sort_by(|left, right| left.source_path.cmp(&right.source_path));
+    ordered.dedup_by(|left, right| {
+        left.source_path == right.source_path && left.prompt_path == right.prompt_path
+    });
+    let mut snapshots = Vec::with_capacity(ordered.len());
+    for pair in &ordered {
+        snapshots.push(
+            rewriter
+                .preflight(pair)
+                .map_err(|reason| FixBatchError::Preflight {
+                    source_path: pair.source_path.clone(),
+                    reason,
+                })?,
+        );
+    }
+    Ok(FixBatchPlan {
+        pairs: ordered,
+        snapshots,
+    })
+}
+
+pub fn execute_bijective(
+    plan: &FixBatchPlan,
+    rewriter: &dyn TransactionalHashRewriter,
+    dry_run: bool,
+) -> FixBatchResult {
+    if dry_run {
+        return FixBatchResult::DryRun {
+            count: plan.pairs.len(),
+        };
+    }
+    for (index, pair) in plan.pairs.iter().enumerate() {
+        if let Err(reason) = rewriter.apply_pair(pair) {
+            for rollback_index in (0..index).rev() {
+                let rollback_pair = &plan.pairs[rollback_index];
+                if let Err(rollback_reason) =
+                    rewriter.rollback_pair(rollback_pair, &plan.snapshots[rollback_index])
+                {
+                    return FixBatchResult::Fatal(ApplyFailure::RollbackFailed {
+                        source_path: rollback_pair.source_path.clone(),
+                        reason: rollback_reason,
+                    });
+                }
+            }
+            return FixBatchResult::RolledBack { reason };
+        }
+    }
+    FixBatchResult::Applied {
+        count: plan.pairs.len(),
+    }
+}
+
+pub fn validate_bijective(
+    plan: &FixBatchPlan,
+    rewriter: &dyn TransactionalHashRewriter,
+) -> Result<(), FixBatchError> {
+    for pair in &plan.pairs {
+        rewriter
+            .validate_pair(pair)
+            .map_err(|reason| FixBatchError::Validation {
+                source_path: pair.source_path.clone(),
+                reason,
+            })?;
+    }
+    Ok(())
 }
 
 // ── Data types ────────────────────────────────────────────────────────────────

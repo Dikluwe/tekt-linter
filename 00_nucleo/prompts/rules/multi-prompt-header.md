@@ -11,9 +11,9 @@ Hash do Código: 50ec428f
 
 ## Contexto
 
-A regra de linhagem do projecto é **um ficheiro, um prompt**: cada
-ficheiro `.rs` em L1–L4 tem exactamente uma linha `//! @prompt` no
-bloco de doc-header. O linter nunca foi desenhado para ficheiros com
+A regra de linhagem do projecto é **biunívoca**: cada código produtivo em L1–L4
+possui exatamente um prompt proprietário e cada prompt proprietário possui exatamente
+um código. O linter nunca foi desenhado para ficheiros com
 2+ linhas `@prompt`: `extract_header` fica com o último valor e o
 `--fix-hashes` comporta-se de forma indefinida (pode escrever o hash
 correcto no header errado).
@@ -24,12 +24,23 @@ linhas `//! @prompt` no bloco de doc-header gera V15 Error, com
 mensagem que lista os prompts encontrados e reafirma a regra
 (um ficheiro, um prompt).
 
+V15 também torna erro bloqueante dois ou mais códigos produtivos apontarem para o mesmo
+`@prompt`. A fase L4 agrega a referência canônica extraída por todos os parsers e injeta
+uma visão integral em L1. L1 agrupa por identidade textual integral, case-sensitive e sem
+I/O; deduplica o mesmo par; e emite uma violação por prompt compartilhado. A mensagem
+contém o prompt, a cardinalidade e todos os consumers em ordem lexical. A localização é o
+primeiro path nessa mesma ordem, linha 1, coluna 0.
+
 ---
 
 ## Especificação
 
-V15 opera sobre `ParsedFile.prompt_refs` por arquivo, na fase Map.
+V15 local opera sobre `ParsedFile.prompt_refs` por arquivo, na fase Map.
 Aplica-se apenas a arquivos com `layer` em {L1, L2, L3, L4}.
+
+V15 global opera sobre valores `PromptOwnership` já extraídos. Lab, L0 e Unknown não
+participam. Entrada vazia continua território de V1. Para cada prompt com dois ou mais
+paths distintos há exatamente uma V15 global, independentemente da ordem de Map/Reduce.
 
 ### Novo campo em `ParsedFile` — `prompt_refs`
 
@@ -117,9 +128,9 @@ espaço).
 normal, string, ou `//!` após código) **não** conta — o `break` na
 primeira linha não-`//!` garante isso.
 
-Parsers de outras linguagens (TS, Python, C, C++, Zig) constroem
-`ParsedFile` com `prompt_refs: vec![]` — V15 é regra de linhagem de
-código Rust.
+Parsers podem diferir na preservação das referências locais, mas todos publicam
+`prompt_header.prompt_path` canônico. A visão global usa esse campo e portanto cobre Rust,
+TypeScript/TSX, Python, C, C++, Zig, Go, Java e Elixir com a mesma semântica.
 
 ---
 
@@ -129,6 +140,9 @@ código Rust.
   `v15: has("v15")`; o default de `--checks` passa a incluir `v15`.
 - `run_checks` em `04_wiring/main.rs`:
   `if enabled.v15 { violations.extend(multi_prompt_header::check(file)); }`
+- após Reduce, L4 chama `check_prompt_ownership` sobre a visão canônica integral;
+- `--fix-hashes` executa a mesma validação mesmo se V15 não foi selecionada e bloqueia o
+  lote antes do primeiro write quando ownership não é biunívoco;
 - Os dois literais `EnabledChecks { ... }` de re-run em `main.rs`
   (--fix-hashes e --update-snapshot) ganham `v15: false`.
 - Lista SARIF em `02_shell/cli.rs` ganha
@@ -179,6 +193,14 @@ Dado ficheiro Rust cujo segundo "@prompt" aparece em comentário //
   normal depois de código (fora do doc-header)
 Quando o binário roda sobre a fixture v15b_pass
 Então o veredito é [] — só o bloco de doc-header conta
+
+Dado dois códigos produtivos individualmente válidos com o mesmo @prompt
+Quando V15 global for chamada
+Então há exatamente uma V15 Error que lista ambos em ordem lexical
+
+Dado ownership não biunívoco
+Quando --fix-hashes for chamado em dry-run ou execução
+Então todo o lote é rejeitado antes da primeira escrita
 ```
 
 ---
@@ -197,3 +219,4 @@ Então o veredito é [] — só o bloco de doc-header conta
 | Data | Motivo | Arquivos afetados |
 |------|--------|-------------------|
 | 2026-07-23 | Criação inicial (passo P847 — endurecer lint contra multi-@prompt) | multi_prompt_header.rs, parsed_file.rs, rule_traits.rs, rs_parser.rs, cli.rs, main.rs, tests/fixtures.rs |
+| 2026-08-25 | P0104 — completar propriedade biunívoca e bloquear reparo ambíguo | multi_prompt_header.rs, fix_hashes.rs, hash_writer.rs, main.rs, gates P0104 |

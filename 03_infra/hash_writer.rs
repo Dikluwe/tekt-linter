@@ -8,6 +8,8 @@ use crate::infra::prompt_io::{atomic_replace, eight_hex, replace_meta_line, with
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
+use crate::shell::fix_hashes::{BijectivePair, PairSnapshot};
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /// Compute SHA256[0..8] of the source file, ignoring its own `@prompt-hash` line.
@@ -54,6 +56,64 @@ pub fn write_prompt_meta(path: &Path, code_hash: &str) -> Result<(), String> {
     let marker = "Hash do Código: ".as_bytes();
     let replaced = replace_meta_line(&bytes, marker, code_hash.as_bytes(), true)?;
     atomic_replace(path, &replaced, permissions)
+}
+
+pub fn prepare_pair(
+    source_path: &Path,
+    prompt_path: &str,
+    full_prompt_path: &Path,
+    old_prompt_hash: &str,
+    new_prompt_hash: &str,
+    new_source_hash: &str,
+) -> Result<BijectivePair, String> {
+    let source_bytes = std::fs::read(source_path).map_err(|error| error.to_string())?;
+    let prompt_bytes = std::fs::read(full_prompt_path).map_err(|error| error.to_string())?;
+    let new_source_bytes = replace_meta_line(
+        &source_bytes,
+        b"//! @prompt-hash ",
+        new_prompt_hash.as_bytes(),
+        true,
+    )?;
+    let new_prompt_bytes = replace_meta_line(
+        &prompt_bytes,
+        "Hash do Código: ".as_bytes(),
+        new_source_hash.as_bytes(),
+        true,
+    )?;
+    Ok(BijectivePair {
+        source_path: source_path.to_path_buf(),
+        prompt_path: prompt_path.to_owned(),
+        old_prompt_hash: old_prompt_hash.to_owned(),
+        new_prompt_hash: new_prompt_hash.to_owned(),
+        new_source_hash: new_source_hash.to_owned(),
+        new_source_bytes,
+        new_prompt_bytes,
+    })
+}
+
+pub fn snapshot_pair(source_path: &Path, prompt_path: &Path) -> Result<PairSnapshot, String> {
+    Ok(PairSnapshot {
+        source_bytes: std::fs::read(source_path).map_err(|error| error.to_string())?,
+        prompt_bytes: std::fs::read(prompt_path).map_err(|error| error.to_string())?,
+    })
+}
+
+pub fn write_pair(
+    source_path: &Path,
+    prompt_path: &Path,
+    snapshot: &PairSnapshot,
+) -> Result<(), String> {
+    let source_permissions = std::fs::metadata(source_path)
+        .map_err(|error| error.to_string())?
+        .permissions();
+    let prompt_permissions = std::fs::metadata(prompt_path)
+        .map_err(|error| error.to_string())?
+        .permissions();
+    atomic_replace(source_path, &snapshot.source_bytes, source_permissions)?;
+    if let Err(reason) = atomic_replace(prompt_path, &snapshot.prompt_bytes, prompt_permissions) {
+        return Err(reason);
+    }
+    Ok(())
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
