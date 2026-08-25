@@ -389,6 +389,37 @@ where
 }
 ```
 
+## Contrato de extração estrutural `SourceConstant` — saneamento P0097
+
+O oráculo P0097 é deliberadamente mínimo. Para fonte Rust sintaticamente válida, somente
+literais numéricos que aparecem dentro de um `function_item` produzem ocorrências neste
+lote. Ficam fora strings, chars, bytes, constantes nomeadas, macros, ranges, patterns e
+qualquer expressão não numérica.
+
+- literal positivo produz `ConstantKind::FunctionNumberLiteral`;
+- literal sob um único operador unário `-` produz `ConstantKind::NegativeLiteral` e uma
+  única ocorrência; o sinal pertence ao snippet;
+- sufixo numérico Rust pertence ao snippet;
+- `snippet` são os bytes UTF-8 exatos do nó autorizado, sem trim ou normalização;
+- linha e coluna são 1-based; coluna conta bytes UTF-8 desde o início da linha;
+- emissão segue preorder lexical da fonte e preserva multiplicidade, sem deduplicação;
+- comments, whitespace e literais fora de `function_item` não criam ocorrências;
+- fonte sintaticamente inválida retorna `ParseError::SyntaxError` sem IR parcial.
+
+O gate observa exclusivamente `kind`, `snippet`, `line`, `column`, ordem e multiplicidade.
+`citation`, `is_test_origin`, `function_return_type`, `is_in_binary_scaling`,
+`context_var`, `geometric_sink` e `is_in_data_table` ficam fora do contrato P0097, mesmo
+que a implementação vigente os preencha.
+
+Harness autorizado: construir `SourceFile` pelos campos públicos publicados em
+`contracts/file-provider.md`; instanciar `RustParser::new` com mocks locais que implementem
+`PromptReader` e `PromptSnapshotReader` e `CrystallineConfig::default()`; chamar somente
+`LanguageParser::parse(&SourceFile)`. Não há segunda API pública de extração.
+
+V21 e V22 são consumidores de regressão. É proibido chamá-los, importar suas listas ou
+derivar expectations deles no gate. Semântica de citações permanece `SPEC-GAP` fora deste
+contrato.
+
 ---
 
 ## Restrições
