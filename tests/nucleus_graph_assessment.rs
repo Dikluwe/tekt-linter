@@ -11,19 +11,19 @@ fn node(path: &str, deps: &[&str]) -> NucleusGraphEntry {
 
 #[test]
 fn dag_and_shared_consumption_are_valid() {
-    let nodes = vec![node("a.tekt", &[]), node("b.tekt", &["a.tekt"])];
+    let nodes = vec![node("a.toml", &[]), node("b.toml", &["a.toml"])];
     let uses = vec![
         PromptNucleusUsage {
             prompt: "a.md".into(),
-            nucleus: "a.tekt".into(),
+            nucleus: "a.toml".into(),
         },
         PromptNucleusUsage {
             prompt: "b.md".into(),
-            nucleus: "a.tekt".into(),
+            nucleus: "a.toml".into(),
         },
         PromptNucleusUsage {
             prompt: "b.md".into(),
-            nucleus: "b.tekt".into(),
+            nucleus: "b.toml".into(),
         },
     ];
     assert!(check_graph(&nodes, &uses).is_empty());
@@ -32,32 +32,32 @@ fn dag_and_shared_consumption_are_valid() {
 #[test]
 fn missing_cycles_and_orphans_are_deterministic() {
     let forward = vec![
-        node("z.tekt", &["missing.tekt"]),
-        node("a.tekt", &["b.tekt"]),
-        node("b.tekt", &["a.tekt"]),
-        node("orphan.tekt", &[]),
+        node("z.toml", &["missing.toml"]),
+        node("a.toml", &["b.toml"]),
+        node("b.toml", &["a.toml"]),
+        node("orphan.toml", &[]),
     ];
     let mut reverse = forward.clone();
     reverse.reverse();
     let a = check_graph(&forward, &[]);
     let b = check_graph(&reverse, &[]);
     assert_eq!(a, b);
-    assert!(a.iter().any(|f| f.message.contains("missing.tekt")));
+    assert!(a.iter().any(|f| f.message.contains("missing.toml")));
     assert!(a.iter().any(|f| f.message.contains("cycle")));
-    assert!(a.iter().any(|f| f.message.contains("orphan.tekt")));
+    assert!(a.iter().any(|f| f.message.contains("orphan.toml")));
 }
 
 #[test]
 fn identities_remain_case_sensitive() {
-    let nodes = vec![node("A.tekt", &[]), node("a.tekt", &[])];
+    let nodes = vec![node("A.toml", &[]), node("a.toml", &[])];
     let uses = vec![
         PromptNucleusUsage {
             prompt: "x.md".into(),
-            nucleus: "A.tekt".into(),
+            nucleus: "A.toml".into(),
         },
         PromptNucleusUsage {
             prompt: "y.md".into(),
-            nucleus: "a.tekt".into(),
+            nucleus: "a.toml".into(),
         },
     ];
     assert!(check_graph(&nodes, &uses).is_empty());

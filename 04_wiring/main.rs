@@ -644,12 +644,12 @@ fn main() {
             if file
                 .prompt_header
                 .as_ref()
-                .is_some_and(|header| header.prompt_path.ends_with(".tekt"))
+                .is_some_and(|header| header.prompt_path.starts_with("00_nucleo/prompts/_nuclei/"))
             {
                 all_violations.push(Violation {
                     rule_id: "V26".into(),
                     level: ViolationLevel::Error,
-                    message: "production code cannot own a .tekt nucleus through @prompt".into(),
+                    message: "production code cannot own a .toml nucleus through @prompt".into(),
                     location: Location {
                         path: Cow::Owned(file.path.to_path_buf()),
                         line: 1,
