@@ -50,7 +50,7 @@ número de passo.
 | P0066–P0068 | V21/V22 e fundamentação | ADRs e prompts vigentes |
 | P0069 | relatório N16 por módulo | documentação permanente do recurso ou histórico Git |
 | P0070 | V23–V25 | absorvido por ADR-0018 e prompts vigentes; elegível para arquivo/remoção |
-| Validação de refinamento | ADR-0019/L0 vigentes; Etapas A e B1 materializadas no branch dedicado | validar e manter Git/wrapper/SMT fora de escopo |
+| Validação de refinamento | ADR-0019/L0 vigentes; Etapas A e B1 materializadas no branch dedicado | manter wrapper/SMT fora de escopo; Git somente na Etapa B2 abaixo |
 | Extração de snapshots | Etapa B1 autorizada e materializada no branch de refinamento | absorver em ADR-0019/L0; sem iniciar sequência numérica |
 | Refinamento entre revisões | Etapa B2 aprovada e materializada no branch dedicado | backend Git batch; absorver em ADR-0019/L0 sem numeração de passo |
 | P0071 — fechamento do refinamento entre revisões | gate local concluído; parada antes de integração | matriz externa pendente; merge/instalação exigem decisão humana |

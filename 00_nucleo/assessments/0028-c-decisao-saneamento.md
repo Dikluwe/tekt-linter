@@ -184,3 +184,17 @@ autoridade, o delta não era necessário à decisão.
 As mudanças provisórias no prompt foram integralmente descartadas. Esta versão
 resselada autoriza alterações somente no ADR-0019, README e USAGE. A decisão continua
 `CONFIRMED`, sem expansão semântica e sem migração de hashes de produção.
+
+## RED D1
+
+D1 encontrou duas contradições fora do patch nominal: `linter-core.md` ainda apresenta
+Git como fora de escopo após descrever somente B1, e `00_nucleo/README.md` repetia a
+proibição imediatamente antes de registrar B2 como aprovada. Também faltavam nas duas
+superfícies públicas as proibições de build, protocolos externos e temporários de
+diagnóstico.
+
+O índice `00_nucleo/README.md`, README e USAGE foram saneados sem ampliar B2. A mudança
+necessária em `linter-core.md`, porém, altera um prompt causal compartilhado e exige
+migração mecânica de headers em produção para não deixar V5 em drift. P0099 proíbe essa
+migração. O passo permanece bloqueado até autorização explícita para ampliar o escopo
+somente aos headers/hash derivados, sem mudança comportamental.
