@@ -1,5 +1,5 @@
-use crystalline_lint::core::contracts::file_provider::SourceFile;
-use crystalline_lint::core::entities::layer::{Language, Layer};
+use crystalline_lint::contracts::file_provider::SourceFile;
+use crystalline_lint::entities::layer::{Language, Layer};
 use crystalline_lint::shell::n16_summary::{
     collect_n16_stats, extract_n16_module_name, extract_n16_tag, N16ModuleStats, N16Stats, N16Tag,
 };
