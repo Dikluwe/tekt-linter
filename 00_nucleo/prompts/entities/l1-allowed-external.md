@@ -1,5 +1,5 @@
 # Prompt: entidade L1AllowedExternal
-Hash do Código: PENDING_P0106
+Hash do Código: ad28d2c5
 
 ## Owner
 

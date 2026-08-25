@@ -1,5 +1,5 @@
 # Prompt: regra V21 HardcodedContextualValue
-Hash do Código: PENDING_P0106
+Hash do Código: 438c0ae4
 
 ## Owner
 

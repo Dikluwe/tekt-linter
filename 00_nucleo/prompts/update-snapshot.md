@@ -1,5 +1,5 @@
 # Prompt: planejamento de update-snapshot
-Hash do Código: PENDING_P0106
+Hash do Código: b4c3ef22
 
 Owner exclusivo: `02_shell/update_snapshot.rs`.
 

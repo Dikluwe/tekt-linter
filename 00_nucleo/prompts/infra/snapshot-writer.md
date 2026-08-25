@@ -1,5 +1,5 @@
 # Prompt: escrita transacional de snapshots
-Hash do Código: PENDING_P0106
+Hash do Código: 5a59e0d5
 
 Owner exclusivo: `03_infra/snapshot_writer.rs`.
 

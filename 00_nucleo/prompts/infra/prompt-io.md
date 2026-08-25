@@ -1,5 +1,5 @@
 # Prompt: primitivas confinadas de I/O L0
-Hash do Código: PENDING_P0106
+Hash do Código: c9a967ec
 
 Owner exclusivo: `03_infra/prompt_io.rs`.
 

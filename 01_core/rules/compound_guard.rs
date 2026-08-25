@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/compound-guard.md
-//! @prompt-hash PENDING
+//! @prompt-hash b602b90d
 //! @layer L1
 //! @updated 2026-08-14
 

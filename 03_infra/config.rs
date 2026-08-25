@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/infra/config.md
-//! @prompt-hash PENDING
+//! @prompt-hash a7c5b358
 //! @layer L3
 //! @updated 2026-06-09
 

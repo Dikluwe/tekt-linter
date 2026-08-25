@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/shell/path-encoding.md
-//! @prompt-hash PENDING
+//! @prompt-hash 75022b96
 //! @layer L2
 //! @updated 2026-08-24
 

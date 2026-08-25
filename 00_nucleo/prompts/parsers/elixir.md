@@ -1,5 +1,5 @@
 # Prompt: parser Elixir para IR canônica
-Hash do Código: PENDING_P0106
+Hash do Código: 26e44dd4
 
 Owner exclusivo: `03_infra/elixir_parser.rs`.
 

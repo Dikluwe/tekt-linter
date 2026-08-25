@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/provenance-inventory.md
-//! @prompt-hash PENDING
+//! @prompt-hash 06f20917
 //! @layer L1
 //! @updated 2026-08-14
 

@@ -1,5 +1,5 @@
 # Prompt: representação canônica ParsedFile
-Hash do Código: PENDING_P0106
+Hash do Código: 263d4e35
 
 Owner exclusivo: `01_core/entities/parsed_file.rs`.
 

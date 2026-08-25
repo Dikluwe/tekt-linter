@@ -1,5 +1,5 @@
 # Prompt: extração semântica de refinamento
-Hash do Código: PENDING_P0106
+Hash do Código: 2e4a23ea
 
 Owner exclusivo: `03_infra/refinement_extractor.rs`.
 

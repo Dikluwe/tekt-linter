@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/deep-pattern-nesting.md
-//! @prompt-hash PENDING
+//! @prompt-hash 369b79c2
 //! @layer L1
 //! @updated 2026-08-14
 

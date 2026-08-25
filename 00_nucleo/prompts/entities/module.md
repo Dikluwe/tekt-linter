@@ -1,5 +1,5 @@
 # Prompt: fachada das entidades L1
-Hash do Código: PENDING_P0106
+Hash do Código: ea2c3010
 
 Owner exclusivo: `01_core/entities/mod.rs`.
 
