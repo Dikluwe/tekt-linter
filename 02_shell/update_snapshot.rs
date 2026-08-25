@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/fix-hashes.md
-//! @prompt-hash 7933d862
+//! @prompt-hash dd987d35
 //! @layer L2
 //! @updated 2026-03-20
 
@@ -26,21 +26,54 @@ pub trait SnapshotRewriter {
 
 // ── Data types ────────────────────────────────────────────────────────────────
 
-pub struct SnapshotEntry {
-    pub source_path: PathBuf,
-    /// Empty when unreadable_reason is set.
-    pub prompt_path: String,
-    /// Empty when unreadable_reason is set.
-    pub new_snapshot: String,
-    /// Set when the file has no parsed record or no prompt header.
-    pub unreadable_reason: Option<String>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SnapshotUnreadable {
+    MissingParsedFile,
+    MissingPromptHeader,
 }
 
-pub struct SnapshotResult {
-    pub source_path: PathBuf,
-    pub prompt_path: String,
-    pub success: bool,
-    pub error: Option<String>,
+impl SnapshotUnreadable {
+    fn message(&self) -> &'static str {
+        match self {
+            Self::MissingParsedFile => "no parsed file found for violation path",
+            Self::MissingPromptHeader => "file has no @prompt header",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SnapshotEntry {
+    Ready {
+        source_path: PathBuf,
+        prompt_path: String,
+        snapshot: String,
+    },
+    Unreadable {
+        source_path: PathBuf,
+        reason: SnapshotUnreadable,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SnapshotResult {
+    DryRun {
+        source_path: PathBuf,
+        prompt_path: String,
+        snapshot: String,
+    },
+    Written {
+        source_path: PathBuf,
+        prompt_path: String,
+    },
+    WriteFailed {
+        source_path: PathBuf,
+        prompt_path: String,
+        reason: String,
+    },
+    Unreadable {
+        source_path: PathBuf,
+        reason: SnapshotUnreadable,
+    },
 }
 
 // ── Core functions ────────────────────────────────────────────────────────────
@@ -57,29 +90,26 @@ pub fn plan<'a>(
         .iter()
         .filter(|v| v.rule_id == "V6")
         .map(|v| {
-            let Some(parsed) = parsed_files.iter().find(|p| p.path == v.location.path.as_ref())
+            let Some(parsed) = parsed_files
+                .iter()
+                .find(|p| p.path == v.location.path.as_ref())
             else {
-                return SnapshotEntry {
+                return SnapshotEntry::Unreadable {
                     source_path: v.location.path.to_path_buf(),
-                    prompt_path: String::new(),
-                    new_snapshot: String::new(),
-                    unreadable_reason: Some("no parsed file found for violation path".to_string()),
+                    reason: SnapshotUnreadable::MissingParsedFile,
                 };
             };
             let Some(header) = parsed.prompt_header.as_ref() else {
-                return SnapshotEntry {
+                return SnapshotEntry::Unreadable {
                     source_path: v.location.path.to_path_buf(),
-                    prompt_path: String::new(),
-                    new_snapshot: String::new(),
-                    unreadable_reason: Some("file has no @prompt header".to_string()),
+                    reason: SnapshotUnreadable::MissingPromptHeader,
                 };
             };
-            let new_snapshot = rewriter.serialize_snapshot(&parsed.public_interface);
-            SnapshotEntry {
+            let snapshot = rewriter.serialize_snapshot(&parsed.public_interface);
+            SnapshotEntry::Ready {
                 source_path: v.location.path.to_path_buf(),
                 prompt_path: header.prompt_path.to_string(),
-                new_snapshot,
-                unreadable_reason: None,
+                snapshot,
             }
         })
         .collect()
@@ -93,26 +123,38 @@ pub fn execute(
 ) -> Vec<SnapshotResult> {
     entries
         .iter()
-        .filter_map(|entry| {
-            // Entradas com unreadable_reason não podem ser actualizadas — saltar
-            if entry.unreadable_reason.is_some() {
-                return None;
-            }
-            if dry_run {
-                return Some(SnapshotResult {
-                    source_path: entry.source_path.clone(),
-                    prompt_path: entry.prompt_path.clone(),
-                    success: true,
-                    error: None,
-                });
-            }
-            let outcome = rewriter.write_snapshot(&entry.prompt_path, &entry.new_snapshot);
-            Some(SnapshotResult {
-                source_path: entry.source_path.clone(),
-                prompt_path: entry.prompt_path.clone(),
-                success: outcome.is_ok(),
-                error: outcome.err(),
-            })
+        .map(|entry| match entry {
+            SnapshotEntry::Unreadable {
+                source_path,
+                reason,
+            } => SnapshotResult::Unreadable {
+                source_path: source_path.clone(),
+                reason: reason.clone(),
+            },
+            SnapshotEntry::Ready {
+                source_path,
+                prompt_path,
+                snapshot,
+            } if dry_run => SnapshotResult::DryRun {
+                source_path: source_path.clone(),
+                prompt_path: prompt_path.clone(),
+                snapshot: snapshot.clone(),
+            },
+            SnapshotEntry::Ready {
+                source_path,
+                prompt_path,
+                snapshot,
+            } => match rewriter.write_snapshot(prompt_path, snapshot) {
+                Ok(()) => SnapshotResult::Written {
+                    source_path: source_path.clone(),
+                    prompt_path: prompt_path.clone(),
+                },
+                Err(reason) => SnapshotResult::WriteFailed {
+                    source_path: source_path.clone(),
+                    prompt_path: prompt_path.clone(),
+                    reason,
+                },
+            },
         })
         .collect()
 }
@@ -120,8 +162,27 @@ pub fn execute(
 // ── Formatters ────────────────────────────────────────────────────────────────
 
 pub fn format_plan(entries: &[SnapshotEntry]) -> String {
-    let actionable: Vec<_> = entries.iter().filter(|e| e.unreadable_reason.is_none()).collect();
-    let unreadable: Vec<_> = entries.iter().filter(|e| e.unreadable_reason.is_some()).collect();
+    let actionable: Vec<_> = entries
+        .iter()
+        .filter_map(|entry| match entry {
+            SnapshotEntry::Ready {
+                source_path,
+                prompt_path,
+                snapshot,
+            } => Some((source_path, prompt_path, snapshot)),
+            SnapshotEntry::Unreadable { .. } => None,
+        })
+        .collect();
+    let unreadable: Vec<_> = entries
+        .iter()
+        .filter_map(|entry| match entry {
+            SnapshotEntry::Unreadable {
+                source_path,
+                reason,
+            } => Some((source_path, reason)),
+            SnapshotEntry::Ready { .. } => None,
+        })
+        .collect();
 
     if entries.is_empty() {
         return format!("{}\n", "Nothing to update".green().bold());
@@ -134,14 +195,22 @@ pub fn format_plan(entries: &[SnapshotEntry]) -> String {
             "{} {} {}:\n",
             "Would update snapshot in".cyan().bold(),
             actionable.len(),
-            if actionable.len() == 1 { "file" } else { "files" }
+            if actionable.len() == 1 {
+                "file"
+            } else {
+                "files"
+            }
         ));
-        for entry in &actionable {
+        for (source_path, prompt_path, snapshot) in &actionable {
             out.push_str(&format!(
                 "  {:<45} → {}\n",
-                human_path(&entry.source_path),
-                entry.prompt_path
+                human_path(source_path),
+                prompt_path
             ));
+            out.push_str(snapshot);
+            if !snapshot.ends_with('\n') {
+                out.push('\n');
+            }
         }
     }
 
@@ -152,11 +221,11 @@ pub fn format_plan(entries: &[SnapshotEntry]) -> String {
             "Skipped".yellow().bold(),
             unreadable.len()
         ));
-        for entry in unreadable {
+        for (source_path, reason) in unreadable {
             out.push_str(&format!(
                 "  {} — {}\n",
-                human_path(&entry.source_path),
-                entry.unreadable_reason.as_deref().unwrap_or("unknown"),
+                human_path(source_path),
+                reason.message(),
             ));
         }
     }
@@ -170,34 +239,104 @@ pub fn format_results(results: &[SnapshotResult], remaining_v6: usize) -> String
     }
 
     let mut out = String::new();
-    let succeeded: Vec<_> = results.iter().filter(|r| r.success).collect();
-    let failed: Vec<_> = results.iter().filter(|r| !r.success).collect();
+    let written: Vec<_> = results
+        .iter()
+        .filter_map(|result| match result {
+            SnapshotResult::Written {
+                source_path,
+                prompt_path,
+            } => Some((source_path, prompt_path)),
+            SnapshotResult::DryRun { .. }
+            | SnapshotResult::WriteFailed { .. }
+            | SnapshotResult::Unreadable { .. } => None,
+        })
+        .collect();
+    let dry_runs: Vec<_> = results
+        .iter()
+        .filter_map(|result| match result {
+            SnapshotResult::DryRun {
+                source_path,
+                prompt_path,
+                snapshot,
+            } => Some((source_path, prompt_path, snapshot)),
+            SnapshotResult::Written { .. }
+            | SnapshotResult::WriteFailed { .. }
+            | SnapshotResult::Unreadable { .. } => None,
+        })
+        .collect();
+    let failed: Vec<_> = results
+        .iter()
+        .filter(|result| {
+            matches!(
+                result,
+                SnapshotResult::WriteFailed { .. } | SnapshotResult::Unreadable { .. }
+            )
+        })
+        .collect();
 
-    if !succeeded.is_empty() {
+    if !written.is_empty() {
         out.push_str(&format!(
             "{} {} {}:\n",
             "Updated snapshot in".green().bold(),
-            succeeded.len(),
-            if succeeded.len() == 1 { "file" } else { "files" }
+            written.len(),
+            if written.len() == 1 { "file" } else { "files" }
         ));
-        for r in &succeeded {
+        for (source_path, prompt_path) in &written {
             out.push_str(&format!(
                 "  {:<45} → {}\n",
-                human_path(&r.source_path),
-                r.prompt_path
+                human_path(source_path),
+                prompt_path
             ));
+        }
+    }
+
+    if !dry_runs.is_empty() {
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str(&format!(
+            "{} {} {}:\n",
+            "Dry-run — would update snapshot in".cyan().bold(),
+            dry_runs.len(),
+            if dry_runs.len() == 1 { "file" } else { "files" }
+        ));
+        for (source_path, prompt_path, snapshot) in &dry_runs {
+            out.push_str(&format!(
+                "  {:<45} → {}\n",
+                human_path(source_path),
+                prompt_path
+            ));
+            out.push_str(snapshot);
+            if !snapshot.ends_with('\n') {
+                out.push('\n');
+            }
         }
     }
 
     if !failed.is_empty() {
         out.push('\n');
-        out.push_str(&format!("{} {} failed:\n", "Error".red().bold(), failed.len()));
-        for r in &failed {
-            out.push_str(&format!(
-                "  {} — {}\n",
-                human_path(&r.source_path),
-                r.error.as_deref().unwrap_or("unknown error"),
-            ));
+        out.push_str(&format!(
+            "{} {} failed:\n",
+            "Error".red().bold(),
+            failed.len()
+        ));
+        for result in &failed {
+            match result {
+                SnapshotResult::WriteFailed {
+                    source_path,
+                    reason,
+                    ..
+                } => out.push_str(&format!("  {} — {}\n", human_path(source_path), reason,)),
+                SnapshotResult::Unreadable {
+                    source_path,
+                    reason,
+                } => out.push_str(&format!(
+                    "  {} — {}\n",
+                    human_path(source_path),
+                    reason.message(),
+                )),
+                SnapshotResult::DryRun { .. } | SnapshotResult::Written { .. } => unreachable!(),
+            }
         }
     }
 
@@ -237,7 +376,10 @@ mod tests {
 
     impl MockRewriter {
         fn new(write_result: Result<(), String>) -> Self {
-            Self { write_calls: RefCell::new(vec![]), write_result }
+            Self {
+                write_calls: RefCell::new(vec![]),
+                write_result,
+            }
         }
     }
 
@@ -258,7 +400,11 @@ mod tests {
             rule_id: "V6".to_string(),
             level: ViolationLevel::Warning,
             message: "stale".to_string(),
-            location: Location { path: Cow::Borrowed(Path::new(path)), line: 1, column: 0 },
+            location: Location {
+                path: Cow::Borrowed(Path::new(path)),
+                line: 1,
+                column: 0,
+            },
         }
     }
 
@@ -299,8 +445,14 @@ mod tests {
         let violations = vec![v6_violation("01_core/foo.rs")];
         let files = vec![parsed_file_for("01_core/foo.rs")];
         let entries = plan(&violations, &files, &rewriter);
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].prompt_path, "00_nucleo/prompts/foo.md");
+        assert_eq!(
+            entries,
+            vec![SnapshotEntry::Ready {
+                source_path: PathBuf::from("01_core/foo.rs"),
+                prompt_path: "00_nucleo/prompts/foo.md".to_string(),
+                snapshot: "## Interface Snapshot\n<!-- crystalline-snapshot: {} -->".to_string(),
+            }]
+        );
     }
 
     #[test]
@@ -310,7 +462,11 @@ mod tests {
             rule_id: "V1".to_string(),
             level: ViolationLevel::Error,
             message: "missing header".to_string(),
-            location: Location { path: Cow::Borrowed(Path::new("foo.rs")), line: 1, column: 0 },
+            location: Location {
+                path: Cow::Borrowed(Path::new("foo.rs")),
+                line: 1,
+                column: 0,
+            },
         }];
         let files = vec![parsed_file_for("foo.rs")];
         let entries = plan(&violations, &files, &rewriter);
@@ -324,8 +480,13 @@ mod tests {
         let files = vec![parsed_file_for("01_core/foo.rs")];
         let entries = plan(&violations, &files, &rewriter);
         let results = execute(&entries, &rewriter, false);
-        assert_eq!(results.len(), 1);
-        assert!(results[0].success);
+        assert_eq!(
+            results,
+            vec![SnapshotResult::Written {
+                source_path: PathBuf::from("01_core/foo.rs"),
+                prompt_path: "00_nucleo/prompts/foo.md".to_string(),
+            }]
+        );
         assert_eq!(rewriter.write_calls.borrow().len(), 1);
     }
 
@@ -336,8 +497,10 @@ mod tests {
         let files = vec![parsed_file_for("01_core/foo.rs")];
         let entries = plan(&violations, &files, &rewriter);
         let results = execute(&entries, &rewriter, true);
-        assert_eq!(results.len(), 1);
-        assert!(results[0].success);
+        assert!(matches!(
+            results.as_slice(),
+            [SnapshotResult::DryRun { .. }]
+        ));
         assert_eq!(rewriter.write_calls.borrow().len(), 0);
     }
 
@@ -349,25 +512,28 @@ mod tests {
 
     #[test]
     fn format_results_shows_zero_remaining() {
-        let result = SnapshotResult {
+        let result = SnapshotResult::Written {
             source_path: PathBuf::from("01_core/foo.rs"),
             prompt_path: "00_nucleo/prompts/foo.md".to_string(),
-            success: true,
-            error: None,
         };
         let out = format_results(&[result], 0);
         assert!(out.contains("0 stale warnings remaining"));
     }
 
     /// Quando não existe ParsedFile correspondente a uma violação V6, a entrada
-    /// deve ser incluída com unreadable_reason definido — não silenciosamente descartada.
+    /// deve ser incluída como Unreadable — não silenciosamente descartada.
     #[test]
     fn plan_reports_missing_parsed_file_instead_of_silencing() {
         let rewriter = MockRewriter::new(Ok(()));
         let violations = vec![v6_violation("01_core/ghost.rs")];
         // Nenhum ParsedFile para o path da violação
         let entries = plan(&violations, &[], &rewriter);
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].unreadable_reason.is_some());
+        assert_eq!(
+            entries,
+            vec![SnapshotEntry::Unreadable {
+                source_path: PathBuf::from("01_core/ghost.rs"),
+                reason: SnapshotUnreadable::MissingParsedFile,
+            }]
+        );
     }
 }
