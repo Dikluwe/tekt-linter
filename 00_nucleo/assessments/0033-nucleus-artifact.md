@@ -1,6 +1,6 @@
 # Assessment 0033 — artefato Núcleo Tekt
 
-**Estado:** A CONGELADO — produção proibida até REDs B1–B5
+**Estado:** READY WITH RESIDUAL AUDIT — implementação verde; integração bloqueada por P0104/P0106
 **Data:** 2026-08-25
 **Passo:** P0105
 **Baseline:** `4765cd5`
@@ -80,3 +80,45 @@ estrutural.
 B1–B5 materializam expectativas exclusivamente deste Assessment, ADR e prompt. Produção
 correspondente não pode ser usada como oráculo. REDs são congelados em commit anterior a
 C. Projetos externos permanecem somente leitura.
+
+## Gates congelados
+
+Commit `461414c` precede toda produção:
+
+| Gate | SHA-256 congelado | RED inicial |
+|---|---|---|
+| B1 formato | `43c51b576796f17052f2e6305f87b214f45df206d53c983c0c08fd7c428e4773` | módulo/parser ausente |
+| B2 grafo | `cadae9cb763f2a9cc266a95328be494d9bc79b5c2a88a90f3ec53ed4caa7be84` | regra/tipos ausentes |
+| B3 hash | `4c5b69ab0a2ce70d4aabaf204d4abb0fda28234db31efa2802a59e0141d9251f` | funções de digest ausentes |
+| B4 wiring | `e0a8c9da3c0e73acdbad705df5213c5afc39d6cfebf1c9b92c8d638971a6b06b` | código→`.tekt` não rejeitado |
+| B5 transação | `18bfc2cd01726e9c69bfa7d7a38ede998f02d5bb9eaab092d910c381118b47e8` | seam herdada já compilava; faltava integração com pins |
+
+B4/B5 foram fortalecidos depois de C sem alterar expectativas congeladas: mudança de um
+byte passou a exigir duas V5 + duas V26 e o reparo real passou a provar atualização de pins
+e hashes numa transação. Hashes finais: B4
+`51a94a55f6654aaff4eaf6f335cddc2fcd4c8a8c54d00af40762cdc46d9144db`, B5
+`0cebbe06d5b8be7bc8ca105b5675953806ebea10dbabe2d463735579abc10bd9`.
+
+## Implementação e classificação
+
+- `6ee2463`: parser TOML estrito, hashing transitivo, grafo L1, V26, CLI/SARIF e wiring;
+- `c64b785`: atualização transacional dos pins e leitor fresco na segunda passagem;
+- `17358d4`: walker e symlinks fail-closed, bloco Markdown posicionado e não vazio.
+
+R1–R6 foram confirmados como ausência de produção e fechados. A suíte integral passou com
+630 unitários, 83 fixtures e todos os integration gates. V26 do próprio linter está limpa.
+
+Durante o gate real foi encontrado RED adicional: o re-run de `fix-hashes` reutilizava o
+cache anterior às escritas e reportava duas derivas falsas. Classificação: RED de produção
+preexistente na segunda passagem; fechado por leitor fresco em `c64b785`.
+
+## Residuais
+
+1. Não houve agente cognitivamente independente; a segregação é causal/Git.
+2. O piloto semântico real foi adiado: nenhum compartilhamento pequeno foi individualizado
+   sem decidir P0106.
+3. Os novos headers permanecem sem resselo oficial porque o reparador corretamente bloqueia
+   nos 13 V15 históricos. P0106 deve individualizar esses prompts antes de merge/instalação.
+
+P0105 está funcionalmente pronto, mas o branch não é merge-ready enquanto o bloqueio
+herdado de P0104 não for sanado.
