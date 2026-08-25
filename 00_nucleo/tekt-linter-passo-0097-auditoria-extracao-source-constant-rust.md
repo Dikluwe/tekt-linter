@@ -1,7 +1,7 @@
 # Passo operacional 0097 — auditoria da extração estrutural Rust de `SourceConstant`
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** planejado; não executado
+> **Estado:** executado; `READY WITH RESIDUAL AUDIT`
 > **Branch prevista:** `codex/audit-rust-source-constant-extraction`
 > **Pré-condição:** P0096 integrado em `master`, worktree limpo e branch nova criada a
 > partir do merge
@@ -17,6 +17,11 @@ O lote cobre somente fatos estruturais observáveis: kind, snippet, linha/coluna
 `is_test_origin`, `function_return_type`, `is_in_binary_scaling`, `context_var`,
 `geometric_sink`, `is_in_data_table`, ordem e multiplicidade. V21 e V22 são consumidores
 obrigatórios de regressão, mas nenhum deles pode servir como oráculo dos gates.
+
+Após o parecer A, o recorte executável foi reduzido: somente kind, snippet, linha/coluna,
+ordem e multiplicidade de literais numéricos dentro de `function_item` permanecem no
+oráculo. Os demais campos listados acima estão formalmente fora, ainda que B2 histórico
+tenha sido planejado antes do saneamento.
 
 ## Exclusões normativas
 
@@ -140,9 +145,10 @@ expected e não inspeciona `citation`.
 ### B2 — gate cego de contexto estrutural
 
 B2 cria exclusivamente `tests/rust_source_constant_context_assessment.rs`. Também usa
-fonte→IR e cobre origem teste/tabela, função/return type, scaling, context e sink, incluindo
-casos próximos negativos e permutações de whitespace. Não chama V21/V22, não compartilha
-helpers/fixtures com B1 e não inspeciona `citation`.
+fonte→IR e confronta casos próximos negativos do recorte: literais fora de função,
+strings/chars/bytes, constantes nomeadas, macros, ranges, patterns, whitespace e erro
+sintático sem IR parcial. Não chama V21/V22, não compartilha helpers/fixtures com B1 e não
+inspeciona nenhum campo fora de kind/snippet/linha/coluna/ordem/multiplicidade.
 
 ### C — confronto e correção
 
