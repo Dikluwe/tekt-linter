@@ -1,6 +1,6 @@
 # Passo operacional 0109 — resolver a complexidade histórica do próprio linter
 
-> **Estado:** ESCRITO — não executado  
+> **Estado:** EXECUTADO — fechado pelo Assessment 0037
 > **Data:** 2026-08-25  
 > **Branch:** `codex/p0109-self-complexity`  
 > **Baseline:** `507fc519236363b12c0379250fddb4ebda18b50e`  

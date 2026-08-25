@@ -1,6 +1,6 @@
 # Assessment 0037 — complexidade histórica do próprio linter
 
-**Estado:** BASELINE E CLASSIFICAÇÃO CONGELADOS — saneamento pendente  
+**Estado:** READY WITH EXPLICIT METRIC BASELINE — zero RED/SPEC-GAP aberto
 **Data:** 2026-08-25  
 **Passo:** P0109  
 **Branch:** `codex/p0109-self-complexity`  
@@ -57,5 +57,49 @@ bloqueantes e devem ser congelados antes de qualquer mudança de contrato.
 
 ## Próxima transição
 
-Sanear D1 em commit isolado, reexecutar os testes direcionados e então construir o ratchet
-sobre o baseline residual efetivamente observado, não sobre esta contagem presumida.
+O saneamento D1 foi fechado em `30782d7`: três V16 e dois V17 deixaram de ser emitidos.
+A enumeração de `CitationKind` e dos escalares TOML tornou os matches totais; a fronteira
+de path passou a explicitar componentes aceitos; os guards Git foram decompostos mantendo
+as mesmas chamadas e retornos fail-closed. Testes dirigidos e a suíte global passaram.
+
+## Ratchet E
+
+O commit `b1cdac2` adicionou um gate executável que:
+
+- exige ausência integral de V16/V17;
+- compara V19/V20 por regra, path e hash da evidência estrutural normalizada;
+- preserva multiplicidade e rejeita ocorrência nova ou removida sem reclassificação;
+- ignora número de linha e whitespace de apresentação;
+- lê somente as 85 aceitações explícitas do manifesto.
+
+O primeiro ensaio detectou um RED do gate: a identidade alternava entre `./path` e `path`.
+Esse ensaio foi descartado; a canonicalização foi corrigida e os dois gates passaram.
+
+## Fechamento F
+
+| Evidência final | Resultado |
+|---|---|
+| manifesto final | `1e17f65024032cc73c3b5992e69e209af2a6793681a86f9028f0f7170c92ca6b` |
+| SARIF V16–V25 | `fcc25602d983f9ca47f7d67f1cc4eaee0de9367b8aeb4eb1151eae52e3eebbca` |
+| saída integral do auto-lint | `7de4b80dc24eb0fda0efa537b76392dc32c642f65dacf59ecb74ed7d23fc4de0` |
+| V16/V17/V18/V21–V25 | zero |
+| V19/V20 | 68/17, exatamente o baseline aceito |
+| teste do ratchet | PASS 2/2 |
+| `cargo fmt --check` | PASS |
+| `cargo test` | PASS — 630 unitários e toda a suíte de integração/doc-tests |
+| `fix-hashes --dry-run` | `Nothing to fix` |
+| `git diff --check` | PASS |
+
+O auto-lint completo permanece exit 1 somente por V2=1 e V3=1, achados estruturais
+explicitamente externos ao P0109. Eles não foram ocultados, rebaixados nem aceitos por este
+assessment.
+
+## Parecer adversarial final
+
+R1–R6 foram refutadas. O diff funcional permanece local às quatro unidades classificadas;
+não altera regra V16–V25, configuração, camada ou contrato público. As 90 ocorrências têm
+destino final: 5 `REFACTORED`, 68 `ACCEPT-EQUIVALENT` e 17 `ACCEPT-BOUNDARY`. Não resta
+`REFACTOR`, `RULE-RED` ou SPEC-GAP aberto.
+
+P0109 está fechado no branch. O merge em `master` continua fora do escopo e requer passo
+posterior.
