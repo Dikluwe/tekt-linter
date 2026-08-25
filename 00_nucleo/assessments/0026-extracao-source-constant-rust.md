@@ -1,6 +1,6 @@
 # Assessment 0026 — extração estrutural Rust de `SourceConstant`
 
-**Estado:** PREFLIGHT SANEADO — B1/B2 autorizados; produção proibida
+**Estado:** READY WITH RESIDUAL AUDIT
 **Data:** 2026-08-25
 **Passo:** P0097
 **Baseline:** `3a5ffbec3968230f8fda29dff329c476fa73be39`
@@ -107,3 +107,36 @@ Os gates foram resselados com projeção numérica. O RED histórico continua ca
 mesmas observações autorizadas: coluna zero-based e numeral dentro de macro. A correção C
 passou a usar coluna 1-based e não desce em `macro_invocation`, preservando os demais kinds
 históricos. B1/B2 finais estão 3/3 cada.
+
+## Fechamento D
+
+O adversário final confirmou os hashes L0 e dos dois gates, a causalidade RED→GREEN e a
+separação arquitetural. A mudança de produção ficou restrita a
+`03_infra/rs_parser.rs`, em L3: a projeção numérica usa coluna 1-based, limita-se a
+`function_item`, exclui patterns e macros e preserva o snippet byte-exato, a ordem e a
+multiplicidade. Tipos L1, consumidores, wiring, configuração, apresentação e semântica de
+citações não foram alterados.
+
+Os dois `GATE-DEFECT` foram fechados antes do parecer:
+
+1. o harness B2 deixou de usar `Box::leak` e mantém `SourceFile` vivo lexicalmente;
+2. B1/B2 passaram a observar somente a projeção `FunctionNumberLiteral` /
+   `NegativeLiteral`, sem exigir a remoção de kinds históricos opacos.
+
+Validação final:
+
+- B1: 3/3 e B2: 3/3 nos hashes congelados acima;
+- regressões V21: 9/9; V22 e teste dirigido do parser Rust: PASS;
+- suíte do workspace: 630 unitários e todas as integrações/fixtures: PASS;
+- V5/V6/V7/V12: nenhuma violação; reparador V5 dry-run: `Nothing to fix`;
+- `git diff --check`: PASS;
+- gates sem imports/chamadas a V21/V22 e sem asserts de `citation`.
+
+Resíduos aceitos: variantes adicionais da gramática de macros, especialmente tokens
+negativos dentro de macros, não integram a matriz explícita; associação de citações e os
+demais campos estruturais removidos no preflight continuam fora de P0097. A evidência RED
+intermediária permanece registrada na história Git e neste Assessment, sem artefato
+executável separado.
+
+**Veredito:** `READY WITH RESIDUAL AUDIT`. Nenhum merge ou push é autorizado por este
+fechamento.
