@@ -10,13 +10,13 @@
 | Unidade | Caminho | SHA-256 |
 |---|---|---|
 | taxonomia N16 | `00_nucleo/adr/0017-v16-v21-diferenca-categorica.md` | `79f406654aacf3693616232a4fdbb911e359486d089ffde841af5375625104dd` |
-| relatório histórico | `00_nucleo/tekt-linter-passo-0069-relatorio-n16-por-modulo.md` | `23c19e39de0843a21ec0f55d929ce5ed71af14c635fe3a1b60c36ee7dfc328ad` |
+| relatório histórico | `00_nucleo/tekt-linter-passo-0069-relatorio-n16-por-modulo.md` | `5c2a2a7f5c82d78e3c747f9f35b93d7e0679ae6e126e6c7c28efce75d5b4f1c5` |
 | V16/exceções | `00_nucleo/prompts/rules/wildcard-saturation.md` | `19f79428f1e7c9740ae7f2466f03bc82c22a5632a2388e5b2c587a3fa2588609` |
 | arquitetura | `00_nucleo/prompts/linter-core.md` | `9446277167f07dc5290617855cff456f061aa052ce8bd51ecf980530800b8c00` |
 | apresentação | `00_nucleo/prompts/sarif-formatter.md` | `bd0a915c775c97482b1890a67c83b993d62a6fd0decf1dbd0f5913ade0afefa0` |
 | protocolo segregado | `00_nucleo/prompts/segregated-materialization.md` | `366fd0855c6b04e533f4f4a477a73d7e5ec65f24c056720c61fca906bb5299a4` |
 | ADR segregado | `00_nucleo/adr/0020-piloto-materializacao-segregada.md` | `ee1a4a7f3665674b008d127373ed23fc6762d0ff13b2ca83efe5d2ace1539d23` |
-| protocolo P0094 | `00_nucleo/tekt-linter-passo-0094-auditoria-relatorio-n16-summary.md` | `4039bd3ef1c45dbee2e1982b8f2e783416daf944ecb1aca6a124c1d59811f85f` |
+| protocolo P0094 | `00_nucleo/tekt-linter-passo-0094-auditoria-relatorio-n16-summary.md` | `077e6e2fb08783f15b46759bd6d88f5266b7564e5784b47ca3dd4aa8799ed268` |
 
 ## Alegações candidatas
 
@@ -103,3 +103,10 @@ e seleção opt-in que exige V16 sem transformar o relatório em regra. `linter-
 
 Todos os insumos foram resselados. B1/B2 podem materializar gates cegos; leitura de
 produção continua proibida até ambos serem congelados.
+
+Na primeira tentativa, B1 e B2 recusaram corretamente inventar nomes de API e
+classificaram um `SPEC-GAP` nominal adicional. Nenhum gate foi criado. O adendo passou a
+publicar `N16Tag`, `N16ModuleStats`, `N16Stats`, `extract_n16_tag`,
+`extract_n16_module_name`, `collect_n16_stats` e `format_n16_summary`, todos no módulo L2
+`crystalline_lint::shell::n16_summary`, além do tipo de entrada L1. Os hashes foram
+novamente resselados; os mesmos verificadores podem retomar sem ler produção.

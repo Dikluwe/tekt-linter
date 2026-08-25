@@ -125,6 +125,31 @@ incompatível sobre parsing, agrupamento, percentuais, avisos ou ordenação.
 
 ### Tag e localização
 
+A seam pública L2 é nominalmente:
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum N16Tag { Alpha, Beta, Gamma }
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct N16ModuleStats { pub alpha: usize, pub beta: usize, pub gamma: usize }
+
+pub type N16Stats = BTreeMap<String, N16ModuleStats>;
+
+pub fn extract_n16_tag(text: &str) -> Option<N16Tag>;
+pub fn extract_n16_module_name(path: &Path) -> String;
+pub fn collect_n16_stats(
+    sources: &[crystalline_lint::core::contracts::file_provider::SourceFile],
+    exceptions: &HashMap<String, String>,
+) -> N16Stats;
+pub fn format_n16_summary(stats: &N16Stats, min_sample_size: usize) -> String;
+```
+
+As funções e tipos vivem em `crystalline_lint::shell::n16_summary`. Parsing da chave de
+exceção e deduplicação podem permanecer helpers privados; seu comportamento é observado
+por `collect_n16_stats`. Nenhum tipo paralelo de fonte ou nova função com nomes
+inventados faz parte do contrato.
+
 Um token é exatamente `N16[` + categoria + `]`. `N16` é case-sensitive; a categoria é
 `α`, `β`, `γ` ou A/B/C ASCII em qualquer case, mapeando A→α, B→β e C→γ. A varredura é
 não sobreposta, da esquerda para a direita, em qualquer posição e sem limite de palavra.
