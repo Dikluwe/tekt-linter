@@ -5,3 +5,8 @@ Owner exclusivo: `03_infra/walker.rs`.
 
 Enumerar arquivos analisáveis deterministicamente, classificar camada/linguagem e separar
 erros de infraestrutura. Não seguir symlink nem absorver falha como inventário completo.
+
+## Critério observável
+
+O mesmo conjunto de arquivos produz ordem idêntica; symlink/inacessível vira erro separado
+e nunca desaparece como sucesso parcial.
