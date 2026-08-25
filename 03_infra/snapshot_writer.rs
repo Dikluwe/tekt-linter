@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/infra/snapshot-writer.md
-//! @prompt-hash d75e50cc
+//! @prompt-hash 61f7f345
 //! @layer L3
 //! @updated 2026-03-14
 

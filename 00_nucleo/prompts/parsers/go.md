@@ -1,5 +1,5 @@
 # Prompt: parser Go para IR canônica
-Hash do Código: de9cc8b6
+Hash do Código: 84f19573
 
 Owner exclusivo: `03_infra/go_parser.rs`.
 

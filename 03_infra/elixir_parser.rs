@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/elixir.md
-//! @prompt-hash 66fadd63
+//! @prompt-hash bb9253af
 //! @layer L3
 //! @updated 2026-08-11
 

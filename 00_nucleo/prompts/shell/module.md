@@ -1,5 +1,5 @@
 # Prompt: fachada dos use-cases L2
-Hash do Código: 69e07abd
+Hash do Código: 14bb36ad
 
 Owner exclusivo: `02_shell/mod.rs`.
 
