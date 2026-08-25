@@ -1,0 +1,9 @@
+tekt = 1
+kind = "nucleus"
+id = "path"
+title = "Logical path identity"
+
+[[claims]]
+id = "identity"
+level = "must"
+statement = "Paths preserve logical identity."
