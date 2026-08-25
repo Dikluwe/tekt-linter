@@ -41,7 +41,7 @@ ARGS:
   [PATH]    Raiz do projeto a analisar [padrão: .]
 
 OPTIONS:
-  --format <fmt>         sarif | text | json                  [padrão: text]
+  --format <fmt>         sarif | text | json | n16-summary    [padrão: text]
   --fail-on <level>      error | warning                      [padrão: error]
   --checks <list>        v0,v1,...,v12                        [padrão: all]
   --no-drift             desabilita V5
@@ -77,6 +77,11 @@ mas os três são Fatal — sempre bloqueiam CI independentemente de
 ordenadas por L4 (Fatal → Error → Warning, depois por path
 e linha). O formatter não ordena — apenas formata o que recebe.
 Nunca reordenar dentro do formatter.
+
+`n16-summary` é formato L2 opt-in e exige V16 habilitada; L4 o seleciona e injeta fontes
+e exceções já lidas. Seu payload contém somente o relatório agregado, mas outros checks
+continuam determinando o exit status normal. O contrato detalhado de agregação e tabela
+está no adendo normativo P0094 do Passo 0069.
 
 **Tabela de regras SARIF:**
 
