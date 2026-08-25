@@ -1,6 +1,6 @@
 # Assessment 0021 — planejamento e execução de update-snapshot
 
-**Estado:** PREFLIGHT — SPEC-GAP saneado; produção ainda não confrontada
+**Estado:** BLOCKED — RED de apresentação dry-run aguardando gate/correção
 **Data:** 2026-08-24
 **Passo:** P0092
 **Baseline:** `aee1344`
@@ -17,7 +17,7 @@
 | arquitetura do pipeline | `00_nucleo/prompts/linter-core.md` | `908a00fd7e4eaa985b755682fb73984cbb886496ce988070f176ad307ec24446` |
 | protocolo segregado | `00_nucleo/prompts/segregated-materialization.md` | `366fd0855c6b04e533f4f4a477a73d7e5ec65f24c056720c61fca906bb5299a4` |
 | ADR segregado | `00_nucleo/adr/0020-piloto-materializacao-segregada.md` | `ee1a4a7f3665674b008d127373ed23fc6762d0ff13b2ca83efe5d2ace1539d23` |
-| protocolo P0092 | `00_nucleo/tekt-linter-passo-0092-auditoria-planejamento-update-snapshot.md` | `7263ca5e668d3377af85c5590fea2937a7228853b59bd654865fc468922d3ec7` |
+| protocolo P0092 | `00_nucleo/tekt-linter-passo-0092-auditoria-planejamento-update-snapshot.md` | `27780d89b05911458ce62b81957d95edebc2967c46cb34ecccddc2a8ebbd8415` |
 
 ## Alegações candidatas
 
@@ -124,6 +124,61 @@ separados sem ler produção, L3 ou testes existentes.
   `SnapshotEntry`/`SnapshotResult`.
 
 O RED está congelado. O confronto C da produção está autorizado a partir deste ponto.
+
+## Confronto C e correção
+
+O confronto encontrou `SnapshotEntry` e `SnapshotResult` como structs com campos
+paralelos/`Option`, sem os estados normativos. `execute` usava `filter_map` e removia toda
+entrada com `unreadable_reason`, contrariando cardinalidade e observabilidade congeladas.
+
+O commit `e106a38` materializou `SnapshotUnreadable`, `SnapshotEntry` e `SnapshotResult`
+como enums públicos comparáveis. `plan` preserva uma ocorrência por V6, usa o primeiro
+path integralmente igual e serializa somente `Ready`. `execute` usa `map`, produz um
+resultado por entrada, distingue dry-run/escrita/falha/unreadable e continua após `Err`.
+Os formatters foram adaptados aos estados tipados. Sete arquivos adicionais mudaram
+somente na metadata `@prompt-hash` pelo reparador oficial.
+
+## Primeiro confronto D — bloqueio adicional
+
+- G1–G5: fechados normativamente antes dos gates;
+- B1 SHA-256
+  `09b81471d75656164df6f3332ec38c8a624c50ae961619ae61f6336a6a1a91aa`:
+  3/3 PASS;
+- B2 SHA-256
+  `a0c5ba16d856f730b757d24131aed25b2c9548099fbbcf3de8d32e11c8196ef7`:
+  2/2 PASS;
+- RED causal: estados normativos ausentes e unreadable descartado em execução;
+- correção: `e106a38`;
+- suíte: 628 unitários, 83 fixtures e todos os gates de integração PASS;
+- auto-lint V5/V6/V7/V12: nenhuma violação;
+- hashes: `Nothing to fix`; `rustfmt` dirigido e `git diff --check`: PASS;
+- adversário D: planejamento/execução e arquitetura PASS, mas fechamento `BLOCKED`.
+
+O fluxo real `--update-snapshot --dry-run` usa `format_plan`, que não torna observável o
+campo `snapshot`, embora o L0 exija reportar a interface que seria escrita.
+`format_results` também classificaria `DryRun` sob “Updated”. Nenhum gate congelado cobre
+essa apresentação. Um verificador novo deve criar gate black-box dirigido aos formatters
+antes da correção.
+
+## Gate corretivo de apresentação congelado
+
+Um terceiro verificador, sem ler produção ou gates anteriores, validou sete L0. O hash do
+passo havia mudado durante o registro provisório do bloqueio; ele recusou corretamente
+essa leitura e derivou o oráculo somente dos demais L0 válidos. O passo foi então
+resselado na tabela acima sem alterar a expectativa do gate.
+
+`tests/update_snapshot_dry_run_presentation_assessment.rs`, SHA-256
+`77c3003ced9d8386fdd66edf029aac97b53fe77e37ce7236614214bf51f0a6ed`:
+
+- motivo distinto de unreadable: 1 PASS;
+- `format_plan` torna snapshot hostil observável: RED;
+- `format_results(DryRun)` evita “Updated” e mostra snapshot: RED.
+
+O RED de apresentação está congelado; a correção pode começar.
+
+Residual futuro: Git prova arquivos e escopos separados, mas não prova sozinho independência
+cognitiva dos verificadores porque ambos os gates foram congelados no mesmo commit com
+autor genérico. O registro segregado e o conteúdo não mostram oráculo compartilhado.
 
 ## Papéis
 
