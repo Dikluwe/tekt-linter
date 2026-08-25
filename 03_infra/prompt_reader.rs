@@ -23,6 +23,11 @@ pub struct FsPromptReader {
 
 impl PromptReader for FsPromptReader {
     fn read_hash(&self, prompt_path: &str) -> Option<String> {
+        if let Ok(hash) =
+            crate::infra::nucleus::effective_prompt_hash_at(&self.nucleo_root, prompt_path)
+        {
+            return Some(hash);
+        }
         let bytes = read_confined(
             &self.nucleo_root,
             PathBuf::from(prompt_path).as_path(),

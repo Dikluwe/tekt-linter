@@ -4,6 +4,7 @@
 //! @layer L4
 //! @updated 2026-08-24
 
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::process;
 
@@ -27,7 +28,7 @@ use crystalline_lint::entities::refinement::{
     compare_refinement, ArtifactFacts, ObservableValue, UnknownReason,
 };
 use crystalline_lint::entities::refinement_seal::{accepts, OracleKind, VerdictName};
-use crystalline_lint::entities::violation::{Violation, ViolationLevel};
+use crystalline_lint::entities::violation::{Location, Violation, ViolationLevel};
 use crystalline_lint::infra::c_parser::CParser;
 use crystalline_lint::infra::citation_freshness::FsCitationFreshnessResolver;
 use crystalline_lint::infra::config::CrystallineConfig;
@@ -607,6 +608,57 @@ fn main() {
             &v21_config,
         ));
     }
+    if enabled.v26 {
+        let audit = crystalline_lint::infra::nucleus::audit_project(&cli.path);
+        for (path, message) in audit.issues {
+            all_violations.push(Violation {
+                rule_id: "V26".into(),
+                level: ViolationLevel::Error,
+                message,
+                location: Location {
+                    path: Cow::Owned(path),
+                    line: 1,
+                    column: 0,
+                },
+            });
+        }
+        for finding in
+            crystalline_lint::rules::nucleus_integrity::check_graph(&audit.entries, &audit.usages)
+        {
+            all_violations.push(Violation {
+                rule_id: "V26".into(),
+                level: if finding.message.starts_with("orphan") {
+                    ViolationLevel::Warning
+                } else {
+                    ViolationLevel::Error
+                },
+                message: finding.message,
+                location: Location {
+                    path: Cow::Owned(cli.path.join(finding.path)),
+                    line: 1,
+                    column: 0,
+                },
+            });
+        }
+        for file in &all_parsed {
+            if file
+                .prompt_header
+                .as_ref()
+                .is_some_and(|header| header.prompt_path.ends_with(".tekt"))
+            {
+                all_violations.push(Violation {
+                    rule_id: "V26".into(),
+                    level: ViolationLevel::Error,
+                    message: "production code cannot own a .tekt nucleus through @prompt".into(),
+                    location: Location {
+                        path: Cow::Owned(file.path.to_path_buf()),
+                        line: 1,
+                        column: 0,
+                    },
+                });
+            }
+        }
+    }
 
     // ── Ordenação determinística ───────────────────────────────────────────────
     // Rayon não garante ordem — Fatal → Error → Warning, depois path, depois linha.
@@ -617,6 +669,22 @@ fn main() {
         let rewriter = L3HashRewriter {
             nucleo_root: nucleo_root.clone(),
         };
+        let nucleus_errors = all_violations
+            .iter()
+            .filter(|violation| {
+                violation.rule_id == "V26"
+                    && matches!(
+                        violation.level,
+                        ViolationLevel::Error | ViolationLevel::Fatal
+                    )
+            })
+            .count();
+        if nucleus_errors > 0 {
+            eprintln!(
+                "crystalline-lint: --fix-hashes blocked by {nucleus_errors} V26 nucleus finding(s)"
+            );
+            process::exit(2);
+        }
         let ownership_violations = crystalline_lint::check_prompt_ownership(&prompt_ownerships);
         if !ownership_violations.is_empty() {
             eprintln!(
@@ -800,6 +868,7 @@ fn main() {
                 v23: false,
                 v24: false,
                 v25: false,
+                v26: false,
             };
             let (violations, _, _) = run_pipeline(
                 &re_files,
@@ -934,6 +1003,7 @@ fn main() {
                 v23: false,
                 v24: false,
                 v25: false,
+                v26: false,
             };
             let (violations, _, _) = run_pipeline(
                 &re_files,
