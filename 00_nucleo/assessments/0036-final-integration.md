@@ -1,6 +1,6 @@
 # Assessment 0036 — fechamento final e integração
 
-**Estado:** A CONGELADO — writes proibidos até reconciliação/classificação
+**Estado:** READY TO MERGE — zero RED/SPEC-GAP aberto
 **Data:** 2026-08-25
 **Passo:** P0108
 **Branch:** `codex/tekt-nucleus-artifact`
@@ -57,3 +57,38 @@ de owner, código, camada ou claim compartilhada.
 
 Resultado final: 44 `SUFFICIENT`, zero `CONTRADICTION`, zero `SPEC-GAP`. Os classificadores
 0034 continuam autoridades e nenhum Núcleo Tekt foi criado artificialmente.
+
+## D — quitação de rustfmt
+
+`cargo fmt` tocou exatamente os 26 paths congelados; nenhum path extra. O diff consiste em
+layout canônico, vírgulas finais e ordenação de imports do rustfmt. `cargo fmt --check`
+passou e a suíte integral permaneceu verde antes do resselo. Commit isolado: `b01afa9`.
+
+## E — resselo e gate pré-merge
+
+- dry-run: exatamente 30 pares, os 30 contratos `ENRICH`;
+- execução: 30 pares aplicados;
+- diff: 30 `@prompt-hash` e 9 `Hash do Código`, zero outra linha;
+- segundo dry-run: `Nothing to fix`;
+- `cargo fmt --check`: PASS;
+- `cargo test`: PASS — 630 unitários e toda a suíte de integração/doc-tests;
+- auto-lint: V1/V5/V7/V15/V26 = 0;
+- `git diff --check`: PASS;
+- worktree: limpo antes deste fechamento;
+- warning residual: `print_tree` não usado, histórico e fora do escopo;
+- auto-lint exit 1 apenas por achados históricos V16–V25 fora do P0108.
+
+Commits P0108:
+
+- `f748226` — superfície A;
+- `ec125cc` — reconciliação histórica;
+- `f80f96e` — classificação 44 pares;
+- `6888342` — enriquecimento 30 prompts;
+- `b01afa9` — rustfmt 26 paths;
+- `f8f9599` — resselo final.
+
+## Parecer
+
+Branch apto a integração contra `master` congelado em
+`84fa3006ad6557722cfbe4d10c78c7d0de6b4195`. Não há conflito conhecido nem divergência
+lateral. O merge deve preservar commits e ser seguido pelos gates pós-merge do P0108.
