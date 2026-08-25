@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/fix-hashes.md
-//! @prompt-hash dd987d35
+//! @prompt-hash d6cc361e
 //! @layer L2
 //! @updated 2026-03-20
 
@@ -37,26 +37,73 @@ pub trait HashRewriter {
 
 // ── Data types ────────────────────────────────────────────────────────────────
 
-pub struct FixEntry {
-    pub source_path: PathBuf,
-    /// Path to the L0 prompt file. None if header is unreadable.
-    pub prompt_path: Option<String>,
-    /// Hash currently written in the file header. Empty when header is unreadable.
-    pub old_hash: String,
-    /// Real hash of the L0 prompt file (Hash A). None if prompt file is missing.
-    pub new_hash: Option<String>,
-    /// Real hash of the source code (Hash B). None if source file is unreadable.
-    pub source_hash: Option<String>,
-    /// Set when the file header could not be read. Entry is skipped in execute().
-    pub unreadable_reason: Option<String>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FixUnavailable {
+    HeaderUnreadable,
+    PromptHashUnavailable {
+        prompt_path: String,
+        old_hash: String,
+        source_hash: String,
+    },
+    SourceHashUnavailable {
+        prompt_path: String,
+        old_hash: String,
+        new_hash: String,
+    },
+    BothHashesUnavailable {
+        prompt_path: String,
+        old_hash: String,
+    },
 }
 
-pub struct FixResult {
-    pub source_path: PathBuf,
-    pub old_hash: String,
-    pub new_hash: String,
-    pub success: bool,
-    pub error: Option<String>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FixEntry {
+    Ready {
+        source_path: PathBuf,
+        prompt_path: String,
+        old_hash: String,
+        new_hash: String,
+        source_hash: String,
+    },
+    Unavailable {
+        source_path: PathBuf,
+        reason: FixUnavailable,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FixResult {
+    Unavailable {
+        source_path: PathBuf,
+        reason: FixUnavailable,
+    },
+    DryRun {
+        source_path: PathBuf,
+        prompt_path: String,
+        old_hash: String,
+        new_hash: String,
+        source_hash: String,
+    },
+    Applied {
+        source_path: PathBuf,
+        prompt_path: String,
+        new_hash: String,
+        source_hash: String,
+    },
+    CodeWriteFailed {
+        source_path: PathBuf,
+        prompt_path: String,
+        new_hash: String,
+        source_hash: String,
+        reason: String,
+    },
+    PartialWrite {
+        source_path: PathBuf,
+        prompt_path: String,
+        applied_new_hash: String,
+        rejected_source_hash: String,
+        reason: String,
+    },
 }
 
 // ── Core functions ────────────────────────────────────────────────────────────
@@ -73,22 +120,42 @@ pub fn plan(violations: &[Violation<'_>], rewriter: &dyn HashRewriter) -> Vec<Fi
             Some((prompt_path, old_hash)) => {
                 let new_hash = rewriter.compute_hash(&prompt_path);
                 let source_hash = rewriter.compute_source_hash(&v.location.path);
-                FixEntry {
-                    source_path: v.location.path.to_path_buf(),
-                    prompt_path: Some(prompt_path),
-                    old_hash,
-                    new_hash,
-                    source_hash,
-                    unreadable_reason: None,
+                match (new_hash, source_hash) {
+                    (Some(new_hash), Some(source_hash)) => FixEntry::Ready {
+                        source_path: v.location.path.to_path_buf(),
+                        prompt_path,
+                        old_hash,
+                        new_hash,
+                        source_hash,
+                    },
+                    (None, Some(source_hash)) => FixEntry::Unavailable {
+                        source_path: v.location.path.to_path_buf(),
+                        reason: FixUnavailable::PromptHashUnavailable {
+                            prompt_path,
+                            old_hash,
+                            source_hash,
+                        },
+                    },
+                    (Some(new_hash), None) => FixEntry::Unavailable {
+                        source_path: v.location.path.to_path_buf(),
+                        reason: FixUnavailable::SourceHashUnavailable {
+                            prompt_path,
+                            old_hash,
+                            new_hash,
+                        },
+                    },
+                    (None, None) => FixEntry::Unavailable {
+                        source_path: v.location.path.to_path_buf(),
+                        reason: FixUnavailable::BothHashesUnavailable {
+                            prompt_path,
+                            old_hash,
+                        },
+                    },
                 }
             }
-            None => FixEntry {
+            None => FixEntry::Unavailable {
                 source_path: v.location.path.to_path_buf(),
-                prompt_path: None,
-                old_hash: String::new(),
-                new_hash: None,
-                source_hash: None,
-                unreadable_reason: Some("could not read file header".to_string()),
+                reason: FixUnavailable::HeaderUnreadable,
             },
         })
         .collect()
@@ -96,44 +163,62 @@ pub fn plan(violations: &[Violation<'_>], rewriter: &dyn HashRewriter) -> Vec<Fi
 
 /// Execute or dry-run based on entries.
 /// Skips entries where `new_hash` is None (prompt file missing).
-pub fn execute(
-    entries: &[FixEntry],
-    rewriter: &dyn HashRewriter,
-    dry_run: bool,
-) -> Vec<FixResult> {
+pub fn execute(entries: &[FixEntry], rewriter: &dyn HashRewriter, dry_run: bool) -> Vec<FixResult> {
     entries
         .iter()
-        .filter_map(|entry| {
-            // Entradas com header ilegível ou prompt ausente não podem ser corrigidas
-            if entry.unreadable_reason.is_some() {
-                return None;
-            }
-            let new_hash = entry.new_hash.as_ref()?.clone();
-
-            if dry_run {
-                return Some(FixResult {
-                    source_path: entry.source_path.clone(),
-                    old_hash: entry.old_hash.clone(),
-                    new_hash,
-                    success: true,
-                    error: None,
-                });
-            }
-
-            let outcome = rewriter.write_hash(&entry.source_path, &new_hash);
-            
-            // Step 5: Inject Hash B into MD
-            if let (Ok(_), Some(p), Some(s)) = (&outcome, &entry.prompt_path, &entry.source_hash) {
-                let _ = rewriter.write_prompt_meta(p, s);
-            }
-
-            Some(FixResult {
-                source_path: entry.source_path.clone(),
-                old_hash: entry.old_hash.clone(),
+        .map(|entry| match entry {
+            FixEntry::Unavailable {
+                source_path,
+                reason,
+            } => FixResult::Unavailable {
+                source_path: source_path.clone(),
+                reason: reason.clone(),
+            },
+            FixEntry::Ready {
+                source_path,
+                prompt_path,
+                old_hash,
                 new_hash,
-                success: outcome.is_ok(),
-                error: outcome.err(),
-            })
+                source_hash,
+            } if dry_run => FixResult::DryRun {
+                source_path: source_path.clone(),
+                prompt_path: prompt_path.clone(),
+                old_hash: old_hash.clone(),
+                new_hash: new_hash.clone(),
+                source_hash: source_hash.clone(),
+            },
+            FixEntry::Ready {
+                source_path,
+                prompt_path,
+                new_hash,
+                source_hash,
+                ..
+            } => {
+                if let Err(reason) = rewriter.write_hash(source_path, new_hash) {
+                    return FixResult::CodeWriteFailed {
+                        source_path: source_path.clone(),
+                        prompt_path: prompt_path.clone(),
+                        new_hash: new_hash.clone(),
+                        source_hash: source_hash.clone(),
+                        reason,
+                    };
+                }
+                match rewriter.write_prompt_meta(prompt_path, source_hash) {
+                    Ok(()) => FixResult::Applied {
+                        source_path: source_path.clone(),
+                        prompt_path: prompt_path.clone(),
+                        new_hash: new_hash.clone(),
+                        source_hash: source_hash.clone(),
+                    },
+                    Err(reason) => FixResult::PartialWrite {
+                        source_path: source_path.clone(),
+                        prompt_path: prompt_path.clone(),
+                        applied_new_hash: new_hash.clone(),
+                        rejected_source_hash: source_hash.clone(),
+                        reason,
+                    },
+                }
+            }
         })
         .collect()
 }
@@ -141,67 +226,61 @@ pub fn execute(
 // ── Formatters ────────────────────────────────────────────────────────────────
 
 pub fn format_plan(entries: &[FixEntry]) -> String {
-    let fixable: Vec<_> =
-        entries.iter().filter(|e| e.new_hash.is_some() && e.unreadable_reason.is_none()).collect();
-    let unfixable: Vec<_> = entries
-        .iter()
-        .filter(|e| e.new_hash.is_none() && e.unreadable_reason.is_none())
-        .collect();
-    let unreadable: Vec<_> =
-        entries.iter().filter(|e| e.unreadable_reason.is_some()).collect();
-
     if entries.is_empty() {
         return format!("{}\n", "Nothing to fix".green().bold());
     }
-
     let mut out = String::new();
-
-    if !fixable.is_empty() {
-        out.push_str(&format!(
-            "{} {} {}:\n",
-            "Would fix".cyan().bold(),
-            fixable.len(),
-            if fixable.len() == 1 { "file" } else { "files" }
-        ));
-        for entry in &fixable {
-            out.push_str(&format!(
-                "  {:<45} {} → {}\n",
-                human_path(&entry.source_path),
-                entry.old_hash.red(),
-                entry.new_hash.as_deref().unwrap_or("?").green(),
-            ));
+    for entry in entries {
+        match entry {
+            FixEntry::Ready {
+                source_path,
+                prompt_path,
+                old_hash,
+                new_hash,
+                source_hash,
+            } => out.push_str(&format!(
+                "Would fix {} prompt={} old={} hash-a={} hash-b={}\n",
+                human_path(source_path),
+                prompt_path,
+                old_hash,
+                new_hash,
+                source_hash
+            )),
+            FixEntry::Unavailable {
+                source_path,
+                reason,
+            } => out.push_str(&format!(
+                "Cannot fix {} — {}\n",
+                human_path(source_path),
+                describe_unavailable(reason)
+            )),
         }
     }
-
-    if !unfixable.is_empty() {
-        out.push('\n');
-        out.push_str(&format!(
-            "{} {} (prompt file missing):\n",
-            "Cannot fix".yellow().bold(),
-            unfixable.len()
-        ));
-        for entry in unfixable {
-            out.push_str(&format!("  {}\n", human_path(&entry.source_path)));
-        }
-    }
-
-    if !unreadable.is_empty() {
-        out.push('\n');
-        out.push_str(&format!(
-            "{} {} (header unreadable):\n",
-            "Skipped".yellow().bold(),
-            unreadable.len()
-        ));
-        for entry in unreadable {
-            out.push_str(&format!(
-                "  {} — {}\n",
-                human_path(&entry.source_path),
-                entry.unreadable_reason.as_deref().unwrap_or("unknown"),
-            ));
-        }
-    }
-
     out
+}
+
+fn describe_unavailable(reason: &FixUnavailable) -> String {
+    match reason {
+        FixUnavailable::HeaderUnreadable => "header unreadable".into(),
+        FixUnavailable::PromptHashUnavailable {
+            prompt_path,
+            old_hash,
+            source_hash,
+        } => format!(
+            "prompt hash unavailable: prompt={prompt_path} old={old_hash} hash-b={source_hash}"
+        ),
+        FixUnavailable::SourceHashUnavailable {
+            prompt_path,
+            old_hash,
+            new_hash,
+        } => format!(
+            "source hash unavailable: prompt={prompt_path} old={old_hash} hash-a={new_hash}"
+        ),
+        FixUnavailable::BothHashesUnavailable {
+            prompt_path,
+            old_hash,
+        } => format!("both hashes unavailable: prompt={prompt_path} old={old_hash}"),
+    }
 }
 
 pub fn format_results(results: &[FixResult], unfixable: usize, remaining_v5: usize) -> String {
@@ -210,34 +289,13 @@ pub fn format_results(results: &[FixResult], unfixable: usize, remaining_v5: usi
     }
 
     let mut out = String::new();
-    let succeeded: Vec<_> = results.iter().filter(|r| r.success).collect();
-    let failed: Vec<_> = results.iter().filter(|r| !r.success).collect();
-
-    if !succeeded.is_empty() {
-        out.push_str(&format!(
-            "{} {} {}:\n",
-            "Fixed".green().bold(),
-            succeeded.len(),
-            if succeeded.len() == 1 { "file" } else { "files" }
-        ));
-        for r in &succeeded {
-            out.push_str(&format!(
-                "  {:<45} → {}\n",
-                human_path(&r.source_path),
-                r.new_hash.green(),
-            ));
-        }
-    }
-
-    if !failed.is_empty() {
-        out.push('\n');
-        out.push_str(&format!("{} {} failed:\n", "Error".red().bold(), failed.len()));
-        for r in &failed {
-            out.push_str(&format!(
-                "  {} — {}\n",
-                human_path(&r.source_path),
-                r.error.as_deref().unwrap_or("unknown error"),
-            ));
+    for result in results {
+        match result {
+            FixResult::Unavailable { source_path, reason } => out.push_str(&format!("Unavailable {} — {}\n", human_path(source_path), describe_unavailable(reason))),
+            FixResult::DryRun { source_path, prompt_path, old_hash, new_hash, source_hash } => out.push_str(&format!("Dry-run {} prompt={} old={} hash-a={} hash-b={}\n", human_path(source_path), prompt_path, old_hash, new_hash, source_hash)),
+            FixResult::Applied { source_path, prompt_path, new_hash, source_hash } => out.push_str(&format!("Applied {} prompt={} hash-a={} hash-b={}\n", human_path(source_path), prompt_path, new_hash, source_hash)),
+            FixResult::CodeWriteFailed { source_path, prompt_path, new_hash, source_hash, reason } => out.push_str(&format!("Code write failed {} prompt={} hash-a={} hash-b={} reason={}\n", human_path(source_path), prompt_path, new_hash, source_hash, reason)),
+            FixResult::PartialWrite { source_path, prompt_path, applied_new_hash, rejected_source_hash, reason } => out.push_str(&format!("Partial write: prompt metadata failed {} prompt={} applied-hash-a={} rejected-hash-b={} reason={}\n", human_path(source_path), prompt_path, applied_new_hash, rejected_source_hash, reason)),
         }
     }
 
@@ -317,11 +375,15 @@ mod tests {
             self.source_hash.clone()
         }
         fn write_hash(&self, path: &Path, new_hash: &str) -> Result<(), String> {
-            self.write_calls.borrow_mut().push((path.to_path_buf(), new_hash.to_string()));
+            self.write_calls
+                .borrow_mut()
+                .push((path.to_path_buf(), new_hash.to_string()));
             self.write_result.clone()
         }
         fn write_prompt_meta(&self, prompt_path: &str, code_hash: &str) -> Result<(), String> {
-            self.meta_calls.borrow_mut().push((prompt_path.to_string(), code_hash.to_string()));
+            self.meta_calls
+                .borrow_mut()
+                .push((prompt_path.to_string(), code_hash.to_string()));
             Ok(())
         }
     }
@@ -331,7 +393,11 @@ mod tests {
             rule_id: "V5".to_string(),
             level: ViolationLevel::Warning,
             message: "drift".to_string(),
-            location: Location { path: Cow::Borrowed(Path::new(path)), line: 1, column: 0 },
+            location: Location {
+                path: Cow::Borrowed(Path::new(path)),
+                line: 1,
+                column: 0,
+            },
         }
     }
 
@@ -348,22 +414,26 @@ mod tests {
         let violations = vec![v5_violation("01_core/foo.rs")];
         let entries = plan(&violations, &rewriter);
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].old_hash, "00000000");
-        assert_eq!(entries[0].new_hash, Some("a3f8c2d1".to_string()));
-        assert_eq!(entries[0].source_hash, Some("b9e4f7a2".to_string()));
+        assert!(
+            matches!(&entries[0], FixEntry::Ready { old_hash, new_hash, source_hash, .. }
+            if old_hash == "00000000" && new_hash == "a3f8c2d1" && source_hash == "b9e4f7a2")
+        );
     }
 
     #[test]
     fn plan_ignores_non_v5_violations() {
-        let rewriter = MockRewriter::new(Some(("p.md", "00000000")), Some("a1b2c3d4"), None, Ok(()));
-        let violations = vec![
-            Violation {
-                rule_id: "V1".to_string(),
-                level: ViolationLevel::Error,
-                message: "header missing".to_string(),
-                location: Location { path: Cow::Borrowed(Path::new("foo.rs")), line: 1, column: 0 },
+        let rewriter =
+            MockRewriter::new(Some(("p.md", "00000000")), Some("a1b2c3d4"), None, Ok(()));
+        let violations = vec![Violation {
+            rule_id: "V1".to_string(),
+            level: ViolationLevel::Error,
+            message: "header missing".to_string(),
+            location: Location {
+                path: Cow::Borrowed(Path::new("foo.rs")),
+                line: 1,
+                column: 0,
             },
-        ];
+        }];
         let entries = plan(&violations, &rewriter);
         assert!(entries.is_empty());
     }
@@ -379,7 +449,7 @@ mod tests {
         let violations = vec![v5_violation("01_core/foo.rs")];
         let entries = plan(&violations, &rewriter);
         assert_eq!(entries.len(), 1);
-        assert!(entries[0].new_hash.is_none());
+        assert!(matches!(entries[0], FixEntry::Unavailable { .. }));
     }
 
     // ── execute() ────────────────────────────────────────────────────────────
@@ -414,7 +484,7 @@ mod tests {
         let results = execute(&entries, &rewriter, true);
 
         assert_eq!(results.len(), 1);
-        assert!(results[0].success);
+        assert!(matches!(results[0], FixResult::DryRun { .. }));
         assert_eq!(rewriter.write_calls.borrow().len(), 0); // no writes
         assert_eq!(rewriter.meta_calls.borrow().len(), 0);
     }
@@ -425,7 +495,7 @@ mod tests {
         let violations = vec![v5_violation("01_core/foo.rs")];
         let entries = plan(&violations, &rewriter);
         let results = execute(&entries, &rewriter, false);
-        assert!(results.is_empty()); // unfixable = skipped
+        assert!(matches!(results[0], FixResult::Unavailable { .. }));
     }
 
     #[test]
@@ -441,8 +511,9 @@ mod tests {
         let results = execute(&entries, &rewriter, false);
 
         assert_eq!(results.len(), 1);
-        assert!(!results[0].success);
-        assert!(results[0].error.as_deref().unwrap().contains("permission"));
+        assert!(
+            matches!(&results[0], FixResult::CodeWriteFailed { reason, .. } if reason.contains("permission"))
+        );
     }
 
     // ── format ────────────────────────────────────────────────────────────────
@@ -455,12 +526,11 @@ mod tests {
 
     #[test]
     fn format_results_shows_zero_remaining() {
-        let result = FixResult {
+        let result = FixResult::Applied {
             source_path: PathBuf::from("01_core/foo.rs"),
-            old_hash: "00000000".to_string(),
+            prompt_path: "00_nucleo/prompts/foo.md".to_string(),
             new_hash: "a3f8c2d1".to_string(),
-            success: true,
-            error: None,
+            source_hash: "b9e4f7a2".to_string(),
         };
         let out = format_results(&[result], 0, 0);
         assert!(out.contains("0 drift warnings remaining"));
@@ -474,6 +544,12 @@ mod tests {
         let violations = vec![v5_violation("01_core/unreadable.rs")];
         let entries = plan(&violations, &rewriter);
         assert_eq!(entries.len(), 1);
-        assert!(entries[0].unreadable_reason.is_some());
+        assert!(matches!(
+            entries[0],
+            FixEntry::Unavailable {
+                reason: FixUnavailable::HeaderUnreadable,
+                ..
+            }
+        ));
     }
 }
