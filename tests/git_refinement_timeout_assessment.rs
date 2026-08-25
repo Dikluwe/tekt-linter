@@ -29,7 +29,7 @@ impl Sandbox {
             std::process::id()
         ));
         fs::create_dir_all(root.join(".git/objects")).expect("create isolated repository envelope");
-        fs::write(root.join(".scenario"), scenario).expect("write fixture scenario");
+        fs::write(root.join(".scenario"), format!("{scenario}\n")).expect("write fixture scenario");
 
         let executable = root.join("hostile-git");
         fs::write(&executable, FIXTURE).expect("write controlled executable");
