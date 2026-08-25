@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/violation-types.md
-//! @prompt-hash 9e1e91d1
+//! @prompt-hash 6ad3d3d2
 //! @layer L1
 //! @updated 2026-03-14
 

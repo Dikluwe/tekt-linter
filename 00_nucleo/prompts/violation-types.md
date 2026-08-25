@@ -98,6 +98,9 @@ pub struct ParsedFile<'a> {
     // true se prompt_header.prompt_path existe em 00_nucleo/
     // populado por L3 via PromptReader
 
+    // Para V15
+    pub prompt_refs: Vec<&'a str>,
+
     // Para V2
     pub has_test_coverage: bool,
     // true se construto de teste no AST, ficheiro adjacente, ou declaration-only
@@ -122,6 +125,22 @@ pub struct ParsedFile<'a> {
     // Não consumidos por nenhuma regra de L1 directamente
     pub declared_traits: Vec<&'a str>,
     pub implemented_traits: Vec<&'a str>,
+    pub blanket_impl_traits: Vec<&'a str>,
+
+    // Para V13
+    pub static_declarations: Vec<StaticDeclaration<'a>>,
+
+    // Declarações mod foo; separadas de imports
+    pub module_decls: Vec<ModuleDecl<'a>>,
+
+    // Para V16–V20
+    pub decision_exprs: Vec<DecisionExpr<'a>>,
+
+    // Para V21
+    pub constants: Vec<SourceConstant<'a>>,
+
+    // Para V23–V25
+    pub semantic_observations: Vec<SemanticObservation>,
 }
 ```
 
@@ -153,6 +172,8 @@ pub struct Import<'a> {
     /// Some("entities") se import aponta para 01_core/entities/.
     /// Usado por V9 para detectar imports fora das portas de L1.
     pub target_subdir: Option<&'a str>,
+    /// true se nasce em código de teste e não participa do grafo de produção.
+    pub is_test_origin: bool,
 }
 
 /// Mecânica estrutural do import — agnóstica de linguagem.
@@ -413,7 +434,16 @@ pub enum Layer {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Language {
-    Rust, TypeScript, Python, Unknown,
+    Rust,
+    TypeScript,
+    Python,
+    C,
+    Cpp,
+    Zig,
+    Go,
+    Java,
+    Elixir,
+    Unknown,
 }
 ```
 

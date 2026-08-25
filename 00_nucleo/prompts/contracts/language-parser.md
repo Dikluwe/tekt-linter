@@ -1,5 +1,5 @@
 # Prompt: Contract - Language Parser (language-parser)
-Hash do Código: 0cce0964
+Hash do Código: cbe2c3dc
 
 **Camada**: L1 (Core — Contracts)
 **Criado em**: 2025-03-13
@@ -50,6 +50,80 @@ pub trait LanguageParser {
     fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError>;
 }
 ```
+
+## Política pura de seleção e composição
+
+O universo de slots é fechado e não contém tipos concretos de L3:
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParserSlot {
+    Rust,
+    TypeScript,
+    Python,
+    C,
+    Cpp,
+    Zig,
+    Go,
+    Java,
+    Elixir,
+}
+
+pub fn parser_slot(language: &Language) -> Option<ParserSlot>;
+```
+
+A função é total e usa exclusivamente `language`:
+
+| `Language` | resultado |
+|---|---|
+| `Rust` | `Some(ParserSlot::Rust)` |
+| `TypeScript` | `Some(ParserSlot::TypeScript)` |
+| `Python` | `Some(ParserSlot::Python)` |
+| `C` | `Some(ParserSlot::C)` |
+| `Cpp` | `Some(ParserSlot::Cpp)` |
+| `Zig` | `Some(ParserSlot::Zig)` |
+| `Go` | `Some(ParserSlot::Go)` |
+| `Java` | `Some(ParserSlot::Java)` |
+| `Elixir` | `Some(ParserSlot::Elixir)` |
+| `Unknown` | `None` |
+
+L1 também publica uma composição sobre ports, sem conhecer adapters concretos:
+
+```rust
+pub struct ParserSet<'p> {
+    pub rust: &'p dyn LanguageParser,
+    pub typescript: &'p dyn LanguageParser,
+    pub python: &'p dyn LanguageParser,
+    pub c: &'p dyn LanguageParser,
+    pub cpp: &'p dyn LanguageParser,
+    pub zig: &'p dyn LanguageParser,
+    pub go: &'p dyn LanguageParser,
+    pub java: &'p dyn LanguageParser,
+    pub elixir: &'p dyn LanguageParser,
+}
+
+impl ParserSet<'_> {
+    pub fn parse<'a>(&self, file: &'a SourceFile)
+        -> Result<ParsedFile<'a>, ParseError>;
+}
+```
+
+`ParserSet::parse` consulta `parser_slot` uma vez. Para um slot suportado, chama
+exatamente o port correspondente uma vez com o mesmo `&SourceFile` e devolve o mesmo
+`Ok` ou `Err`, sem tradução, fallback ou segunda tentativa. Os demais ports não são
+consultados. Para `Unknown`, nenhum port é consultado e o retorno direto é
+`ParseError::UnsupportedLanguage { path: file.path.clone(), language:
+file.language.clone() }`.
+
+Os nove ports são obrigatórios na construção: ausência de adapter não é estado de
+runtime e não compartilha a semântica de `Unknown`. Ordem dos campos não define
+precedência. A política depende apenas de `Language`; path, content, layer e
+`has_adjacent_test` não alteram o slot. Ela não acessa filesystem, configuração,
+ambiente, relógio, rede ou processo.
+
+L4 instancia os nove adapters L3 e constrói `ParserSet`; não repete o `match`, não decide
+fallback e apenas inicia `ParserSet::parse`. Um wrapper `MultiParser` privado em L4 é
+permitido somente se for estruturalmente transparente e não reimplementar a decisão.
 
 ---
 
@@ -131,6 +205,20 @@ Então o compilador Rust rejeita qualquer uso de ParsedFile
 Dado mock de LanguageParser retornando ParsedFile fixo
 Quando usado em testes de regras L1
 Então nenhuma invocação de tree-sitter ocorre
+
+Dado cada variante suportada de Language
+Quando parser_slot() for chamada
+Então retorna exatamente o ParserSlot da matriz e nenhum efeito externo ocorre
+
+Dado ParserSet com nove spies independentes
+Quando parse() receber linguagem suportada
+Então somente o spy do slot correto recebe uma chamada com o mesmo SourceFile
+E seu Ok ou Err é propagado sem tradução ou fallback
+
+Dado ParserSet com nove spies independentes e Language::Unknown
+Quando parse() for chamada
+Então nenhum spy é consultado
+E retorna UnsupportedLanguage preservando path e linguagem
 ```
 
 ---
