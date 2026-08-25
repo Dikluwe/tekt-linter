@@ -84,63 +84,74 @@ crystalline-lint --update-snapshot [--dry-run] [PATH]
 
 ---
 
-## Estrutura de dados — `FixEntry`
+## Contrato L2 — planejamento e execução de hashes
 
 ```rust
-pub struct FixEntry {
-    pub source_path: PathBuf,
-    /// Hash actualmente escrito no header do ficheiro.
-    /// Vazio se unreadable_reason está preenchido.
-    pub old_hash: String,
-    /// Real hash do ficheiro de prompt L0.
-    /// None se o ficheiro de prompt não existe (não corrigível).
-    pub new_hash: Option<String>,
-    /// None se o header foi lido com sucesso.
-    /// Some(reason) se read_header falhou — entrada não corrigível
-    /// com razão explícita. Nunca descartar silenciosamente.
-    pub unreadable_reason: Option<String>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FixUnavailable {
+    HeaderUnreadable,
+    PromptHashUnavailable { prompt_path: String, old_hash: String, source_hash: String },
+    SourceHashUnavailable { prompt_path: String, old_hash: String, new_hash: String },
+    BothHashesUnavailable { prompt_path: String, old_hash: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FixEntry {
+    Ready {
+        source_path: PathBuf,
+        prompt_path: String,
+        old_hash: String,
+        new_hash: String,
+        source_hash: String,
+    },
+    Unavailable { source_path: PathBuf, reason: FixUnavailable },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FixResult {
+    Unavailable { source_path: PathBuf, reason: FixUnavailable },
+    DryRun {
+        source_path: PathBuf, prompt_path: String, old_hash: String,
+        new_hash: String, source_hash: String,
+    },
+    Applied {
+        source_path: PathBuf, prompt_path: String,
+        new_hash: String, source_hash: String,
+    },
+    CodeWriteFailed {
+        source_path: PathBuf, prompt_path: String,
+        new_hash: String, source_hash: String, reason: String,
+    },
+    PartialWrite {
+        source_path: PathBuf, prompt_path: String,
+        applied_new_hash: String, rejected_source_hash: String, reason: String,
+    },
 }
 ```
 
----
+`plan()` produz exatamente uma posição para cada ocorrência cujo `rule_id` seja
+exatamente `"V5"`, preservando ordem, duplicatas e path integral. Chama `read_header`
+uma vez. Se falhar, produz `HeaderUnreadable` e não calcula hashes. Se passar, preserva
+prompt path/old hash e chama Hash A (`compute_hash`) e Hash B (`compute_source_hash`) uma
+vez cada, materializando exatamente `Ready`, `PromptHashUnavailable`,
+`SourceHashUnavailable` ou `BothHashesUnavailable`.
 
-## Contrato L2 — `plan()` em `fix_hashes`
+`execute()` produz exatamente um resultado por entrada, na mesma ordem. `Unavailable`
+permanece `Unavailable`, sem escrita. Dry-run transforma `Ready` em `DryRun`, preserva
+old hash, Hash A (`new_hash`) e Hash B (`source_hash`) e não escreve.
 
-`plan()` não descarta entradas silenciosamente. Se `read_header`
-retorna `None` para um ficheiro (header malformado, ficheiro
-modificado entre análise e execução, permissões), a entrada é
-incluída com `unreadable_reason` preenchido.
+Execução real chama primeiro `write_hash(source_path, new_hash)`. Se falhar, produz
+`CodeWriteFailed` com razão exata e não chama `write_prompt_meta`. Se passar, chama
+`write_prompt_meta(prompt_path, source_hash)`. `Ok` produz `Applied`; `Err` produz
+`PartialWrite`, registrando Hash A já aplicado, Hash B rejeitado e razão exata. O port
+atual não autoriza rollback porque não captura bytes anteriores. Nenhuma falha interrompe
+entradas posteriores.
 
-```rust
-pub fn plan(violations: &[Violation<'_>], rewriter: &dyn HashRewriter) -> Vec<FixEntry> {
-    violations
-        .iter()
-        .filter(|v| v.rule_id == "V5")
-        .map(|v| {
-            match rewriter.read_header(&v.location.path) {
-                None => FixEntry {
-                    source_path: v.location.path.to_path_buf(),
-                    old_hash: String::new(),
-                    new_hash: None,
-                    unreadable_reason: Some(format!(
-                        "não foi possível ler o header de '{}'",
-                        v.location.path.display()
-                    )),
-                },
-                Some((prompt_path, old_hash)) => FixEntry {
-                    source_path: v.location.path.to_path_buf(),
-                    old_hash,
-                    new_hash: rewriter.compute_hash(&prompt_path),
-                    unreadable_reason: None,
-                },
-            }
-        })
-        .collect()
-}
-```
+Formatters tornam todos os estados distinguíveis. Dry-run mostra paths, old hash, Hash A
+e Hash B e nunca usa rótulo de aplicação concluída. `PartialWrite` nunca é agrupado com
+sucesso e identifica explicitamente a fase prompt/metadata.
 
-O mesmo princípio aplica-se a `update_snapshot::plan` — falhas
-de leitura são reportadas, não descartadas.
+O mesmo princípio de cardinalidade total aplica-se a `update_snapshot`.
 
 ---
 
@@ -262,9 +273,9 @@ Re-running analysis... ✅ 0 drift warnings remaining
 - L3 usa escrita atômica em ambos os comandos — temp file + rename
 - L1 não é modificado por nenhum dos comandos
 - Se `--dry-run`, nenhum arquivo é tocado
-- `plan()` nunca descarta entradas com `filter_map` — usa `map`
-  e captura falhas em `SnapshotEntry::Unreadable`
-- `execute()` preserva cardinalidade inclusive para entradas não acionáveis
+- `plan()` e `execute()` preservam cardinalidade inclusive para entradas não acionáveis
+- estados indisponíveis são variantes nominais, não combinações de `Option`
+- falha da segunda escrita de hashes é `PartialWrite`, nunca sucesso
 - dry-run possui resultado distinto de escrita realizada
 - `--fix-hashes` e `--update-snapshot` não podem rodar juntos
 
@@ -280,20 +291,23 @@ E re-análise retorna zero V5
 
 Dado violation V5 para ficheiro cujo header não pode ser lido
 Quando plan() for chamado
-Então entries.len() == 1
-E entries[0].unreadable_reason == Some(...)
-— falha reportada, não descartada silenciosamente
+Então retorna FixEntry::Unavailable com HeaderUnreadable
+E nenhum cálculo de hash é chamado
 
-Dado violation V5 para ficheiro com header válido
-Quando plan() for chamado com MockRewriter que retorna None de read_header
-Então entries.len() == 1
-E entries[0].unreadable_reason é Some com mensagem explicativa
+Dado header válido e qualquer combinação de Hash A/Hash B disponível ou ausente
+Quando plan() for chamado
+Então retorna exatamente Ready ou a variante FixUnavailable correspondente
 
 Dado --fix-hashes --dry-run
 Quando rodar
 Então nenhum arquivo é modificado
-E output mostra mudanças que seriam feitas
+E output mostra old hash, Hash A e Hash B que seriam aplicados
 E output mostra entradas não-corrigíveis com razão
+
+Dado write_hash aprovado e write_prompt_meta rejeitado
+Quando execute() for chamado
+Então retorna PartialWrite com os dois hashes e a razão exata
+E nunca relata a entrada como aplicada integralmente
 
 Dado falha de escrita no meio do processo
 Quando qualquer comando de mutação rodar
