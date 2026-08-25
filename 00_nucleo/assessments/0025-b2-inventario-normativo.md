@@ -74,3 +74,20 @@ ADR-0019 c2607ff2feb044487b454b3dc3115c9613d8124faebc415dc889eb717038e376
 ```
 
 Nenhum arquivo foi alterado.
+
+## Resselo D1 e seams estreitas delimitáveis
+
+O protocolo corrigido possui SHA-256
+`cf5b4aa0d70c2033caea975a7b17439f0a93be9749ee3a3cbf3c1104c400c7ab`;
+`04_wiring` coincide com a arquitetura e não altera SG-B2-01–07.
+
+A extração/associação Rust de V21 admite lote cego estreito: fonte Rust para IR
+`SourceConstant`, incluindo direção de multiplicação/divisão, campos profundos,
+`context_var`, `geometric_sink`, teste/tabela, janela inclusiva das três linhas anteriores
+e precedência de citação. O gate não pode usar o classificador V21 como oráculo e deve
+excluir frescura filesystem, config global, wiring, apresentação e exit.
+
+A extração `DecisionExpr` e wiring de `wildcard_exceptions` V16 também permitem lote menor,
+mas com confiança inferior: IR/política L1 são fortes e o mapeamento AST pode revelar
+`SPEC-GAP`. V23–V25 L3, snapshot B1 completo, Git B2, C/C++/Zig e release continuam sem
+L0 suficiente para auditoria funcional direta.

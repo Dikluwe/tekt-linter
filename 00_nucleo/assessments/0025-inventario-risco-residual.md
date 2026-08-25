@@ -9,7 +9,7 @@
 
 | Unidade | Caminho | SHA-256 |
 |---|---|---|
-| protocolo P0096 | `00_nucleo/tekt-linter-passo-0096-inventario-risco-residual.md` | `aa29eeab4a05404c6436608dc1a02f0c01c74629d96ea1c605cb36b77827b39e` |
+| protocolo P0096 | `00_nucleo/tekt-linter-passo-0096-inventario-risco-residual.md` | `cf5b4aa0d70c2033caea975a7b17439f0a93be9749ee3a3cbf3c1104c400c7ab` |
 | arquitetura Tekt | `00_nucleo/prompts/linter-core.md` | `9446277167f07dc5290617855cff456f061aa052ce8bd51ecf980530800b8c00` |
 | protocolo segregado | `00_nucleo/prompts/segregated-materialization.md` | `366fd0855c6b04e533f4f4a477a73d7e5ec65f24c056720c61fca906bb5299a4` |
 | ADR segregado | `00_nucleo/adr/0020-piloto-materializacao-segregada.md` | `ee1a4a7f3665674b008d127373ed23fc6762d0ff13b2ca83efe5d2ace1539d23` |
@@ -49,3 +49,15 @@ alguma, pode ser proposta para P0097 sem fingir baixo risco?
 
 Fechamento somente `READY WITH RESIDUAL AUDIT` ou `BLOCKED`. P0096 não autoriza produção,
 gate executável, correção funcional, merge ou push.
+
+## RED D1 e resselamento
+
+D bloqueou a primeira reconciliação: o protocolo nomeava `04_forge`, inexistente, em vez
+de `04_wiring`; A omitiu o fechamento da materialização/refinement no Assessment 0013; C
+classificou S3 como `UNAUDITED` e a recomendou sem causa válida de reabertura; B1 afirmou
+ausência de sync embora `write_atomic` execute `file.sync_all()`.
+
+O protocolo foi corrigido para `04_wiring`. A deve reconciliar S3 com o Assessment 0013;
+B1 deve registrar precisamente que há sync do arquivo, mas não fsync do diretório nem
+preservação explícita de modo; C anterior está invalidado e deve ser refeito. Nenhuma
+produção mudou.
