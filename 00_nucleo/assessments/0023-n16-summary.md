@@ -10,13 +10,13 @@
 | Unidade | Caminho | SHA-256 |
 |---|---|---|
 | taxonomia N16 | `00_nucleo/adr/0017-v16-v21-diferenca-categorica.md` | `79f406654aacf3693616232a4fdbb911e359486d089ffde841af5375625104dd` |
-| relatório histórico | `00_nucleo/tekt-linter-passo-0069-relatorio-n16-por-modulo.md` | `c0fd4d64e2489b49994ce56abb3fd0e7139caec11d744eb4e0799b566c22f2fe` |
+| relatório histórico | `00_nucleo/tekt-linter-passo-0069-relatorio-n16-por-modulo.md` | `30b56945e96948f58246c2cefbdb7e7fe9cda6ad1c46fc55ec8ef97dd0c20424` |
 | V16/exceções | `00_nucleo/prompts/rules/wildcard-saturation.md` | `19f79428f1e7c9740ae7f2466f03bc82c22a5632a2388e5b2c587a3fa2588609` |
 | arquitetura | `00_nucleo/prompts/linter-core.md` | `9446277167f07dc5290617855cff456f061aa052ce8bd51ecf980530800b8c00` |
 | apresentação | `00_nucleo/prompts/sarif-formatter.md` | `bd0a915c775c97482b1890a67c83b993d62a6fd0decf1dbd0f5913ade0afefa0` |
 | protocolo segregado | `00_nucleo/prompts/segregated-materialization.md` | `366fd0855c6b04e533f4f4a477a73d7e5ec65f24c056720c61fca906bb5299a4` |
 | ADR segregado | `00_nucleo/adr/0020-piloto-materializacao-segregada.md` | `ee1a4a7f3665674b008d127373ed23fc6762d0ff13b2ca83efe5d2ace1539d23` |
-| protocolo P0094 | `00_nucleo/tekt-linter-passo-0094-auditoria-relatorio-n16-summary.md` | `4ae7934828bbdbc200d5e0bba0a8d9380f1a3bc4a6792dc11a47791df90b358f` |
+| protocolo P0094 | `00_nucleo/tekt-linter-passo-0094-auditoria-relatorio-n16-summary.md` | `d9ce99558975734c1408e20fd2d1794df403154bf67f1b798c4f514075161be1` |
 
 ## Alegações candidatas
 
@@ -116,3 +116,9 @@ expunha forma de construí-lo em fixture de memória. Nenhum gate foi criado. O 
 passou a publicar seus cinco campos existentes e os caminhos/variantes mínimos de
 `Language::Rust` e `Layer::L1`, sem autorizar descoberta ou leitura em L2. Novo
 resselamento libera B1.
+
+Após o primeiro congelamento, o confronto mínimo da superfície pública classificou o
+RED de import de B1 como `GATE-DEFECT`: a crate expõe L1 diretamente por `contracts` e
+`entities`, sem namespace `core`. O L0 foi corrigido para os caminhos arquiteturais
+reais, sem criar alias artificial. B1 deve revisar somente os imports e repetir o RED
+semântico; B2 apenas revalida hashes, pois sua expectativa não mudou.
