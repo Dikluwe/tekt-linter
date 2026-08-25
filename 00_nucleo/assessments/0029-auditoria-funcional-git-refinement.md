@@ -82,3 +82,26 @@ Novas identidades a validar por A2:
 O drift V5 decorrente do novo prompt é esperado e não será reparado antes dos gates:
 atualizar headers de produção nesta fase contaminaria o RED causal. A2 deve ler somente
 o Assessment, A1 e os dois L0 saneados; B1/B2 continuam proibidos até `PASS` de A2.
+
+## A2 e gates congelados
+
+A2 revalidou os dois L0 saneados e fechou o preflight em 12/12 `PASS` e as alegações em
+13/13 `PASS`. O RED de alternates foi resolvido e a seam pública foi considerada
+executável. Parecer A2: SHA-256
+`d636f6411c8f8a73bf60ff0e63a91885e26a8f4335eb1c8db8ddfb383087e195`.
+
+| Papel | Artefato | SHA-256 | RED inicial |
+|---|---|---|---|
+| B1 | `tests/git_refinement_protocol_assessment.rs` | `29b7bc053c88e2bdf6102319e9677917c94e464669f2f5bef5f9f8cc6883fcf9` | compilação: API L3 e tipos ausentes |
+| B1 | `tests/fixtures/git_refinement_protocol/hostile_git.sh` | `d8a698c71b8e801b00b1fbe493c42b184193f6fef814622e639a52720dac6b0e` | fixture congelada |
+| B2 | `tests/git_refinement_timeout_assessment.rs` | `96d230525992acf779374f57ff15eb7ce4734df3444ee97e2ee7b198866750a3` | compilação: API L3 e tipos ausentes |
+| B2 | `tests/fixtures/git_refinement_timeout/hostile-git.sh` | `5f3265bdad976531da3b463732ca51801a381f570a01de3e7b9c7f9ad2b4c5b9` | fixture congelada |
+
+B1 cobre sete testes de protocolo, identidade, ambiente, tipos, framing e budgets. B2
+cobre quatro testes de status, saída parcial, timeout/reap e descendente. Antes do
+congelamento foi corrigido um `GATE-DEFECT`: a fixture B2 identificava o subcomando pelo
+último argv e não alcançaria o cenário parcial; agora percorre argv nominalmente.
+
+O RED causal comum está preservado: `load_revision_with_git`, `GitRevisionContent`,
+`GitPathContent`, `GitUnknownReason` e `GitRevisionError` ainda não existem na API
+publicada. Produção está liberada somente após o commit destes hashes.
