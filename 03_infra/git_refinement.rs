@@ -399,6 +399,41 @@ fn validate_public_inputs(
     Ok((revision.to_string(), logical))
 }
 
+fn validate_object_database(repository: &Path) -> Result<(), GitRevisionError> {
+    let objects = repository.join(".git/objects");
+    let canonical_objects = objects
+        .canonicalize()
+        .map_err(|_| GitRevisionError::ContainmentFailure)?;
+    if !canonical_objects.starts_with(repository.join(".git")) {
+        return Err(GitRevisionError::ContainmentFailure);
+    }
+
+    let mut pending = vec![objects];
+    while let Some(directory) = pending.pop() {
+        let entries =
+            std::fs::read_dir(&directory).map_err(|_| GitRevisionError::ContainmentFailure)?;
+        for entry in entries {
+            let entry = entry.map_err(|_| GitRevisionError::ContainmentFailure)?;
+            let path = entry.path();
+            let metadata = std::fs::symlink_metadata(&path)
+                .map_err(|_| GitRevisionError::ContainmentFailure)?;
+            if metadata.file_type().is_symlink() || (!metadata.is_dir() && !metadata.is_file()) {
+                return Err(GitRevisionError::ContainmentFailure);
+            }
+            let canonical = path
+                .canonicalize()
+                .map_err(|_| GitRevisionError::ContainmentFailure)?;
+            if !canonical.starts_with(&canonical_objects) {
+                return Err(GitRevisionError::ContainmentFailure);
+            }
+            if metadata.is_dir() {
+                pending.push(path);
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn load_revision_with_git(
     git_executable: &Path,
     repository_root: &Path,
@@ -408,13 +443,15 @@ pub fn load_revision_with_git(
     let deadline = Instant::now() + GIT_TIMEOUT;
     let (revision, logical_paths) =
         validate_public_inputs(git_executable, repository_root, revision, logical_paths)?;
+    validate_object_database(repository_root)?;
 
     let mut rev_parse = controlled_command(git_executable, repository_root);
     rev_parse
         .args(["rev-parse", "--verify", "--end-of-options"])
         .arg(format!("{revision}^{{commit}}"));
-    let ControlledOutput::Complete(output) = run_controlled(rev_parse, None, 65, deadline, false)?
-    else {
+    let rev_parse_result = run_controlled(rev_parse, None, 65, deadline, false);
+    validate_object_database(repository_root)?;
+    let ControlledOutput::Complete(output) = rev_parse_result? else {
         return Err(GitRevisionError::InvalidFraming);
     };
     if !output.status.success() {
@@ -438,9 +475,10 @@ pub fn load_revision_with_git(
     for path in &logical_paths {
         ls_tree.arg(format!(":(top,literal){path}"));
     }
-    let ControlledOutput::Complete(output) =
-        run_controlled(ls_tree, None, 2_200_000, deadline, false)?
-    else {
+    validate_object_database(repository_root)?;
+    let ls_tree_result = run_controlled(ls_tree, None, 2_200_000, deadline, false);
+    validate_object_database(repository_root)?;
+    let ControlledOutput::Complete(output) = ls_tree_result? else {
         return Err(GitRevisionError::InvalidFraming);
     };
     if !output.status.success() {
@@ -510,7 +548,10 @@ pub fn load_revision_with_git(
     input.extend_from_slice(b"flush\n");
     let mut cat_file = controlled_command(git_executable, repository_root);
     cat_file.args(["cat-file", "--batch-command", "--buffer"]);
-    let output = run_controlled(cat_file, Some(input), 33_600_000, deadline, true)?;
+    validate_object_database(repository_root)?;
+    let output = run_controlled(cat_file, Some(input), 33_600_000, deadline, true);
+    validate_object_database(repository_root)?;
+    let output = output?;
     if matches!(output, ControlledOutput::BlobBudgetExhausted) {
         for (path, _) in blobs_by_path {
             paths.insert(
