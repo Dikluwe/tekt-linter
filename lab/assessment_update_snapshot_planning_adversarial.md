@@ -7,7 +7,8 @@ API, tipos, precedência, unreadable e dry-run serem publicados em L0.
 
 ## Adversário D
 
-Veredito de planejamento/execução e arquitetura: PASS. Veredito global: `BLOCKED`.
+Veredito inicial de planejamento/execução e arquitetura: PASS. Veredito global inicial:
+`BLOCKED`.
 
 - ordem segregada dos commits e RED causal confirmados;
 - oito hashes L0 e dois hashes de gate conferidos;
@@ -22,6 +23,16 @@ Veredito de planejamento/execução e arquitetura: PASS. Veredito global: `BLOCK
 Bloqueio: o wiring usa `format_plan` no dry-run; esse formatter omite o snapshot exigido
 pelo L0. `format_results` também rotularia `DryRun` como “Updated”. Falta gate black-box
 da apresentação realmente consumida e correção posterior ao RED congelado.
+
+## Repetição D
+
+Veredito: `READY WITH RESIDUAL AUDIT`.
+
+- gate de apresentação `77c300...`: 3/3 PASS;
+- source, prompt e snapshot integral observáveis em `format_plan`;
+- `DryRun` possui rótulo próprio e não afirma atualização concluída;
+- gate congelado antes da correção e delta posterior restrito ao formatter L2;
+- B1/B2, regressão global, auto-lint, hashes e arquitetura Tekt reconfirmados.
 
 Residual aceito: Git não prova sozinho a independência cognitiva de dois gates congelados
 no mesmo commit por autor genérico; a segregação operacional e o conteúdo não mostram

@@ -3,7 +3,7 @@
 **Data:** 2026-08-24
 **Branch:** `codex/audit-update-snapshot-planning`
 **Baseline pós-P0091:** `aee1344`
-**Resultado provisório:** `BLOCKED`
+**Resultado:** `READY WITH RESIDUAL AUDIT`
 
 ## Escopo
 
@@ -53,4 +53,13 @@ substituiu estados opcionais por enums e `filter_map` por transformação total.
 O primeiro adversário D confirmou causalidade e arquitetura Tekt, mas encontrou RED na
 apresentação real do dry-run: `format_plan` omite o snapshot/interface e
 `format_results` chamaria dry-run de atualização concluída. O fechamento aguarda gate,
-correção e repetição D. Não houve merge ou push.
+correção e repetição D.
+
+O gate corretivo, congelado em `566a8c9`, falhou 2/3. O commit `56341ca` passou a mostrar
+o snapshot integral no plano realmente usado pelo wiring e separou a apresentação de
+`DryRun` da de `Written`. O gate passou 3/3; a repetição D confirmou todo o delta e
+concluiu `READY WITH RESIDUAL AUDIT`.
+
+Residual: Git não prova sozinho a independência cognitiva de B1/B2, embora arquivos,
+agentes, spies e escopos tenham sido segregados sem evidência de contaminação. Não houve
+merge ou push.

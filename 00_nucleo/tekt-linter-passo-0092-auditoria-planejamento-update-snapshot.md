@@ -1,7 +1,7 @@
 # Passo operacional 0092 — auditoria segregada do planejamento update-snapshot
 
 > **Natureza:** envelope operacional temporário; não é regra arquitetural
-> **Estado:** executado parcialmente; `BLOCKED` pelo dry-run de apresentação
+> **Estado:** executado; `READY WITH RESIDUAL AUDIT`
 > **Branch:** `codex/audit-update-snapshot-planning`
 > **Pré-condição:** P0091 integrado em `master`, worktree limpo e branch nova criada a
 > partir do merge
@@ -169,6 +169,8 @@ entrada/resultado por ocorrência V6 e manteve o port como única fronteira de e
 
 B1 passou 3/3; B2 passou 2/2. A suíte global, 83 fixtures, auto-lint V5/V6/V7/V12,
 hashes, `rustfmt` dirigido e `git diff --check` passaram. O adversário D bloqueou o
-fechamento porque o consumidor real de dry-run usa `format_plan`, que omite o
-snapshot/interface exigido pelo L0, e `format_results` rotularia dry-run como atualização
-realizada. Falta congelar e fechar esse RED. Não houve merge, push, instalação ou release.
+fechamento porque o consumidor real de dry-run usava `format_plan` sem expor o snapshot e
+`format_results` rotulava dry-run como atualização realizada. Um terceiro gate congelou
+esses REDs; a correção posterior tornou o payload integralmente observável e separou o
+status dry-run. A repetição D concluiu `READY WITH RESIDUAL AUDIT`. Não houve merge,
+push, instalação ou release.
