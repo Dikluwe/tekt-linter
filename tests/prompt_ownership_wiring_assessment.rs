@@ -176,7 +176,6 @@ fn missing_header_remains_v1_not_v15() {
         only_rule(&missing_findings, "V15").is_empty(),
         "{missing_findings:#?}"
     );
-
 }
 
 #[test]

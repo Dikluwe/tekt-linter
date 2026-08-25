@@ -5,8 +5,8 @@
 //! violado tanto na forma base quanto após a adição de uma variante fantasma (`GhostVariant`),
 //! mantendo o diagnóstico exactamente no mesmo braço.
 
-use std::path::Path;
 use std::collections::HashMap;
+use std::path::Path;
 
 use crystalline_lint::entities::layer::Language;
 use crystalline_lint::entities::rule_traits::{
@@ -101,7 +101,11 @@ fn ghost_variant_mutation_preserves_v16_violation() {
     };
 
     let base_violations = wildcard_saturation::check(&base_file, &exceptions);
-    assert_eq!(base_violations.len(), 1, "Base deve conter exactamente 1 violação V16");
+    assert_eq!(
+        base_violations.len(),
+        1,
+        "Base deve conter exactamente 1 violação V16"
+    );
     assert_eq!(base_violations[0].location.line, 12);
     assert!(base_violations[0].message.contains("Unit::Percent"));
 
@@ -168,7 +172,11 @@ fn ghost_variant_mutation_preserves_v16_violation() {
     };
 
     let mutated_violations = wildcard_saturation::check(&mutated_file, &exceptions);
-    assert_eq!(mutated_violations.len(), 1, "Mutação deve manter a violação V16");
+    assert_eq!(
+        mutated_violations.len(),
+        1,
+        "Mutação deve manter a violação V16"
+    );
     assert_eq!(mutated_violations[0].location.line, 12);
     assert_eq!(mutated_violations[0].message, base_violations[0].message);
 }

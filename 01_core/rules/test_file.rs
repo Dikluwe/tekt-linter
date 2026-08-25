@@ -6,8 +6,8 @@
 
 use std::borrow::Cow;
 
-use crate::entities::rule_traits::HasCoverage;
 use crate::entities::layer::Layer;
+use crate::entities::rule_traits::HasCoverage;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
 
 /// V2 — Missing test coverage for L1 modules.
@@ -30,7 +30,11 @@ pub fn check<'a, T: HasCoverage<'a>>(file: &T) -> Vec<Violation<'a>> {
         level: ViolationLevel::Error,
         message: "Módulo do núcleo carece de verificação simultânea (test file ou bloco cfg(test))"
             .to_string(),
-        location: Location { path: Cow::Borrowed(file.path()), line: 1, column: 0 },
+        location: Location {
+            path: Cow::Borrowed(file.path()),
+            line: 1,
+            column: 0,
+        },
     }]
 }
 

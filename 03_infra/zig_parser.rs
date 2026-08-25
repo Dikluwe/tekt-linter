@@ -16,8 +16,8 @@ use crate::contracts::prompt_reader::PromptReader;
 use crate::contracts::prompt_snapshot_reader::PromptSnapshotReader;
 use crate::entities::layer::{Language, Layer};
 use crate::entities::parsed_file::{
-    Declaration, DeclarationKind, FunctionSignature, Import, ImportKind, ParsedFile,
-    PromptHeader, PublicInterface, StaticDeclaration, Token, TokenKind, TypeKind, TypeSignature,
+    Declaration, DeclarationKind, FunctionSignature, Import, ImportKind, ParsedFile, PromptHeader,
+    PublicInterface, StaticDeclaration, Token, TokenKind, TypeKind, TypeSignature,
 };
 use crate::infra::config::CrystallineConfig;
 use crate::infra::walker::resolve_file_layer;
@@ -48,7 +48,9 @@ impl<R: PromptReader, S: PromptSnapshotReader> ZigParser<R, S> {
 impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for ZigParser<R, S> {
     fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
         if file.content.is_empty() {
-            return Err(ParseError::EmptySource { path: file.path.clone() });
+            return Err(ParseError::EmptySource {
+                path: file.path.clone(),
+            });
         }
 
         if file.language != Language::Zig {
@@ -59,21 +61,24 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for ZigParser<R, S
         }
 
         let mut engine = TsParserEngine::new();
-        engine.set_language(&tree_sitter_zig::LANGUAGE.into()).map_err(|_| ParseError::SyntaxError {
-            path: file.path.clone(),
-            line: 0,
-            column: 0,
-            message: "Failed to load Zig grammar".to_string(),
-        })?;
-
-        let tree = engine
-            .parse(file.content.as_bytes(), None)
-            .ok_or_else(|| ParseError::SyntaxError {
+        engine
+            .set_language(&tree_sitter_zig::LANGUAGE.into())
+            .map_err(|_| ParseError::SyntaxError {
                 path: file.path.clone(),
                 line: 0,
                 column: 0,
-                message: "Parser returned None — possible timeout".to_string(),
+                message: "Failed to load Zig grammar".to_string(),
             })?;
+
+        let tree =
+            engine
+                .parse(file.content.as_bytes(), None)
+                .ok_or_else(|| ParseError::SyntaxError {
+                    path: file.path.clone(),
+                    line: 0,
+                    column: 0,
+                    message: "Parser returned None — possible timeout".to_string(),
+                })?;
 
         let root = tree.root_node();
 
@@ -98,7 +103,13 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for ZigParser<R, S
             header.current_hash = self.prompt_reader.read_hash(header.prompt_path);
         }
 
-        let imports = extract_imports(root, source, file.path.as_path(), &self.project_root, &self.config);
+        let imports = extract_imports(
+            root,
+            source,
+            file.path.as_path(),
+            &self.project_root,
+            &self.config,
+        );
 
         let tokens = extract_tokens(root, source);
 
@@ -172,7 +183,10 @@ fn extract_header<'a>(source: &'a str) -> Option<PromptHeader<'a>> {
         if !trimmed.starts_with("//") {
             break;
         }
-        let content = trimmed.trim_start_matches('/').trim_start_matches('!').trim();
+        let content = trimmed
+            .trim_start_matches('/')
+            .trim_start_matches('!')
+            .trim();
 
         if let Some(val) = content.strip_prefix("@prompt-hash ") {
             prompt_hash = Some(val.trim());
@@ -201,7 +215,7 @@ fn parse_layer_tag(tag: &str) -> Layer {
         "L2" => Layer::L2,
         "L3" => Layer::L3,
         "L4" => Layer::L4,
-        "Lab"| "lab" => Layer::Lab,
+        "Lab" | "lab" => Layer::Lab,
         _ => Layer::Unknown,
     }
 }
@@ -234,12 +248,14 @@ fn collect_imports<'a>(
         if let Some(n) = name_node {
             if node_text(n, source) == "@import" {
                 if let Some(args) = node.child_by_field_name("arguments") {
-                    if let Some(arg) = args.child(1) { // 0 is '(', 1 is the string
+                    if let Some(arg) = args.child(1) {
+                        // 0 is '(', 1 is the string
                         let text = node_text(arg, source);
                         if text.len() >= 2 {
-                            let p = &text[1..text.len()-1];
+                            let p = &text[1..text.len() - 1];
                             let line = node.start_position().row + 1;
-                            let target_layer = resolve_zig_layer(p, file_path, project_root, config);
+                            let target_layer =
+                                resolve_zig_layer(p, file_path, project_root, config);
                             imports.push(Import {
                                 path: p,
                                 line,
@@ -268,7 +284,9 @@ fn normalize(path: &Path, project_root: &Path) -> Option<PathBuf> {
     for component in path.components() {
         match component {
             Component::ParentDir => {
-                if components.is_empty() { return None; }
+                if components.is_empty() {
+                    return None;
+                }
                 components.pop();
             }
             Component::CurDir => {}
@@ -277,7 +295,9 @@ fn normalize(path: &Path, project_root: &Path) -> Option<PathBuf> {
     }
     let result: PathBuf = components.iter().collect();
     if project_root != Path::new(".") && !project_root.as_os_str().is_empty() {
-        if !result.starts_with(project_root) { return None; }
+        if !result.starts_with(project_root) {
+            return None;
+        }
     }
     Some(result)
 }
@@ -302,13 +322,21 @@ fn resolve_zig_layer(
 
 // ── PublicInterface extraction ────────────────────────────────────────────────
 
-fn extract_public_interface<'a>(root: Node, source: &'a [u8], _file_path: &Path) -> PublicInterface<'a> {
+fn extract_public_interface<'a>(
+    root: Node,
+    source: &'a [u8],
+    _file_path: &Path,
+) -> PublicInterface<'a> {
     let mut functions = Vec::new();
     let mut types = Vec::new();
 
     collect_public_members(root, source, &mut functions, &mut types);
 
-    PublicInterface { functions, types, reexports: vec![] }
+    PublicInterface {
+        functions,
+        types,
+        reexports: vec![],
+    }
 }
 
 fn collect_public_members<'a>(
@@ -323,7 +351,7 @@ fn collect_public_members<'a>(
                 if let Some(name_node) = node.child_by_field_name("name") {
                     functions.push(FunctionSignature {
                         name: node_text(name_node, source),
-                        params: vec![], // simplified
+                        params: vec![],    // simplified
                         return_type: None, // simplified
                     });
                 }
@@ -411,7 +439,9 @@ fn has_test_blocks(root: Node, source: &[u8]) -> bool {
 }
 
 fn check_test_nodes(node: Node, _source: &[u8], found: &mut bool) {
-    if *found { return; }
+    if *found {
+        return;
+    }
     if node.kind() == "test_declaration" {
         *found = true;
         return;

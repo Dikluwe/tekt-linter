@@ -50,27 +50,42 @@ impl L1AllowedExternal {
     /// Módulos stdlib (typing, math, …) devem ser declarados em
     /// `[l1_allowed_external] python = ["typing", "math", …]`.
     pub fn for_python(allowed: HashMap<String, HashSet<String>>) -> Self {
-        Self { allowed, exempt_prefixes: vec![] }
+        Self {
+            allowed,
+            exempt_prefixes: vec![],
+        }
     }
 
     /// TypeScript — nenhum prefixo isento automático.
     pub fn for_typescript(allowed: HashMap<String, HashSet<String>>) -> Self {
-        Self { allowed, exempt_prefixes: vec![] }
+        Self {
+            allowed,
+            exempt_prefixes: vec![],
+        }
     }
 
     /// C — nenhum prefixo isento automático.
     pub fn for_c(allowed: HashMap<String, HashSet<String>>) -> Self {
-        Self { allowed, exempt_prefixes: vec![] }
+        Self {
+            allowed,
+            exempt_prefixes: vec![],
+        }
     }
 
     /// C++ — nenhum prefixo isento automático.
     pub fn for_cpp(allowed: HashMap<String, HashSet<String>>) -> Self {
-        Self { allowed, exempt_prefixes: vec![] }
+        Self {
+            allowed,
+            exempt_prefixes: vec![],
+        }
     }
 
     /// Zig — stdlib (std) é isenta por padrão.
     pub fn for_zig(allowed: HashMap<String, HashSet<String>>) -> Self {
-        Self { allowed, exempt_prefixes: vec!["std".to_string()] }
+        Self {
+            allowed,
+            exempt_prefixes: vec!["std".to_string()],
+        }
     }
 
     /// Go — stdlib isenta por padrão.
@@ -175,10 +190,16 @@ impl L1AllowedExternal {
 
     /// Verifica se um crate está listado, independentemente de itens.
     pub fn is_crate_allowed(&self, package_name: &str) -> bool {
-        if self.exempt_prefixes.iter().any(|p| package_name == p || package_name.starts_with(&format!("{p}."))) {
+        if self
+            .exempt_prefixes
+            .iter()
+            .any(|p| package_name == p || package_name.starts_with(&format!("{p}.")))
+        {
             return true;
         }
-        self.allowed.keys().any(|k| package_name == k || package_name.starts_with(&format!("{k}.")))
+        self.allowed
+            .keys()
+            .any(|k| package_name == k || package_name.starts_with(&format!("{k}.")))
     }
 }
 
@@ -187,31 +208,34 @@ impl L1AllowedExternal {
 /// V14 recebe `&L1AllowedExternalSet` e chama `for_language(&file.language)`
 /// para obter a instância correta para cada arquivo analisado.
 pub struct L1AllowedExternalSet {
-    pub rust:       L1AllowedExternal,
-    pub python:     L1AllowedExternal,
+    pub rust: L1AllowedExternal,
+    pub python: L1AllowedExternal,
     pub typescript: L1AllowedExternal,
-    pub c:          L1AllowedExternal,
-    pub cpp:        L1AllowedExternal,
-    pub zig:        L1AllowedExternal,
-    pub go:         L1AllowedExternal,
-    pub java:       L1AllowedExternal,
-    pub elixir:     L1AllowedExternal,
+    pub c: L1AllowedExternal,
+    pub cpp: L1AllowedExternal,
+    pub zig: L1AllowedExternal,
+    pub go: L1AllowedExternal,
+    pub java: L1AllowedExternal,
+    pub elixir: L1AllowedExternal,
 }
 
 impl L1AllowedExternalSet {
-    pub fn for_language<'a>(&'a self, language: &crate::entities::layer::Language) -> &'a L1AllowedExternal {
+    pub fn for_language<'a>(
+        &'a self,
+        language: &crate::entities::layer::Language,
+    ) -> &'a L1AllowedExternal {
         use crate::entities::layer::Language;
         match language {
-            Language::Rust       => &self.rust,
-            Language::Python     => &self.python,
+            Language::Rust => &self.rust,
+            Language::Python => &self.python,
             Language::TypeScript => &self.typescript,
-            Language::C          => &self.c,
-            Language::Cpp        => &self.cpp,
-            Language::Zig        => &self.zig,
-            Language::Go         => &self.go,
-            Language::Java       => &self.java,
-            Language::Elixir     => &self.elixir,
-            Language::Unknown    => &self.rust, // fallback conservador
+            Language::C => &self.c,
+            Language::Cpp => &self.cpp,
+            Language::Zig => &self.zig,
+            Language::Go => &self.go,
+            Language::Java => &self.java,
+            Language::Elixir => &self.elixir,
+            Language::Unknown => &self.rust, // fallback conservador
         }
     }
 }

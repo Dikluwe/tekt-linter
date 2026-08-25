@@ -52,19 +52,28 @@ mod tests {
 
     #[test]
     fn read_hash_returns_none_when_file_missing() {
-        let reader = MockPromptReader { hash: None, file_exists: false };
+        let reader = MockPromptReader {
+            hash: None,
+            file_exists: false,
+        };
         assert_eq!(reader.read_hash("prompts/missing.md"), None);
     }
 
     #[test]
     fn exists_returns_true_when_present() {
-        let reader = MockPromptReader { hash: Some("00000000".to_string()), file_exists: true };
+        let reader = MockPromptReader {
+            hash: Some("00000000".to_string()),
+            file_exists: true,
+        };
         assert!(reader.exists("prompts/auth.md"));
     }
 
     #[test]
     fn exists_returns_false_when_absent() {
-        let reader = MockPromptReader { hash: None, file_exists: false };
+        let reader = MockPromptReader {
+            hash: None,
+            file_exists: false,
+        };
         assert!(!reader.exists("prompts/missing.md"));
     }
 

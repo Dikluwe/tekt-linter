@@ -41,7 +41,11 @@ pub fn check<'a, T: HasHashes<'a>>(file: &T) -> Vec<Violation<'a>> {
              condizente da implementação. Hash L0: {}, Código: {}",
             current, declared
         ),
-        location: Location { path: Cow::Borrowed(file.path()), line: 1, column: 0 },
+        location: Location {
+            path: Cow::Borrowed(file.path()),
+            line: 1,
+            column: 0,
+        },
     }]
 }
 

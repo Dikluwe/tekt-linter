@@ -47,7 +47,9 @@ impl<R: PromptReader, S: PromptSnapshotReader> ElixirParser<R, S> {
 impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for ElixirParser<R, S> {
     fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
         if file.content.is_empty() {
-            return Err(ParseError::EmptySource { path: file.path.clone() });
+            return Err(ParseError::EmptySource {
+                path: file.path.clone(),
+            });
         }
 
         if file.language != Language::Elixir {
@@ -67,14 +69,15 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for ElixirParser<R
                 message: "Failed to load Elixir grammar".to_string(),
             })?;
 
-        let tree = engine
-            .parse(file.content.as_bytes(), None)
-            .ok_or_else(|| ParseError::SyntaxError {
-                path: file.path.clone(),
-                line: 0,
-                column: 0,
-                message: "Parser returned None — possible timeout".to_string(),
-            })?;
+        let tree =
+            engine
+                .parse(file.content.as_bytes(), None)
+                .ok_or_else(|| ParseError::SyntaxError {
+                    path: file.path.clone(),
+                    line: 0,
+                    column: 0,
+                    message: "Parser returned None — possible timeout".to_string(),
+                })?;
 
         let root = tree.root_node();
         let source = file.content.as_bytes();
@@ -205,7 +208,10 @@ fn collect_imports_and_decls<'a>(
 ) {
     if let Ok(text) = node.utf8_text(source) {
         let trimmed = text.trim();
-        if trimmed.starts_with("alias ") || trimmed.starts_with("import ") || trimmed.starts_with("use ") {
+        if trimmed.starts_with("alias ")
+            || trimmed.starts_with("import ")
+            || trimmed.starts_with("use ")
+        {
             let clean = trimmed
                 .trim_start_matches("alias ")
                 .trim_start_matches("import ")
@@ -232,7 +238,11 @@ fn collect_imports_and_decls<'a>(
                 is_test_origin: false,
             });
         } else if trimmed.starts_with("defmodule ") {
-            let name = trimmed.trim_start_matches("defmodule ").split_whitespace().next().unwrap_or("Module");
+            let name = trimmed
+                .trim_start_matches("defmodule ")
+                .split_whitespace()
+                .next()
+                .unwrap_or("Module");
             declarations.push(Declaration {
                 name,
                 kind: DeclarationKind::Struct,

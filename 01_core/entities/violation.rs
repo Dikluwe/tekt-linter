@@ -39,9 +39,9 @@ pub struct Location<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Violation<'a> {
-    pub rule_id: String,  // "V0"–"V6", "PARSE" — gerado pela regra
+    pub rule_id: String, // "V0"–"V6", "PARSE" — gerado pela regra
     pub level: ViolationLevel,
-    pub message: String,  // formatado pela regra
+    pub message: String, // formatado pela regra
     pub location: Location<'a>,
 }
 
@@ -88,7 +88,11 @@ mod tests {
 
     #[test]
     fn location_eq() {
-        let a = Location { path: Cow::Borrowed(Path::new("foo.rs")), line: 1, column: 0 };
+        let a = Location {
+            path: Cow::Borrowed(Path::new("foo.rs")),
+            line: 1,
+            column: 0,
+        };
         let b = a.clone();
         assert_eq!(a, b);
     }

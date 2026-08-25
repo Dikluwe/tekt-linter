@@ -47,7 +47,9 @@ impl<R: PromptReader, S: PromptSnapshotReader> GoParser<R, S> {
 impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for GoParser<R, S> {
     fn parse<'a>(&self, file: &'a SourceFile) -> Result<ParsedFile<'a>, ParseError> {
         if file.content.is_empty() {
-            return Err(ParseError::EmptySource { path: file.path.clone() });
+            return Err(ParseError::EmptySource {
+                path: file.path.clone(),
+            });
         }
 
         if file.language != Language::Go {
@@ -67,14 +69,15 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for GoParser<R, S>
                 message: "Failed to load Go grammar".to_string(),
             })?;
 
-        let tree = engine
-            .parse(file.content.as_bytes(), None)
-            .ok_or_else(|| ParseError::SyntaxError {
-                path: file.path.clone(),
-                line: 0,
-                column: 0,
-                message: "Parser returned None — possible timeout".to_string(),
-            })?;
+        let tree =
+            engine
+                .parse(file.content.as_bytes(), None)
+                .ok_or_else(|| ParseError::SyntaxError {
+                    path: file.path.clone(),
+                    line: 0,
+                    column: 0,
+                    message: "Parser returned None — possible timeout".to_string(),
+                })?;
 
         let root = tree.root_node();
         let source = file.content.as_bytes();
@@ -261,11 +264,15 @@ fn collect_nodes<'a>(
 fn extract_imports<'a>(node: Node, source: &'a [u8], imports: &mut Vec<Import<'a>>) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if child.kind() == "import_spec" || child.kind() == "interpreted_string_literal" || child.kind() == "raw_string_literal" {
+        if child.kind() == "import_spec"
+            || child.kind() == "interpreted_string_literal"
+            || child.kind() == "raw_string_literal"
+        {
             let text = if child.kind() == "import_spec" {
                 let mut inner_cursor = child.walk();
-                let found = child.children(&mut inner_cursor)
-                    .find(|c| c.kind() == "interpreted_string_literal" || c.kind() == "raw_string_literal");
+                let found = child.children(&mut inner_cursor).find(|c| {
+                    c.kind() == "interpreted_string_literal" || c.kind() == "raw_string_literal"
+                });
                 found.and_then(|c| c.utf8_text(source).ok())
             } else {
                 child.utf8_text(source).ok()
