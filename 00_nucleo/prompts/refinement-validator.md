@@ -95,6 +95,81 @@ Formato `text` é o padrão; `sarif` também é suportado. Exit codes: `0` para
 `Preserved`, `1` quando houver `Violated`, `2` para `Unknown` sem violação ou erro de
 entrada. Não implementar leitura de commits nem execução de comandos nessa entrega.
 
+## Contrato do loader explícito — saneamento P0095
+
+O loader L3 publica, em `crystalline_lint::infra::refinement_snapshot`:
+
+```rust
+pub fn load_snapshot(path: &Path) -> Result<ArtifactFacts, String>;
+pub fn load_snapshot_from_bytes(bytes: &[u8], source: &str) -> Result<ArtifactFacts, String>;
+pub fn load_contract(path: &Path) -> Result<RefinementContract, String>;
+pub fn load_contract_from_bytes(bytes: &[u8], source: &str)
+    -> Result<RefinementContract, String>;
+```
+
+Erros continuam strings para não ampliar a API, mas começam por uma classe estável:
+`io:`, `invalid-utf8:`, `json-syntax:`, `toml-syntax:`, `unsupported-version:`,
+`schema:`, `limit:` ou `concurrent-modification:`. Somente o prefixo é contrato; texto de
+I/O, posição e restante da mensagem são informativos. `source` é rótulo opaco preservado
+na mensagem e nunca é aberto, executado ou reinterpretado por APIs `from_bytes`.
+
+### Snapshot JSON v1
+
+O objeto raiz é fechado e contém exatamente `format_version`, `artifact_id`,
+`extractor_version` e `observables`. Campos desconhecidos e campos/chaves duplicados em
+qualquer objeto falham com `schema:`. `format_version` é inteiro JSON e deve ser 1.
+`artifact_id` e `extractor_version` são strings com `trim` não vazio; os bytes originais
+são preservados, sem normalização.
+
+`observables` é objeto obrigatório com chaves de `trim` não vazio, preservadas
+byte-a-byte. Cada valor é objeto fechado:
+
+- `{"state":"known","value":<string>}`; valor vazio/whitespace é válido e preservado;
+- `{"state":"absent"}`;
+- `{"state":"unknown","reason":...}` com razão exata entre
+  `missing-observable`, `ambiguous-identity`, `unsupported-parser`,
+  `opaque-construction`, `partial-contract`, `budget-exhausted`.
+
+Campos proibidos, estado/razão desconhecidos e payload ausente falham com `schema:`.
+Ordem de propriedades não altera `ArtifactFacts`.
+
+### Contrato TOML
+
+O documento raiz é fechado: `id`, zero ou mais `[[observable]]` pertencentes ao extrator
+L3 e uma ou mais `[[relation]]`. O loader de relações reconhece `observable`, mas não o
+materializa nem substitui sua validação pelo loader de extração. `id`, `source`, `target`
+e valores de `accepted_targets` são preservados e exigem `trim` não vazio quando
+presentes. Kinds são case-sensitive:
+
+- `preserve`: exatamente `kind`, `source`, `target`;
+- `may-normalize`: exatamente `kind`, `source`, `target`, `accepted_targets`; lista não
+  vazia e sem valores duplicados;
+- `must-not-invent`: exatamente `kind`, `target`; `source` e `accepted_targets` são
+  proibidos.
+
+Campos/tabelas/chaves duplicadas ou desconhecidas falham fechados. Ordem de relações e
+de `accepted_targets` é preservada. Relação estruturalmente duplicada é rejeitada. Para o
+mesmo target, `must-not-invent` conflita com qualquer outra relação. Para o mesmo par
+source/target, coexistência de `preserve` e `may-normalize`, ou duas `may-normalize`, é
+rejeitada. Igualdade textual entre source, target e um accepted target não é, sozinha,
+erro estrutural.
+
+### Limites e leitura
+
+Antes do parse: máximo 4 MiB por artefato. Depois do parse: no máximo 4096 observáveis,
+4096 relações, 4096 accepted targets por relação, 16384 accepted targets no total e
+64 KiB por string. Excesso é `limit:`, nunca fato `Unknown`.
+
+As APIs por path aceitam path explicitamente escolhido pelo usuário, sem confinamento a
+uma raiz, mas exigem arquivo regular e rejeitam symlink em qualquer componente,
+diretório, FIFO, socket e device antes de ler. Abrem somente para leitura, limitam bytes
+durante a leitura e comparam tamanho e modificação do mesmo handle antes/depois; mudança
+observada é `concurrent-modification:`. Não escrevem, criam ou executam nada. As APIs por
+bytes são o oráculo de schema; arquivo regular estável deve produzir o mesmo valor/classe.
+
+L1 mantém tipos e comparação; L3 somente lê/desserializa/valida; L2 apresenta e decide
+exit; L4 coordena. O loader nunca produz `PRESERVED`, `VIOLATED` ou `UNKNOWN`.
+
 ## Etapa B1 — geração de snapshots Rust
 
 O subcomando vigente é:
