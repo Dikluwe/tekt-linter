@@ -2408,7 +2408,7 @@ fn collect_constants<'a>(
     let kind = node.kind();
     let pos = node.start_position();
     let line_num = pos.row + 1;
-    let col = pos.column + 1;
+    let col = pos.column;
 
     let get_citation = || -> Option<Citation<'a>> {
         for offset in 0..=3 {
@@ -2544,7 +2544,7 @@ fn collect_constants<'a>(
                     kind: ConstantKind::NegativeLiteral,
                     snippet,
                     line: line_num,
-                    column: col,
+                    column: col + 1,
                     citation: get_citation(),
                     is_test_origin: cfg_test,
                     function_return_type: fn_return_type,
@@ -2584,7 +2584,7 @@ fn collect_constants<'a>(
                 kind: ConstantKind::FunctionNumberLiteral,
                 snippet,
                 line: line_num,
-                column: col,
+                column: col + 1,
                 citation: get_citation(),
                 is_test_origin: cfg_test,
                 function_return_type: fn_return_type,
