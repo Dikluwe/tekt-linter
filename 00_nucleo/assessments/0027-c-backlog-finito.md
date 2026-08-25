@@ -91,8 +91,8 @@ Permanecem `ACCEPTED-RESIDUAL`, sem gerar lote na campanha:
   orquestração automática, política de conflito e certificado posterior;
 - S3: fsync de diretório e preservação explícita de modo, como riscos operacionais já
   nomeados, enquanto não houver gatilho concreto;
-- S5/P0097: variantes de macro fora da matriz explícita que não contradigam uma exclusão
-  prometida; tokens negativos deixam de ser residual e passam a F12;
+- S5: cobertura gramatical universal fora do envelope publicado; nenhum numeral sob uma
+  macro Rust suportada é residual, e o caso negativo comprovado pertence a F12;
 - cobertura universal de gramáticas, ambientes e combinações cartesianas;
 - novas linguagens, novos formatos e fatos sem consumidor ou promessa vigente;
 - `gix`, wrapper arbitrário, SMT, fetch, checkout, LFS, submódulos e persistência

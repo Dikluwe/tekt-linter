@@ -1,6 +1,6 @@
 # Assessment 0027 — horizonte finito da auditoria
 
-**Estado:** PROTOCOLO CONGELADO — A/B1/B2 autorizados
+**Estado:** READY WITH RESIDUAL AUDIT
 **Data:** 2026-08-25
 **Passo:** P0098
 **Baseline:** `7e358cff39ba24d5bba26de2fa0a3ba86ff7b379`
@@ -54,3 +54,29 @@ Classificações de evidência: `PASS`, `RED`, `SPEC-GAP`, `GATE-DEFECT` e
 - `00_nucleo/relatorio-p0098-reconciliacao-horizonte-auditoria.md`.
 
 Nenhum merge, push, gate executável ou alteração funcional é autorizado.
+
+## Fechamento
+
+A/B1/B2 validaram os hashes e convergiram que não surgiu seam fora de S1–S6. C produziu
+um backlog máximo de 13 lotes: cinco `L0-BLOCKED` e oito `MANDATORY`. S3 permanece
+`CLOSED`; nenhuma seam inteira foi reaberta.
+
+D1 bloqueou a primeira reconciliação. O caso Rust `emit!(-5)` podia produzir
+`NegativeLiteral`, contradizendo a exclusão de numerais em macro declarada por P0097. O
+caso foi retirado dos resíduos e incorporado ao lote F12 como sub-seam `REOPENED` e
+`MANDATORY`. D1 também exigiu risco/confiança por lote, correção das dependências F06/F13
+e F08/F05, separação entre efeito L3 de F03 e composição L4 de F08 e congelamento nominal
+das matrizes de parsers.
+
+C foi resselado com os sete pontos corrigidos. D2 confirmou hashes, contagem,
+dependências, critérios de aceite, arquitetura Tekt, preservação de S3 e ausência de nova
+seam ou dupla contagem material. D3 validou a redação final e o hash C
+`c829befc0df2addb431406d3592c88499a2c47d70d0178ed3d25bef7369b1314`, sem novo
+`RED`, `SPEC-GAP` ou `GATE-DEFECT`.
+
+**Veredito:** `READY WITH RESIDUAL AUDIT`.
+
+Próximo candidato único: P0099, saneamento exclusivamente documental da vigência,
+autorização e promessa pública de Git/`refine-revisions` (F04). A campanha termina quando
+F01–F13 estiverem fechados ou eliminados por decisão L0 hash-pinned; trabalho posterior
+só entra por gatilho formal de reabertura.
