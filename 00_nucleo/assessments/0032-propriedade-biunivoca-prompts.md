@@ -1,6 +1,6 @@
 # Assessment 0032 — propriedade biunívoca de prompts
 
-**Estado:** RED SEGREGADO CONGELADO — produção liberada para C
+**Estado:** BLOCKED — C verde; D requer decisão semântica para 13 L0 compartilhados
 **Data:** 2026-08-25
 **Passo:** P0104
 **Baseline funcional:** `84fa3006ad6557722cfbe4d10c78c7d0de6b4195`
@@ -75,8 +75,9 @@ declarar o auto-lint `READY` sem D.
 | Gate | Evidência | Resultado inicial |
 |---|---|---|
 | B1 bijeção in-memory | `tests/prompt_ownership_bijection_assessment.rs` — `d0c9850fda426cf7210dc5617f3f48e4f554f0145823deb21f076632312d9eaf` | compile-RED causal: seam L1 global ausente |
-| B2 wiring real | `tests/prompt_ownership_wiring_assessment.rs` — `f212348a1d25fe615b7667cd5d8d8c7f030821c9a438b383341674662f7deb64` | RED funcional esperado sob o binário atual |
-| B2 fixture | `tests/fixtures/prompt_ownership_wiring/00_nucleo/prompts/shared.md` — `2df2e6796076e4817ce3ee0a501a7d2f1ebc2ea5c50df6898f130c629d316b52` | entrada exclusiva do gate |
+| B2 wiring real | `tests/prompt_ownership_wiring_assessment.rs` — `26003301e74b978a9d3efe75d84d47316e95a652987f7a230c72d99242fde021` | RED funcional esperado sob o binário atual |
+| B2 fixture prompt | `tests/fixtures/prompt_ownership_wiring/00_nucleo/prompts/shared.md` — `ac750ae97b9ea93cd20db34e234c92531d9b7663d5e961d79eeee8141ffd13b8` | entrada exclusiva do gate |
+| B2 fixture config | `tests/fixtures/prompt_ownership_wiring/crystalline.toml` — `31a381d682231e9f8a22cfe3d292d20b68c3a879ed57ac7ea4866c54fca45618` | correção do oráculo de exclusão |
 | B3 transação | `tests/fix_hashes_bijection_assessment.rs` — `7d7ed0691656517c91a846d7f442d9d506e2e3f1b3dcd968a008ef15d32ac3d2` | compile-RED causal: seam transacional ausente |
 
 B1 cobre oito propriedades normativas. B2 executa o binário real, incluindo todos os
@@ -103,3 +104,42 @@ diff binário dos seis paths rastreados permaneceu
 - `R6`: confirmado pelo inventário A; saneamento D permanece `SPEC-GAP` semântico.
 
 Nenhuma expectativa dos gates pode ser alterada durante C.
+
+## C — implementação
+
+Commit `d0fb12a` implementou:
+
+- entidade L1 owned e função pura `check_prompt_ownership`;
+- diagnóstico V15 global determinístico após a redução L4, usando a referência canônica
+  publicada por todos os parsers;
+- bloqueio incondicional de `--fix-hashes` diante de ownership não biunívoco;
+- seam L2 `TransactionalHashRewriter`, plano integral, preflight, rollback e validação
+  bidirecional;
+- adapter L4/L3 que prepara bytes antes da aplicação, restaura o par que falhou e restaura
+  os pares anteriores;
+- isolamento explícito das fixtures históricas que não são oráculo de ownership; B2 é o
+  gate real multi-parser dessa propriedade.
+
+B1 passou 8/8, B2 passou 7/7 e B3 passou 8/8. A suíte integral passou com 630 testes
+unitários, 83 fixtures e todos os integration gates. `git diff --check` passou. O warning
+preexistente de `print_tree` permanece.
+
+Durante B2 houve uma corrida no congelamento: o agente fortaleceu o gate e a fixture
+enquanto o commit `1e7ef49` era criado, além de formatar arquivos fora do escopo. O conteúdo
+efetivamente congelado no commit foi revisado e seus hashes reais são os acima; ele não leu
+a produção V15. A formatação fora do escopo foi descartada integralmente. A única correção
+posterior do oráculo foi adicionar o `crystalline.toml` normativo para a prova de exclusão
+configurada. A ocorrência fica como ressalva de proveniência, não escondida como execução
+segregada perfeita.
+
+## D — bloqueio reproduzível
+
+O auto-lint V15 agora encontra exatamente os 13 prompts compartilhados previstos por A,
+por 44 consumers. O reparador dry-run aborta com exit 2 antes de apresentar/aplicar writes:
+`--fix-hashes blocked by 13 V15 ownership collision(s)`. O hash do estado Git antes e
+depois permaneceu `b70311b08af10d2460939647d622b766a33f8ac2bcc1fd81f86d119a40bac107`.
+
+Logo, R6 foi confirmado sem exceção escondida. O fluxo oficial também não pode resselar o
+novo contrato V15 enquanto os compartilhamentos permanecerem, pois o bloqueio integral é
+deliberado. Individualizar os 31 prompts necessários sem inventar contratos é a decisão
+semântica que P0104 proíbe automatizar. Classificação: `SPEC-GAP`; fechamento: `BLOCKED`.
