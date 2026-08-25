@@ -1,6 +1,6 @@
 # Assessment 0031 — contenção forte do Git
 
-**Estado:** A E GATES CONGELADOS — C `BLOCKED` por SG-1/SG-2
+**Estado:** FECHADO `BLOCKED` — C não executado; F05 aberto
 **Data:** 2026-08-25
 **Passo:** P0102
 **Baseline funcional:** `c681c7a8fd419c48683553f88b6a3bf391f2032b`
@@ -90,6 +90,32 @@ permanece intencionalmente RED até existir seam privada para injetar falhas sep
 criação, configuração e atribuição do Job. O gate ainda precisará ganhar os seis cenários
 runtime após a seam; não pode ser promovido diretamente a PASS.
 
-Não há `GATE-DEFECT` observado em B1/B2. B3 é evidência válida da seam ausente, mas ainda
-não é gate runtime completo. SG-1 e SG-2 bloqueiam C conforme o protocolo; não se altera
-produção parcialmente para contorná-los.
+B1 não apresentou `GATE-DEFECT` no confronto D. B2 preserva RED causal, mas possui dois
+defeitos parciais: depois de `recv_timeout`, cleanup e `worker.join()` não têm deadline
+próprio; e a cadeia publica somente um PID, sem inventariar todos os membros. B3 é
+`GATE-DEFECT` como gate runtime: `cfg(windows) + compile_error!` prova seam ausente, mas
+não materializa os seis cenários Windows exigidos. Skip/compile-RED não substitui runtime.
+
+SG-1 e SG-2 bloqueiam C conforme o protocolo; nenhuma produção foi alterada parcialmente
+para contorná-los.
+
+## Confronto D e fechamento
+
+D confrontou `f2ebbfb` e confirmou:
+
+- hashes L0 e gates conferem;
+- delta desde `c681c7a` contém somente documentação e gates; L1/L2/L3/L4 e manifests
+  produtivos permanecem byte a byte iguais;
+- B1 reproduz 3 controles PASS + 3 REDs com sentinela externa publicada;
+- B2 reproduz 0/4, com três watchdogs e um `ProcessFailure` indevido;
+- B3 executa zero testes no Linux;
+- B4 preserva rota 3/3, protocolo 7/7 e stream 4/4;
+- nenhum processo próprio da fixture permaneceu vivo após a execução.
+
+Matriz final: R1 `PASS`; R2 `RED/BLOCKED`; R3 `PASS` Unix; R4 `RED`; R5 `RED` Unix e
+`BLOCKED` Windows. A regressão produtiva dirigida passou: 630 testes de biblioteca,
+Git histórico 6/6, objetos P0101 7/7, timeout 4/4 e CLI 10/10. V5/V6/V7/V12 estão
+limpos e o reparador V5 responde `Nothing to fix`. A suíte workspace integral permanece
+deliberadamente RED pelos novos gates congelados.
+
+Resultado: **P0102/F05 `BLOCKED`**. Sem merge ou push.
