@@ -15,7 +15,8 @@
 | source file | `00_nucleo/prompts/contracts/file-provider.md` | `1574ce788513573901376fc80933464cca5e7b6bc17acf5af8bfcd28e4d7335d` |
 | prompt reader | `00_nucleo/prompts/contracts/prompt-reader.md` | `5ded333b4ef0da943355962da5de202f7a5b8a4aa6d885236f215e3a3884f219` |
 | snapshot reader | `00_nucleo/prompts/contracts/prompt-snapshot-reader.md` | `80b6f7ab9fbb0f97fa085d7a34802792eb6fce4834ac204775b47749c77985be` |
-| parser Rust | `00_nucleo/prompts/parsers/rust.md` | `a661c8f226849b55fb83f3f50e5d8ea37c082852b21432c5fb24917e272c4aac` |
+| crate registry | `00_nucleo/prompts/crate-registry.md` | `2eae38e14e797f21b7f217403f6a421c9eb2ceedf871936df2c4630499d06116` |
+| parser Rust | `00_nucleo/prompts/parsers/rust.md` | `fb53ba474a47ad53f3f6de49342d5c425ed6c6c5eb2162324df649731af053b0` |
 | arquitetura Tekt | `00_nucleo/prompts/linter-core.md` | `9446277167f07dc5290617855cff456f061aa052ce8bd51ecf980530800b8c00` |
 | protocolo segregado | `00_nucleo/prompts/segregated-materialization.md` | `366fd0855c6b04e533f4f4a477a73d7e5ec65f24c056720c61fca906bb5299a4` |
 | ADR segregado | `00_nucleo/adr/0020-piloto-materializacao-segregada.md` | `ee1a4a7f3665674b008d127373ed23fc6762d0ff13b2ca83efe5d2ace1539d23` |
@@ -69,8 +70,14 @@ multiplicidade e erro sintático sem IR parcial.
 Origem teste, return type, scaling, context var, geometric sink, data-table e citation
 foram removidos do oráculo. B1 cobre casos positivos/identidade; B2 cobre exclusões e erro.
 Ambos usam somente `RustParser::new` + `LanguageParser::parse`, mocks locais dos readers e
-`CrystallineConfig::default()`. V21/V22 continuam apenas regressões.
+`CrystallineConfig::default()` e `CrateRegistry::default()`. V21/V22 continuam apenas
+regressões.
 
 B1 e B2 recusaram começar porque `SourceFile`, `PromptReader` e `PromptSnapshotReader`
 eram apenas referenciados, não autorizados. Os três contratos nominais foram adicionados
 com hash e passam a integrar o pacote L0 resselado. Eles não ampliam o oráculo funcional.
+
+B1 então revelou que o construtor vigente possui quarto argumento `CrateRegistry`, omitido
+no contrato do parser. `crate-registry.md` foi adicionado ao pacote e o construtor L0 foi
+corrigido para `CrateRegistry::default()`. O RED de compilação provisório não conta como
+RED funcional; B1/B2 devem revalidar seus arquivos após este resselamento.
