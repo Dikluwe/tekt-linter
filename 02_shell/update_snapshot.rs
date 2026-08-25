@@ -168,8 +168,8 @@ pub fn format_plan(entries: &[SnapshotEntry]) -> String {
             SnapshotEntry::Ready {
                 source_path,
                 prompt_path,
-                ..
-            } => Some((source_path, prompt_path)),
+                snapshot,
+            } => Some((source_path, prompt_path, snapshot)),
             SnapshotEntry::Unreadable { .. } => None,
         })
         .collect();
@@ -201,12 +201,16 @@ pub fn format_plan(entries: &[SnapshotEntry]) -> String {
                 "files"
             }
         ));
-        for (source_path, prompt_path) in &actionable {
+        for (source_path, prompt_path, snapshot) in &actionable {
             out.push_str(&format!(
                 "  {:<45} → {}\n",
                 human_path(source_path),
                 prompt_path
             ));
+            out.push_str(snapshot);
+            if !snapshot.ends_with('\n') {
+                out.push('\n');
+            }
         }
     }
 
@@ -235,19 +239,29 @@ pub fn format_results(results: &[SnapshotResult], remaining_v6: usize) -> String
     }
 
     let mut out = String::new();
-    let succeeded: Vec<_> = results
+    let written: Vec<_> = results
         .iter()
         .filter_map(|result| match result {
             SnapshotResult::Written {
                 source_path,
                 prompt_path,
-            }
-            | SnapshotResult::DryRun {
+            } => Some((source_path, prompt_path)),
+            SnapshotResult::DryRun { .. }
+            | SnapshotResult::WriteFailed { .. }
+            | SnapshotResult::Unreadable { .. } => None,
+        })
+        .collect();
+    let dry_runs: Vec<_> = results
+        .iter()
+        .filter_map(|result| match result {
+            SnapshotResult::DryRun {
                 source_path,
                 prompt_path,
-                ..
-            } => Some((source_path, prompt_path)),
-            SnapshotResult::WriteFailed { .. } | SnapshotResult::Unreadable { .. } => None,
+                snapshot,
+            } => Some((source_path, prompt_path, snapshot)),
+            SnapshotResult::Written { .. }
+            | SnapshotResult::WriteFailed { .. }
+            | SnapshotResult::Unreadable { .. } => None,
         })
         .collect();
     let failed: Vec<_> = results
@@ -260,23 +274,42 @@ pub fn format_results(results: &[SnapshotResult], remaining_v6: usize) -> String
         })
         .collect();
 
-    if !succeeded.is_empty() {
+    if !written.is_empty() {
         out.push_str(&format!(
             "{} {} {}:\n",
             "Updated snapshot in".green().bold(),
-            succeeded.len(),
-            if succeeded.len() == 1 {
-                "file"
-            } else {
-                "files"
-            }
+            written.len(),
+            if written.len() == 1 { "file" } else { "files" }
         ));
-        for (source_path, prompt_path) in &succeeded {
+        for (source_path, prompt_path) in &written {
             out.push_str(&format!(
                 "  {:<45} → {}\n",
                 human_path(source_path),
                 prompt_path
             ));
+        }
+    }
+
+    if !dry_runs.is_empty() {
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str(&format!(
+            "{} {} {}:\n",
+            "Dry-run — would update snapshot in".cyan().bold(),
+            dry_runs.len(),
+            if dry_runs.len() == 1 { "file" } else { "files" }
+        ));
+        for (source_path, prompt_path, snapshot) in &dry_runs {
+            out.push_str(&format!(
+                "  {:<45} → {}\n",
+                human_path(source_path),
+                prompt_path
+            ));
+            out.push_str(snapshot);
+            if !snapshot.ends_with('\n') {
+                out.push('\n');
+            }
         }
     }
 
