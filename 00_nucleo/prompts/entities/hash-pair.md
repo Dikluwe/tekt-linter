@@ -1,5 +1,5 @@
 # Prompt: valores transacionais de par hash
-Hash do Código: 00000000
+Hash do Código: f6b73a13
 
 Owner exclusivo: `01_core/entities/hash_pair.rs`.
 
