@@ -1,6 +1,6 @@
 # Assessment 0039 — piloto dirigido de mutação
 
-**Estado:** BASELINE CONGELADO — rodada pendente
+**Estado:** PILOT FOUND TEST GAPS — CLOSED
 **Data:** 2026-08-25
 **Passo:** P0111
 **Branch:** `codex/p0111-mutation-pilot`
@@ -75,5 +75,49 @@ Distribuição preliminar dos 91 não mortos: 65 `TEST-GAP`, 1 `EQUIVALENT` e 25
 fora do contrato de classes de erro. Os gaps agrupam-se em: rótulo de verdict, limites e
 fechamento dos loaders, apresentação transacional e identidade de deduplicação.
 
-Nenhuma produção ou teste foi editado. Próxima transição: reprodução dirigida dos 66
-`MISSED` e congelamento da classificação antes do saneamento.
+Nenhuma produção ou teste foi editado nesta fase. A transição seguinte reproduziu os 66
+`MISSED` e congelou a classificação antes do saneamento.
+
+## Reprodução, saneamento e resposta do piloto
+
+A repetição paralela integral após o primeiro lote de gates produziu 192 testados: 138
+`CAUGHT`, 29 `MISSED` e 25 `UNVIABLE`. Seus artefatos foram preservados em
+`mutants.out.p0111-round2`; os hashes de `outcomes.json`, `missed.txt` e `caught.txt` são,
+respectivamente, `a37b620179af909476251391e7dd3451dcad1aac3229664f98b690ee4b17cfd3`,
+`76e21f553b0335f44a0e69a239a4758631e3b4660fb7e06cb5a0a399a0d25f63` e
+`31ee414cbb27c00d5b4aa8325b9160047bb75465853ea330971b746bb4575015`.
+
+Os 29 foram então executados serialmente. Resultado: 20 `CAUGHT` e 9 `MISSED`, com hashes
+`6479216b2d26da60988cdb5a5f15de575eb460bb6ea9007ab75b525de823b564` para
+`outcomes.json` e `ae56280f51db973e0c1896d2baec045cc1b786903edd997aee4fdc63ec045b15`
+para `missed.txt`. A classificação final dos 66 sobreviventes originais é:
+
+- 57 `TEST-GAP` saneados e confirmados `CAUGHT`;
+- 6 `EQUIVALENT`: prosa auxiliar do Serde ou checagens redundantes depois do pré-scan
+  fechado de strings/arquivo, sem mudança de aceitação nem classe normativa de erro;
+- 3 `TOOL-LIMIT`: mutações observáveis apenas se o arquivo crescer ou mudar entre
+  `metadata` e leitura. Um gate determinístico requer seam de I/O própria; teste baseado
+  em timing foi rejeitado por ser flakey;
+- 25 `UNVIABLE` preservados como `TOOL-LIMIT` de compilação.
+
+O manifesto integral `0039-mutation-verdicts.tsv` tem SHA-256
+`b6215f3d74b28e795fa04cb660ffd029f642f1973228accc1e7b3e4b975dfef2` antes deste
+fechamento documental. O piloto responde **sim**: mutação encontrou lacunas reais de teste
+nos rótulos de veredito, limites inclusivos dos loaders e contratos de apresentação e
+identidade biunívoca do `fix-hashes`. Nenhum `PRODUCTION-RED` ou `SPEC-GAP` foi encontrado.
+
+## Gates finais
+
+| Gate | Resultado |
+|---|---|
+| `cargo fmt --check` | PASS |
+| `cargo test --all-targets` | PASS — 635 unitários e toda a suíte de integração; ignores selados preservados |
+| ratchet P0109 | PASS 2/2 dentro da suíte completa |
+| auto-lint completo | exit 0; V19=68 e V20=17; demais regras zero |
+| hash da saída do auto-lint | `92c51980f1574d87359a810c27c29b40c1a84b5a7119bfab2690d1277ab622c8` |
+| `fix-hashes --dry-run` | `Nothing to fix` |
+| `git diff --check` | PASS |
+
+Não resta RED ou SPEC-GAP de P0111. O único residual é o `TOOL-LIMIT` explicitamente
+delimitado para concorrência de filesystem; eventual seam e promoção da mutação a gate
+periódico são decisões futuras, fora deste piloto.
