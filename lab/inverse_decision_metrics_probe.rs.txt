@@ -1,0 +1,290 @@
+use std::collections::BTreeMap;
+use std::env;
+use std::fs;
+use std::path::Path;
+use tree_sitter::{Node, Parser};
+
+#[derive(Clone, Debug)]
+struct Finding {
+    rule: &'static str,
+    path: String,
+    line: usize,
+    owner: String,
+    evidence: String,
+    class: &'static str,
+}
+
+fn text<'a>(node: Node<'a>, source: &'a [u8]) -> &'a str {
+    std::str::from_utf8(&source[node.start_byte()..node.end_byte()]).unwrap_or("")
+}
+
+fn normalized(node: Node<'_>, source: &[u8]) -> String {
+    if matches!(node.kind(), "line_comment" | "block_comment") {
+        return String::new();
+    }
+    if node.kind() == "parenthesized_expression" {
+        let mut cursor = node.walk();
+        let child = node.named_children(&mut cursor).next();
+        if let Some(child) = child {
+            return normalized(child, source);
+        }
+    }
+    let mut cursor = node.walk();
+    let children: Vec<_> = node
+        .children(&mut cursor)
+        .filter(|child| !matches!(child.kind(), "line_comment" | "block_comment"))
+        .collect();
+    if children.is_empty() {
+        return format!("{}:{:?}", node.kind(), text(node, source).trim());
+    }
+    let mut result = format!("{}(", node.kind());
+    for child in children {
+        result.push_str(&normalized(child, source));
+        result.push('|');
+    }
+    result.push(')');
+    result
+}
+
+fn enclosing_function(mut node: Node<'_>, source: &[u8]) -> String {
+    loop {
+        if node.kind() == "function_item" {
+            return node
+                .child_by_field_name("name")
+                .map(|name| text(name, source).to_string())
+                .unwrap_or_else(|| "<function>".into());
+        }
+        let Some(parent) = node.parent() else { return "<module>".into() };
+        node = parent;
+    }
+}
+
+fn match_arm_parts<'a>(arm: Node<'a>) -> Option<(Node<'a>, Node<'a>)> {
+    let mut pattern = None;
+    let mut body = None;
+    let mut after_arrow = false;
+    let mut cursor = arm.walk();
+    for child in arm.children(&mut cursor) {
+        if child.kind() == "=>" {
+            after_arrow = true;
+        } else if !after_arrow && child.kind() == "match_pattern" {
+            pattern = Some(child);
+        } else if after_arrow && child.is_named() && body.is_none() {
+            body = Some(child);
+        }
+    }
+    Some((pattern?, body?))
+}
+
+fn contains_kind(node: Node<'_>, kind: &str) -> bool {
+    if node.kind() == kind {
+        return true;
+    }
+    let mut cursor = node.walk();
+    let found = node
+        .named_children(&mut cursor)
+        .any(|child| contains_kind(child, kind));
+    found
+}
+
+fn patterns_are_disjoint_units(patterns: &[&str]) -> bool {
+    patterns.iter().all(|pattern| {
+        !pattern.contains(['(', '{', '[', '_', '@', '|'])
+            && !pattern.contains("..")
+            && !pattern.contains(" if ")
+    })
+}
+
+fn patterns_are_literals(patterns: &[&str]) -> bool {
+    patterns.iter().all(|pattern| {
+        let pattern = pattern.trim();
+        pattern.starts_with('"') || pattern.starts_with('\'') || pattern.parse::<i128>().is_ok()
+    })
+}
+
+fn looks_configured(body: Node<'_>, source: &[u8]) -> bool {
+    let body = text(body, source);
+    body.contains("config.")
+        || body.contains("config_")
+        || body.contains("settings.")
+        || body.contains("options.")
+}
+
+fn sanitize(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn has_explicit_alias_evidence(node: Node<'_>, patterns: &[&str], source: &[u8]) -> bool {
+    let mut comments = Vec::new();
+    fn collect(node: Node<'_>, source: &[u8], comments: &mut Vec<String>) {
+        if matches!(node.kind(), "line_comment" | "block_comment") {
+            comments.push(text(node, source).to_ascii_lowercase());
+            return;
+        }
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            collect(child, source, comments);
+        }
+    }
+    collect(node, source, &mut comments);
+    comments.iter().any(|comment| {
+        (comment.contains("alias") || comment.contains("sinôn"))
+            && patterns.iter().all(|pattern| {
+                let name = pattern.trim().trim_matches(['"', '\'']).to_ascii_lowercase();
+                !name.is_empty() && comment.contains(&name)
+            })
+    })
+}
+
+fn collect_v27_taxonomy(node: Node<'_>, source: &[u8], path: &str, out: &mut Vec<Finding>) {
+    if node.kind() == "match_expression" {
+        let mut arms = Vec::new();
+        let mut cursor = node.walk();
+        for block in node.named_children(&mut cursor) {
+            if block.kind() != "match_block" { continue; }
+            let mut block_cursor = block.walk();
+            let mut pending_evidence = false;
+            for child in block.named_children(&mut block_cursor) {
+                if matches!(child.kind(), "line_comment" | "block_comment") {
+                    let comment = text(child, source).to_ascii_lowercase();
+                    pending_evidence |= comment.contains("http")
+                        || comment.contains("issue")
+                        || comment.contains("safety")
+                        || comment.contains("prompt")
+                        || comment.contains("passo")
+                        || comment.contains("upstream")
+                        || comment.contains("vanilla")
+                        || comment.contains("port")
+                        || comment.contains("because")
+                        || comment.contains("porque");
+                    continue;
+                }
+                if child.kind() != "match_arm" {
+                    pending_evidence = false;
+                    continue;
+                }
+                if let Some((pattern, body)) = match_arm_parts(child) {
+                    let pattern_text = text(pattern, source).trim().to_string();
+                    let has_guard = pattern_text.contains(" if ");
+                    arms.push((child, pattern_text, body, has_guard, pending_evidence));
+                }
+                pending_evidence = false;
+            }
+        }
+        let total_arms = arms.len();
+        let literal_arms = arms
+            .iter()
+            .filter(|arm| patterns_are_literals(&[arm.1.as_str()]))
+            .count();
+        let declarative_table = total_arms >= 8 && literal_arms * 4 >= total_arms * 3;
+        let mut groups: BTreeMap<String, Vec<_>> = BTreeMap::new();
+        for arm in arms {
+            if !arm.3 {
+                groups.entry(normalized(arm.2, source)).or_default().push(arm);
+            }
+        }
+        for (_, group) in groups.into_iter().filter(|(_, group)| group.len() > 1) {
+            let body = group[0].2;
+            let patterns = group.iter().map(|arm| arm.1.as_str()).collect::<Vec<_>>().join(" | ");
+            let pattern_refs = group.iter().map(|arm| arm.1.as_str()).collect::<Vec<_>>();
+            let empty = body.kind() == "block" && body.named_child_count() == 0;
+            let macro_body = contains_kind(body, "macro_invocation");
+            let has_evidence = group.iter().any(|arm| arm.4);
+            let class = if empty {
+                "EMPTY-EQUIVALENCE"
+            } else if macro_body {
+                "MACRO-EQUIVALENCE"
+            } else if pattern_refs.iter().any(|pattern| {
+                pattern.contains('_') || pattern.contains("..") || pattern.contains('@')
+                    || pattern.contains('|')
+            }) {
+                "OVERLAP-OR-SUBSUMPTION"
+            } else if pattern_refs.iter().any(|pattern| {
+                pattern.contains('(') || pattern.contains('{') || pattern.contains('[')
+            }) {
+                "BINDING-DEPENDENT"
+            } else if patterns_are_literals(&pattern_refs)
+                && has_explicit_alias_evidence(node, &pattern_refs, source)
+            {
+                "ALIAS-EQUIVALENCE"
+            } else if declarative_table {
+                "DECLARATIVE-TABLE"
+            } else if has_evidence {
+                "EVIDENCE-PRESERVING-SEPARATION"
+            } else if looks_configured(body, source) {
+                "CONFIGURED-EQUIVALENCE"
+            } else if patterns_are_disjoint_units(&pattern_refs) {
+                "DECISION-EQUIVALENCE"
+            } else {
+                "UNKNOWN"
+            };
+            out.push(Finding {
+                rule: "V27?",
+                path: path.into(),
+                line: group[0].0.start_position().row + 1,
+                owner: enclosing_function(node, source),
+                evidence: sanitize(&format!("{} arms [{}]", group.len(), patterns)),
+                class,
+            });
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        collect_v27_taxonomy(child, source, path, out);
+    }
+}
+
+fn analyze(path: &Path) -> Result<Vec<Finding>, String> {
+    let source = fs::read(path).map_err(|error| error.to_string())?;
+    let mut parser = Parser::new();
+    parser.set_language(&tree_sitter_rust::LANGUAGE.into()).map_err(|error| error.to_string())?;
+    let tree = parser.parse(&source, None).ok_or("parser returned no tree")?;
+    if tree.root_node().has_error() {
+        return Err(format!("{} contains parse errors", path.display()));
+    }
+    let path_text = path.display().to_string();
+    let mut findings = Vec::new();
+    collect_v27_taxonomy(tree.root_node(), &source, &path_text, &mut findings);
+    findings.sort_by(|a, b| (&a.path, a.line, a.rule).cmp(&(&b.path, b.line, b.rule)));
+    Ok(findings)
+}
+
+fn dump(node: Node<'_>, source: &[u8], depth: usize) {
+    if node.is_named() {
+        println!("{}{} {:?}", "  ".repeat(depth), node.kind(), text(node, source).trim());
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        dump(child, source, depth + 1);
+    }
+}
+
+fn main() {
+    let mut paths: Vec<_> = env::args().skip(1).collect();
+    if paths.is_empty() {
+        eprintln!("usage: inverse_decision_metrics_probe <rust-file>...");
+        std::process::exit(2);
+    }
+    if paths.first().is_some_and(|argument| argument == "--dump") {
+        paths.remove(0);
+        let source = fs::read(&paths[0]).expect("read dump input");
+        let mut parser = Parser::new();
+        parser.set_language(&tree_sitter_rust::LANGUAGE.into()).expect("Rust grammar");
+        let tree = parser.parse(&source, None).expect("parse dump input");
+        dump(tree.root_node(), &source, 0);
+        return;
+    }
+    println!("rule\tpath\tline\towner\tclass\tevidence");
+    for path in paths {
+        match analyze(Path::new(&path)) {
+            Ok(findings) => for finding in findings {
+                println!("{}\t{}\t{}\t{}\t{}\t{}", finding.rule, finding.path,
+                    finding.line, finding.owner, finding.class, finding.evidence);
+            },
+            Err(error) => {
+                eprintln!("{path}: {error}");
+                std::process::exit(1);
+            }
+        }
+    }
+}
