@@ -41,6 +41,7 @@ fn a(p: &'static str, l: usize, c: usize) -> DecisionArm<'static> {
         or_alternatives: 1,
         body_form: BodyForm::Other,
         body_snippet: "body",
+        mergeability: None,
         line: l,
         column: c,
     }

@@ -167,8 +167,38 @@ pub struct DecisionArm<'a> {
     pub or_alternatives: u16,
     pub body_form: BodyForm,
     pub body_snippet: &'a str,
+    /// Evidência sintática conservadora usada exclusivamente por V27.
+    /// `None` significa que o parser não consegue provar consolidação segura.
+    pub mergeability: Option<DecisionArmMergeability<'a>>,
     pub line: usize,
     pub column: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecisionArmMergeability<'a> {
+    /// Serialização integral da AST do corpo, incluindo tokens não nomeados.
+    pub body_structure: String,
+    /// Serialização integral do guard; `None` representa ausência.
+    pub guard_structure: Option<String>,
+    /// Bindings introduzidos pelo padrão em ordem estrutural.
+    pub bindings: Vec<PatternBinding<'a>>,
+    pub has_macro: bool,
+    pub has_conditional_attribute: bool,
+    pub is_placeholder: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatternBinding<'a> {
+    pub name: &'a str,
+    pub mode: BindingMode,
+    pub mutable: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BindingMode {
+    Move,
+    Ref,
+    RefMut,
 }
 
 /// Para V16–V20 — inspeciona braços de decisão (match/switch/case).
@@ -184,8 +214,7 @@ pub fn decision_arm_term_for(language: &Language) -> &'static str {
     match language {
         Language::Rust => "wildcard `_ =>`",
         Language::Python => "`case _`",
-        Language::TypeScript => "cláusula `default:`",
-        Language::Go => "cláusula `default:`",
+        Language::TypeScript | Language::Go => "cláusula `default:`",
         Language::Zig => "—",
         Language::C | Language::Cpp | Language::Java | Language::Elixir | Language::Unknown => {
             "wildcard"

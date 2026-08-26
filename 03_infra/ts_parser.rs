@@ -696,8 +696,7 @@ fn is_declaration_only(root: Node, source: &[u8]) -> bool {
 
 fn has_implementation(node: Node, source: &[u8]) -> bool {
     match node.kind() {
-        "function_declaration" => return true,
-        "class_declaration" => return true,
+        "function_declaration" | "class_declaration" => return true,
         "lexical_declaration" => {
             // const foo = () => ... or const foo = function() ...
             if has_function_expression_child(node, source) {

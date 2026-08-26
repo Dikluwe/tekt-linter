@@ -86,6 +86,7 @@ mod tests {
             or_alternatives: 3,
             body_form: BodyForm::LiteralNeutral,
             body_snippet: "0",
+            mergeability: None,
             line: 30,
             column: 12,
         };

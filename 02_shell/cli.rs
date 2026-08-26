@@ -140,6 +140,7 @@ pub struct EnabledChecks {
     pub v24: bool,
     pub v25: bool,
     pub v26: bool,
+    pub v27: bool,
 }
 
 impl EnabledChecks {
@@ -179,6 +180,7 @@ impl EnabledChecks {
             v24: has("v24"),
             v25: has("v25"),
             v26: has("v26"),
+            v27: has("v27"),
         }
     }
 }
@@ -333,8 +335,7 @@ fn import_kind_str(kind: &ImportKind) -> &'static str {
 
 fn sarif_level(level: &ViolationLevel) -> &'static str {
     match level {
-        ViolationLevel::Fatal => "error",
-        ViolationLevel::Error => "error",
+        ViolationLevel::Fatal | ViolationLevel::Error => "error",
         ViolationLevel::Warning => "warning",
         ViolationLevel::Info => "note",
     }
@@ -503,6 +504,12 @@ fn sarif_rules() -> Vec<serde_json::Value> {
             "NucleusIntegrity",
             "Malformed, stale, cyclic, missing, or orphan Tekt nucleus",
             "warning",
+        ),
+        sarif_rule(
+            "V27",
+            "MergeableDecisionArms",
+            "Adjacent decision arms have structurally identical consequences",
+            "note",
         ),
     ]
 }
@@ -835,6 +842,15 @@ mod tests {
     fn checks_all_activates_v15() {
         let checks = EnabledChecks::from_cli("all", false, false);
         assert!(checks.v15);
+        assert!(checks.v27);
+    }
+
+    #[test]
+    fn checks_v27_is_opt_in_and_isolated() {
+        let checks = EnabledChecks::from_cli("v27", false, false);
+        assert!(checks.v27);
+        assert!(!checks.v19);
+        assert!(!checks.v20);
     }
 
     #[test]
@@ -873,6 +889,8 @@ mod tests {
         assert!(checks.v23);
         assert!(checks.v24);
         assert!(checks.v25);
+        assert!(checks.v26);
+        assert!(checks.v27);
     }
 
     #[test]
@@ -944,8 +962,8 @@ mod tests {
     }
 
     #[test]
-    fn sarif_driver_rules_has_27_entries() {
-        // SARIF driver.rules contém V0–V26.
+    fn sarif_driver_rules_has_28_entries() {
+        // SARIF driver.rules contém V0–V27.
         let out = format_sarif(&[]);
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
         let rules = parsed["runs"][0]["tool"]["driver"]["rules"]
@@ -953,8 +971,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             rules.len(),
-            27,
-            "expected 27 rules (V0 to V26), got {}",
+            28,
+            "expected 28 rules (V0 to V27), got {}",
             rules.len()
         );
     }

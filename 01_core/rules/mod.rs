@@ -14,6 +14,7 @@ pub mod external_type_in_contract;
 pub mod forbidden_import;
 pub mod impure_core;
 pub mod infrastructure_error;
+pub mod mergeable_decision_arms;
 pub mod multi_prompt_header;
 pub mod mutable_state_core;
 pub mod nucleus_integrity;

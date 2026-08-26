@@ -138,6 +138,7 @@ fn sentinel_parsed(file: &SourceFile) -> ParsedFile<'_> {
                 or_alternatives: 5,
                 body_form: BodyForm::ErrorBarrier,
                 body_snippet: "sentinel-body",
+                mergeability: None,
                 line: 131,
                 column: 137,
             }],

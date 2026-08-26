@@ -53,8 +53,8 @@ fn is_forbidden(d: &Declaration, config: &WiringConfig) -> bool {
         DeclarationKind::Impl => true, // impl sem trait = lógica de negócio
         // ADR-0009: linguagens OO
         DeclarationKind::Class => !config.allow_adapter_structs, // Class ≡ Struct (ADR-0009)
-        DeclarationKind::Interface => true,                      // interfaces pertencem a L1/L2
-        DeclarationKind::TypeAlias => true,                      // type aliases pertencem a L1/L2
+        // Interfaces e type aliases pertencem às camadas de contrato L1/L2.
+        DeclarationKind::Interface | DeclarationKind::TypeAlias => true,
     }
 }
 
