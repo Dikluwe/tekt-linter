@@ -148,6 +148,17 @@ fn type_level_whitelist_allows_only_named_items() {
 }
 
 #[test]
+fn root_grouped_import_preserves_each_authorized_item_identity() {
+    let allowed = rust_allowed_items("ecow", &["EcoString", "EcoVec"]);
+    let subject = file(
+        Layer::L1,
+        vec![import("ecow::{EcoString, EcoVec}", 7, Layer::Unknown)],
+    );
+
+    assert!(check(&subject, &allowed, false).is_empty());
+}
+
+#[test]
 fn intra_crate_qualifiers_are_exempt() {
     let subject = file(
         Layer::L1,
