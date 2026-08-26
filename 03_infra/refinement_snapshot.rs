@@ -379,7 +379,11 @@ fn ensure_toml_string_limits(value: &toml::Value, source: &str) -> Result<(), St
             }
             Ok(())
         }
-        _ => Ok(()),
+        toml::Value::String(_) => Ok(()),
+        toml::Value::Integer(_) => Ok(()),
+        toml::Value::Float(_) => Ok(()),
+        toml::Value::Boolean(_) => Ok(()),
+        toml::Value::Datetime(_) => Ok(()),
     }
 }
 

@@ -4,11 +4,10 @@
 //! @layer L3
 //! @updated 2026-03-13
 
+use crate::entities::hash_pair::{BijectivePair, PairSnapshot};
 use crate::infra::prompt_io::{atomic_replace, eight_hex, replace_meta_line, without_meta_line};
 use sha2::{Digest, Sha256};
 use std::path::Path;
-
-use crate::shell::fix_hashes::{BijectivePair, PairSnapshot};
 
 // ── Public API ────────────────────────────────────────────────────────────────
 

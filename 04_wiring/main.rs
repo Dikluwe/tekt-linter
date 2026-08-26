@@ -21,6 +21,7 @@ use crystalline_lint::contracts::language_parser::{LanguageParser, ParserSet};
 use crystalline_lint::contracts::prompt_provider::PromptProvider;
 use crystalline_lint::contracts::prompt_reader::PromptReader;
 use crystalline_lint::contracts::prompt_snapshot_reader::PromptSnapshotReader;
+use crystalline_lint::entities::hash_pair::{BijectivePair, PairSnapshot};
 use crystalline_lint::entities::l1_allowed_external::{L1AllowedExternal, L1AllowedExternalSet};
 use crystalline_lint::entities::parsed_file::{ParsedFile, PublicInterface, WiringConfig};
 use crystalline_lint::entities::project_index::{LocalIndex, ProjectIndex};
@@ -74,9 +75,7 @@ use crystalline_lint::rules::{
     semantic_field_loss, test_file, unsourced_constant, wildcard_saturation, wiring_logic_leak,
 };
 use crystalline_lint::shell::cli::{validate_args, Cli, EnabledChecks, OutputFormat};
-use crystalline_lint::shell::fix_hashes::{
-    self, BijectivePair, HashRewriter, PairSnapshot, TransactionalHashRewriter,
-};
+use crystalline_lint::shell::fix_hashes::{self, HashRewriter, TransactionalHashRewriter};
 use crystalline_lint::shell::refinement::{
     self, Command as RefinementCommand, RefinementOutputFormat,
 };

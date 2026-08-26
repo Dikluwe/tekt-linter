@@ -4,6 +4,7 @@
 //! @layer L1
 //! @updated 2026-03-22
 
+pub mod hash_pair;
 pub mod l1_allowed_external;
 pub mod layer;
 pub mod parsed_file;
