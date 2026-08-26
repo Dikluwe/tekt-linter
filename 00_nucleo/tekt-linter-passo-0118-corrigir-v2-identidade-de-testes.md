@@ -118,6 +118,20 @@ Paths relacionais em L1 usam identidade lógica UTF-8 relativa à raiz, separado
 é `Unknown(NonUtf8Path)`. Ordenação é lexical pelos bytes UTF-8 do path lógico e depois
 pela ordem normativa da origem, nunca por `PathBuf` dependente da plataforma.
 
+As razões públicas são fechadas neste lote:
+
+```text
+NonUtf8Path
+InvalidLogicalPath
+AmbiguousTarget
+UnsupportedConvention
+OpaqueGeneratedArtifact
+UnresolvedExternalConfig
+IncompleteInventory
+```
+
+Texto livre pode complementar a apresentação, mas não criar categorias sem revisão do L0.
+
 ## 4. Prompts que originam programa e testes
 
 ### 4.1 Não ampliar `@prompt` para propriedade plural
