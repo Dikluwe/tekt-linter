@@ -43,3 +43,16 @@ rotaciona esses nomes.
 
 Nenhuma produção ou teste foi editado. Próxima transição: congelar o mapa de cobertura e
 executar a rodada cega.
+
+## Mapa de cobertura B
+
+- JSON bruto: `ce99e62186b25adab6de39279b8879830dbd1d1348e824baa6e3a727aee89839`;
+- mapa dirigido: `b3a04e7bffb48f363b334c9b492b00dea5d7db24eb7e49471bd42bb55e599c02`;
+- todas as funções de quatro arquivos aparecem cobertas; `refinement_snapshot` cobre
+  31/41 funções e `fix_hashes` deixa 50/673 regiões sem execução;
+- o JSON desta ferramenta reportou zero branches para os cinco arquivos, portanto branch
+  coverage é `TOOL-LIMIT` e não foi convertida em alegação de 100%;
+- nenhuma meta percentual foi aplicada.
+
+O mapa sugere maior probabilidade de sinal em loader e transação, mas não altera o universo
+de 192 mutantes já congelado.
