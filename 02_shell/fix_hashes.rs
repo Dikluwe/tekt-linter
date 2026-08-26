@@ -9,6 +9,7 @@ use std::{collections::BTreeMap, fmt};
 
 use colored::Colorize;
 
+pub use crate::entities::hash_pair::{BijectivePair, PairSnapshot};
 use crate::entities::violation::Violation;
 use crate::shell::path_encoding::human_path;
 
@@ -34,23 +35,6 @@ pub trait HashRewriter {
 
     /// Inject "Hash do Código: <hash>" into the prompt file.
     fn write_prompt_meta(&self, prompt_path: &str, code_hash: &str) -> Result<(), String>;
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PairSnapshot {
-    pub source_bytes: Vec<u8>,
-    pub prompt_bytes: Vec<u8>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BijectivePair {
-    pub source_path: PathBuf,
-    pub prompt_path: String,
-    pub old_prompt_hash: String,
-    pub new_prompt_hash: String,
-    pub new_source_hash: String,
-    pub new_source_bytes: Vec<u8>,
-    pub new_prompt_bytes: Vec<u8>,
 }
 
 pub trait TransactionalHashRewriter {
