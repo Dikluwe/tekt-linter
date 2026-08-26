@@ -1,6 +1,6 @@
 # Assessment 0041 — campanha paralela de mutação L1
 
-**Estado:** BASELINE COMUM CONGELADO — shards pendentes
+**Estado:** CAMPANHA FECHADA — READY FOR ACCUMULATED INTEGRATION
 **Data:** 2026-08-26
 **Passo:** P0113
 **Branch acumulador:** `codex/p0112-mutation-l1-pure`
@@ -35,16 +35,63 @@ As listas repetidas contêm exatamente 32/15/30/35/32 linhas, total 144.
 | `fix-hashes --dry-run` | `Nothing to fix`; hash `bf3511c5c7cb1a9202071d8a2d60204a30f29cc11ee58ff2963a063a9f835b25` |
 
 `mutants.out` de P0112 foi movido sem remoção para
-`mutants.out.pre-p0113-current`. Nenhuma produção ou teste foi editado. Não existe RED,
-`SPEC-GAP`, `ARCH-RED` ou `GATE-DRIFT` comum. Próxima transição: criar cinco worktrees do
-commit-base e iniciar no máximo três shards simultâneos.
+`mutants.out.pre-p0113-current`. Nenhuma produção foi editada. A única alteração funcional
+da campanha é um teste normativo que fecha a identidade de cada item em imports agrupados.
+Não existe `PRODUCTION-RED`, `SPEC-GAP` ou `ARCH-RED` residual.
 
 ## Quadro de shards
 
 | Shard | Estado | Resultado | Assessment próprio |
 |---|---|---|---|
-| S1 | PENDENTE | — | `0041-s1-*` |
-| S2 | PENDENTE | — | `0041-s2-*` |
-| S3 | PENDENTE | — | `0041-s3-*` |
-| S4 | PENDENTE | — | `0041-s4-*` |
-| S5 | PENDENTE | — | `0041-s5-*` |
+| S1 | FECHADO | 29 CAUGHT, 3 UNVIABLE, 0 MISSED | `0041-s1-*` |
+| S2 | FECHADO | 11 CAUGHT, 4 UNVIABLE, 0 MISSED | `0041-s2-*` |
+| S3 | FECHADO | 28 CAUGHT, 2 MISSED iniciais; 1 TEST-GAP fechado e 1 FLAKY-GATE reproduzido como CAUGHT | `0041-s3-*` |
+| S4 | FECHADO | 34 CAUGHT, 1 UNVIABLE, 0 MISSED | `0041-s4-*` |
+| S5 | FECHADO | 28 CAUGHT, 4 UNVIABLE, 0 MISSED | `0041-s5-*` |
+
+## Consolidação
+
+O passe inicial executou 144 mutantes: 130 `CAUGHT`, 12 `UNVIABLE/TOOL-LIMIT` e 2
+`MISSED`, ambos no S3. A reprodução serial segregou os dois sobreviventes:
+
+- a troca `+ -> *` em `external_type_in_contract::imported_items` confirmou um
+  `TEST-GAP`; `root_grouped_import_preserves_each_authorized_item_identity` foi adicionado
+  e matou o cluster reproduzido 2/2;
+- a troca `- -> +` não sobreviveu à reprodução serial e ficou classificada como
+  `FLAKY-GATE/TOOL-LIMIT`, sem evidência de lacuna semântica.
+
+Assim, não há mutante acionável sobrevivente. Os 12 inviáveis foram rejeitados pelo
+compilador, predominantemente por tentativas da ferramenta de construir
+`Violation::default()` quando `Violation` não implementa `Default`; não justificam mudar a
+API de produção.
+
+## Defeitos de gate observados e saneados
+
+1. A primeira onda paralela mostrou colisão entre fixtures no `/tmp` global. Isolar
+   worktree, target e output não basta: execuções paralelas também precisam de `TMPDIR`
+   próprio. S1 foi repetido integralmente após a segregação.
+2. S2 precisou recriar quatro diretórios vazios de fixture que Git não transporta entre
+   worktrees. Isso é fragilidade do fixture, não resultado de mutação.
+3. S4 reteve cache do último mutante no target segregado. Apenas esse target foi limpo e
+   todos os gates foram repetidos a partir da fonte restaurada.
+
+Esses eventos são `GATE-DEFECT` fechados. Nenhum foi reinterpretado como sucesso do
+linter.
+
+## Veredito
+
+P0113 amplia a sanitização sem alterar o comportamento de produção. A campanha permanece
+fora de `master`, de acordo com a decisão de acumular uma massa maior de testes de mutação
+antes de pagar o custo de integração. O binário instalado continua semanticamente válido;
+o delta atual é exclusivamente documental e de teste.
+
+## Gate acumulado pós-composição
+
+| Gate | Resultado |
+|---|---|
+| `cargo fmt --all -- --check` | PASS |
+| `cargo test --all-targets` | PASS; 635 testes unitários e todas as integrações |
+| ratchet P0109 | PASS 2/2 dentro da suíte |
+| auto-lint | exit 0; saída idêntica ao baseline, SHA-256 `92c51980f1574d87359a810c27c29b40c1a84b5a7119bfab2690d1277ab622c8` |
+| `fix-hashes --dry-run` | `Nothing to fix`; SHA-256 `bf3511c5c7cb1a9202071d8a2d60204a30f29cc11ee58ff2963a063a9f835b25` |
+| `git diff --check` | PASS |
