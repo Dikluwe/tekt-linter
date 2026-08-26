@@ -104,13 +104,18 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
         // ── Header ────────────────────────────────────────────────────────────
         let (mut prompt_header, prompt_refs) = extract_header(&file.content);
 
-        let prompt_file_exists = prompt_header
+        let (prompt_presence, current_hash) = prompt_header
             .as_ref()
-            .map(|h| self.prompt_reader.exists(h.prompt_path))
-            .unwrap_or(false);
+            .map(|h| {
+                crate::contracts::prompt_reader::resolve_prompt(&self.prompt_reader, h.prompt_path)
+            })
+            .unwrap_or((
+                crate::contracts::prompt_reader::PromptPresence::Missing,
+                None,
+            ));
 
         if let Some(ref mut header) = prompt_header {
-            header.current_hash = self.prompt_reader.read_hash(header.prompt_path);
+            header.current_hash = current_hash;
         }
 
         // ── Imports ───────────────────────────────────────────────────────────
@@ -179,7 +184,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
             layer: file.layer.clone(),
             language: file.language.clone(),
             prompt_header,
-            prompt_file_exists,
+            prompt_presence,
             prompt_refs,
             has_test_coverage,
             imports,
@@ -2926,11 +2931,11 @@ mod tests {
 
     struct NullPromptReader;
     impl PromptReader for NullPromptReader {
-        fn read_hash(&self, _: &str) -> Option<String> {
-            None
+        fn read_hash(&self, _: &str) -> crate::contracts::prompt_reader::PromptHashResolution {
+            crate::contracts::prompt_reader::PromptHashResolution::Missing
         }
-        fn exists(&self, _: &str) -> bool {
-            false
+        fn presence(&self, _: &str) -> crate::contracts::prompt_reader::PromptPresence {
+            crate::contracts::prompt_reader::PromptPresence::Missing
         }
     }
 

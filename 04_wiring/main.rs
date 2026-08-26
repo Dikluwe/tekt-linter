@@ -5,6 +5,7 @@
 //! @updated 2026-08-24
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process;
 
@@ -64,7 +65,7 @@ use crystalline_lint::infra::ts_parser::TsParser;
 use crystalline_lint::infra::walker::FileWalker;
 use crystalline_lint::infra::zig_parser::ZigParser;
 use crystalline_lint::rules::infrastructure_error::{
-    parse_error_to_violation, source_error_to_violation,
+    parse_error_to_violation, prompt_access_violation, source_error_to_violation,
 };
 use crystalline_lint::rules::pub_leak::L1Ports;
 use crystalline_lint::rules::{
@@ -412,6 +413,39 @@ fn main() {
     let nucleo_root = cli.path.clone();
     let enabled = EnabledChecks::from_cli(&cli.checks, cli.no_drift, cli.no_stale);
 
+    // Root confinement is structural and precedes parsing. Otherwise a root
+    // failure can be multiplied into per-file errors or, for files without a
+    // header, misreported as V1.
+    if !cli.emit_resolution && (enabled.v1 || enabled.v5 || cli.fix_hashes || cli.update_snapshot) {
+        if let Err(reason) = crystalline_lint::infra::prompt_io::validate_local_root(&cli.path) {
+            let violations = vec![Violation {
+                rule_id: "V0".into(),
+                level: ViolationLevel::Fatal,
+                message: format!("Falha ao validar raiz de prompts: {reason}"),
+                location: Location {
+                    path: Cow::Owned(cli.path.clone()),
+                    line: 0,
+                    column: 0,
+                },
+            }];
+            if !cli.quiet {
+                match cli.format {
+                    OutputFormat::Text => {
+                        print!("{}", crystalline_lint::shell::cli::format_text(&violations));
+                    }
+                    OutputFormat::Sarif => {
+                        println!(
+                            "{}",
+                            crystalline_lint::shell::cli::format_sarif(&violations)
+                        );
+                    }
+                    OutputFormat::N16Summary => unreachable!("validated by CLI"),
+                }
+            }
+            process::exit(1);
+        }
+    }
+
     let orphan_exceptions: std::collections::HashSet<String> =
         config.orphan_exceptions.keys().cloned().collect();
     let prompt_walker = FsPromptWalker::new(cli.path.clone(), orphan_exceptions);
@@ -659,6 +693,18 @@ fn main() {
             }
         }
     }
+
+    // Sort before deduplication so the retained witness is deterministic even
+    // though the parser map runs in parallel.
+    crystalline_lint::shell::cli::sort_violations(&mut all_violations);
+    let mut prompt_failures = HashSet::new();
+    all_violations.retain(|violation| {
+        if violation.rule_id == "V0" && violation.message.starts_with("Falha ao resolver prompt") {
+            prompt_failures.insert(violation.message.clone())
+        } else {
+            true
+        }
+    });
 
     // ── Ordenação determinística ───────────────────────────────────────────────
     // Rayon não garante ordem — Fatal → Error → Warning, depois path, depois linha.
@@ -1143,12 +1189,17 @@ impl HashRewriter for L3HashRewriter {
         hash_writer::read_header(source_path)
     }
 
-    fn compute_hash(&self, prompt_path: &str) -> Option<String> {
+    fn compute_hash(&self, prompt_path: &str) -> Result<Option<String>, String> {
         // Reuse hash calculation logic from FsPromptReader (with size limits)
-        FsPromptReader {
+        match (FsPromptReader {
             nucleo_root: self.nucleo_root.clone(),
-        }
+        })
         .read_hash(prompt_path)
+        {
+            crystalline_lint::contracts::prompt_reader::PromptHashResolution::Hash(hash) => Ok(Some(hash)),
+            crystalline_lint::contracts::prompt_reader::PromptHashResolution::Missing => Ok(None),
+            crystalline_lint::contracts::prompt_reader::PromptHashResolution::InfrastructureFailure { reason } => Err(reason),
+        }
     }
 
     fn compute_source_hash(&self, source_path: &Path) -> Option<String> {
@@ -1379,6 +1430,9 @@ fn run_checks<'a>(
     citation_freshness: &(dyn CitationFreshnessResolver + Sync),
 ) -> Vec<Violation<'a>> {
     let mut violations = Vec::new();
+    if let Some(violation) = prompt_access_violation(file) {
+        violations.push(violation);
+    }
     let l1_allowed_lang = l1_allowed.for_language(&file.language);
     if enabled.v1 {
         violations.extend(prompt_header::check(file, strict_dirs));

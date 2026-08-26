@@ -21,7 +21,7 @@ impl HashRewriter for Spy {
         panic!("execution must not read headers")
     }
 
-    fn compute_hash(&self, _prompt_path: &str) -> Option<String> {
+    fn compute_hash(&self, _prompt_path: &str) -> Result<Option<String>, String> {
         panic!("execution must not compute prompt hashes")
     }
 

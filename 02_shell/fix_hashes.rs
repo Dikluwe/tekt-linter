@@ -25,7 +25,7 @@ pub trait HashRewriter {
 
     /// Compute SHA256[0..8] of the prompt file at the given path.
     /// Returns None if the prompt file does not exist.
-    fn compute_hash(&self, prompt_path: &str) -> Option<String>;
+    fn compute_hash(&self, prompt_path: &str) -> Result<Option<String>, String>;
 
     /// Compute SHA256[0..8] of the source file, ignoring its own @prompt-hash line.
     fn compute_source_hash(&self, source_path: &Path) -> Option<String>;
@@ -219,6 +219,10 @@ pub enum FixUnavailable {
         old_hash: String,
         source_hash: String,
     },
+    PromptHashInfrastructure {
+        prompt_path: String,
+        reason: String,
+    },
     SourceHashUnavailable {
         prompt_path: String,
         old_hash: String,
@@ -295,14 +299,14 @@ pub fn plan(violations: &[Violation<'_>], rewriter: &dyn HashRewriter) -> Vec<Fi
                 let new_hash = rewriter.compute_hash(&prompt_path);
                 let source_hash = rewriter.compute_source_hash(&v.location.path);
                 match (new_hash, source_hash) {
-                    (Some(new_hash), Some(source_hash)) => FixEntry::Ready {
+                    (Ok(Some(new_hash)), Some(source_hash)) => FixEntry::Ready {
                         source_path: v.location.path.to_path_buf(),
                         prompt_path,
                         old_hash,
                         new_hash,
                         source_hash,
                     },
-                    (None, Some(source_hash)) => FixEntry::Unavailable {
+                    (Ok(None), Some(source_hash)) => FixEntry::Unavailable {
                         source_path: v.location.path.to_path_buf(),
                         reason: FixUnavailable::PromptHashUnavailable {
                             prompt_path,
@@ -310,7 +314,7 @@ pub fn plan(violations: &[Violation<'_>], rewriter: &dyn HashRewriter) -> Vec<Fi
                             source_hash,
                         },
                     },
-                    (Some(new_hash), None) => FixEntry::Unavailable {
+                    (Ok(Some(new_hash)), None) => FixEntry::Unavailable {
                         source_path: v.location.path.to_path_buf(),
                         reason: FixUnavailable::SourceHashUnavailable {
                             prompt_path,
@@ -318,11 +322,18 @@ pub fn plan(violations: &[Violation<'_>], rewriter: &dyn HashRewriter) -> Vec<Fi
                             new_hash,
                         },
                     },
-                    (None, None) => FixEntry::Unavailable {
+                    (Ok(None), None) => FixEntry::Unavailable {
                         source_path: v.location.path.to_path_buf(),
                         reason: FixUnavailable::BothHashesUnavailable {
                             prompt_path,
                             old_hash,
+                        },
+                    },
+                    (Err(reason), _) => FixEntry::Unavailable {
+                        source_path: v.location.path.to_path_buf(),
+                        reason: FixUnavailable::PromptHashInfrastructure {
+                            prompt_path,
+                            reason,
                         },
                     },
                 }
@@ -443,6 +454,12 @@ fn describe_unavailable(reason: &FixUnavailable) -> String {
         } => format!(
             "prompt hash unavailable: prompt={prompt_path} old={old_hash} hash-b={source_hash}"
         ),
+        FixUnavailable::PromptHashInfrastructure {
+            prompt_path,
+            reason,
+        } => {
+            format!("prompt hash infrastructure failure: prompt={prompt_path} reason={reason}")
+        }
         FixUnavailable::SourceHashUnavailable {
             prompt_path,
             old_hash,
@@ -514,6 +531,7 @@ mod tests {
     struct MockRewriter {
         header: Option<(String, String)>,
         prompt_hash: Option<String>,
+        prompt_failure: Option<String>,
         source_hash: Option<String>,
         write_calls: RefCell<Vec<(PathBuf, String)>>,
         meta_calls: RefCell<Vec<(String, String)>>,
@@ -530,6 +548,7 @@ mod tests {
             Self {
                 header: header.map(|(p, h)| (p.to_string(), h.to_string())),
                 prompt_hash: prompt_hash.map(str::to_string),
+                prompt_failure: None,
                 source_hash: source_hash.map(str::to_string),
                 write_calls: RefCell::new(vec![]),
                 meta_calls: RefCell::new(vec![]),
@@ -542,8 +561,11 @@ mod tests {
         fn read_header(&self, _: &Path) -> Option<(String, String)> {
             self.header.clone()
         }
-        fn compute_hash(&self, _: &str) -> Option<String> {
-            self.prompt_hash.clone()
+        fn compute_hash(&self, _: &str) -> Result<Option<String>, String> {
+            match &self.prompt_failure {
+                Some(reason) => Err(reason.clone()),
+                None => Ok(self.prompt_hash.clone()),
+            }
         }
         fn compute_source_hash(&self, _: &Path) -> Option<String> {
             self.source_hash.clone()
@@ -624,6 +646,25 @@ mod tests {
         let entries = plan(&violations, &rewriter);
         assert_eq!(entries.len(), 1);
         assert!(matches!(entries[0], FixEntry::Unavailable { .. }));
+    }
+
+    #[test]
+    fn plan_preserves_prompt_infrastructure_failure() {
+        let mut rewriter = MockRewriter::new(
+            Some(("00_nucleo/prompts/core.md", "00000000")),
+            None,
+            Some("b9e4f7a2"),
+            Ok(()),
+        );
+        rewriter.prompt_failure = Some("symbolic prompt path".into());
+        let entries = plan(&[v5_violation("01_core/core.rs")], &rewriter);
+        assert!(matches!(
+            &entries[0],
+            FixEntry::Unavailable {
+                reason: FixUnavailable::PromptHashInfrastructure { prompt_path, reason },
+                ..
+            } if prompt_path == "00_nucleo/prompts/core.md" && reason == "symbolic prompt path"
+        ));
     }
 
     // ── execute() ────────────────────────────────────────────────────────────

@@ -420,7 +420,7 @@ mod tests {
                 layer: Layer::L1,
                 updated: None,
             }),
-            prompt_file_exists: true,
+            prompt_presence: crate::contracts::prompt_reader::PromptPresence::Present,
             prompt_refs: vec![],
             has_test_coverage: true,
             imports: vec![],

@@ -1,5 +1,5 @@
 use crystalline_lint::contracts::prompt_provider::PromptProvider;
-use crystalline_lint::contracts::prompt_reader::PromptReader;
+use crystalline_lint::contracts::prompt_reader::{PromptHashResolution, PromptReader};
 use crystalline_lint::contracts::prompt_snapshot_reader::PromptSnapshotReader;
 use crystalline_lint::infra::hash_writer::{compute_source_hash, write_hash, write_prompt_meta};
 use crystalline_lint::infra::prompt_reader::{CachedPromptReader, FsPromptReader};
@@ -45,9 +45,15 @@ fn readers_confine_paths_and_exists_means_local_regular_file() {
 
     let hashes = reader(root.path());
     let snapshots = snapshot_reader(root.path());
-    assert!(hashes.read_hash("prompts/in.md").is_some());
+    assert!(matches!(
+        hashes.read_hash("prompts/in.md"),
+        PromptHashResolution::Hash(_)
+    ));
     assert!(snapshots.read_snapshot("prompts/in.md").is_some());
-    assert!(hashes.exists("prompts/in.md"));
+    assert_eq!(
+        hashes.presence("prompts/in.md"),
+        crystalline_lint::contracts::prompt_reader::PromptPresence::Present
+    );
 
     let absolute = outside.path().join("out.md").to_string_lossy().into_owned();
     let mut invalid = vec![
@@ -67,8 +73,10 @@ fn readers_confine_paths_and_exists_means_local_regular_file() {
     let violations: Vec<_> = invalid
         .iter()
         .filter(|path| {
-            hashes.exists(path)
-                || hashes.read_hash(path).is_some()
+            matches!(
+                hashes.presence(path),
+                crystalline_lint::contracts::prompt_reader::PromptPresence::Present
+            ) || matches!(hashes.read_hash(path), PromptHashResolution::Hash(_))
                 || snapshots.read_snapshot(path).is_some()
         })
         .cloned()
@@ -81,10 +89,16 @@ fn readers_confine_paths_and_exists_means_local_regular_file() {
     {
         use std::os::unix::fs::symlink;
         let mut accepted_intermediate_symlink = Vec::new();
-        if hashes.exists("prompts/dir-link/out.md") {
+        if matches!(
+            hashes.presence("prompts/dir-link/out.md"),
+            crystalline_lint::contracts::prompt_reader::PromptPresence::Present
+        ) {
             accepted_intermediate_symlink.push("exists");
         }
-        if hashes.read_hash("prompts/dir-link/out.md").is_some() {
+        if matches!(
+            hashes.read_hash("prompts/dir-link/out.md"),
+            PromptHashResolution::Hash(_)
+        ) {
             accepted_intermediate_symlink.push("reader");
         }
         if snapshots.read_snapshot("prompts/dir-link/out.md").is_some() {
@@ -104,10 +118,16 @@ fn readers_confine_paths_and_exists_means_local_regular_file() {
         let ancestor_hashes = reader(&root_with_symlink_ancestor);
         let ancestor_snapshots = snapshot_reader(&root_with_symlink_ancestor);
         let mut accepted_root_ancestor_symlink = Vec::new();
-        if ancestor_hashes.exists("prompts/in.md") {
+        if matches!(
+            ancestor_hashes.presence("prompts/in.md"),
+            crystalline_lint::contracts::prompt_reader::PromptPresence::Present
+        ) {
             accepted_root_ancestor_symlink.push("exists");
         }
-        if ancestor_hashes.read_hash("prompts/in.md").is_some() {
+        if matches!(
+            ancestor_hashes.read_hash("prompts/in.md"),
+            PromptHashResolution::Hash(_)
+        ) {
             accepted_root_ancestor_symlink.push("reader");
         }
         if ancestor_snapshots.read_snapshot("prompts/in.md").is_some() {
@@ -124,10 +144,16 @@ fn readers_confine_paths_and_exists_means_local_regular_file() {
         let linked_hashes = reader(&linked_root);
         let linked_snapshots = snapshot_reader(&linked_root);
         let mut accepted_root_symlink = Vec::new();
-        if linked_hashes.exists("prompts/in.md") {
+        if matches!(
+            linked_hashes.presence("prompts/in.md"),
+            crystalline_lint::contracts::prompt_reader::PromptPresence::Present
+        ) {
             accepted_root_symlink.push("exists");
         }
-        if linked_hashes.read_hash("prompts/in.md").is_some() {
+        if matches!(
+            linked_hashes.read_hash("prompts/in.md"),
+            PromptHashResolution::Hash(_)
+        ) {
             accepted_root_symlink.push("reader");
         }
         if linked_snapshots.read_snapshot("prompts/in.md").is_some() {
@@ -233,7 +259,10 @@ fn source_hash_is_byte_sensitive_except_for_one_canonical_header_meta_line() {
     )
     .unwrap();
     let fenced_after = prompt_reader.read_hash("prompts/fenced.md");
-    if fenced_before.is_none() || fenced_after.is_none() || fenced_before == fenced_after {
+    if !matches!(fenced_before, PromptHashResolution::Hash(_))
+        || !matches!(fenced_after, PromptHashResolution::Hash(_))
+        || fenced_before == fenced_after
+    {
         ignored.push("prompt-meta-inside-fence");
     }
     assert!(
@@ -257,28 +286,43 @@ fn prompt_reader_enforces_the_ten_mib_capture_limit() {
     )
     .unwrap();
     let fs_reader = reader(root.path());
-    assert!(fs_reader.read_hash("prompts/exact.md").is_some());
-    assert_eq!(fs_reader.read_hash("prompts/over.md"), None);
+    assert!(matches!(
+        fs_reader.read_hash("prompts/exact.md"),
+        PromptHashResolution::Hash(_)
+    ));
+    assert!(matches!(
+        fs_reader.read_hash("prompts/over.md"),
+        crystalline_lint::contracts::prompt_reader::PromptHashResolution::InfrastructureFailure { .. }
+    ));
 
     let missing_path = "prompts/later.md";
     let cached_missing = CachedPromptReader::new(reader(root.path()));
-    assert_eq!(cached_missing.read_hash(missing_path), None);
+    assert_eq!(
+        cached_missing.read_hash(missing_path),
+        crystalline_lint::contracts::prompt_reader::PromptHashResolution::Missing
+    );
     fs::write(root.path().join(missing_path), b"created later\n").unwrap();
-    assert_eq!(cached_missing.read_hash(missing_path), None);
-    assert!(CachedPromptReader::new(reader(root.path()))
-        .read_hash(missing_path)
-        .is_some());
+    assert_eq!(
+        cached_missing.read_hash(missing_path),
+        crystalline_lint::contracts::prompt_reader::PromptHashResolution::Missing
+    );
+    assert!(matches!(
+        CachedPromptReader::new(reader(root.path())).read_hash(missing_path),
+        PromptHashResolution::Hash(_)
+    ));
 
     let cached_value = CachedPromptReader::new(reader(root.path()));
-    let first = cached_value.read_hash("prompts/exact.md").unwrap();
+    let PromptHashResolution::Hash(first) = cached_value.read_hash("prompts/exact.md") else {
+        panic!("hash expected")
+    };
     fs::write(root.path().join("prompts/exact.md"), b"replacement\n").unwrap();
     assert_eq!(
         cached_value.read_hash("prompts/exact.md"),
-        Some(first.clone())
+        crystalline_lint::contracts::prompt_reader::PromptHashResolution::Hash(first.clone())
     );
     assert_ne!(
         CachedPromptReader::new(reader(root.path())).read_hash("prompts/exact.md"),
-        Some(first)
+        crystalline_lint::contracts::prompt_reader::PromptHashResolution::Hash(first)
     );
 
     // SPEC-GAP(P3): the public API exposes no deterministic barrier between metadata,

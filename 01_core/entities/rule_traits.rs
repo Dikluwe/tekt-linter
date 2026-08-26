@@ -6,6 +6,7 @@
 
 use std::path::Path;
 
+use crate::contracts::prompt_reader::PromptPresence;
 use crate::entities::layer::{Language, Layer};
 use crate::entities::parsed_file::{
     Declaration, Import, ModuleDecl, PromptHeader, PublicInterface, StaticDeclaration, Token,
@@ -17,7 +18,7 @@ use crate::entities::parsed_file::{
 pub trait HasPromptFilesystem<'a> {
     fn layer(&self) -> &Layer;
     fn prompt_header(&self) -> Option<&PromptHeader<'a>>;
-    fn prompt_file_exists(&self) -> bool;
+    fn prompt_presence(&self) -> &PromptPresence;
     fn path(&self) -> &'a Path;
 }
 
@@ -346,6 +347,7 @@ mod tests {
     struct MockV1 {
         layer: Layer,
         path: &'static Path,
+        presence: PromptPresence,
     }
     impl HasPromptFilesystem<'static> for MockV1 {
         fn layer(&self) -> &Layer {
@@ -354,8 +356,8 @@ mod tests {
         fn prompt_header(&self) -> Option<&PromptHeader<'static>> {
             None
         }
-        fn prompt_file_exists(&self) -> bool {
-            false
+        fn prompt_presence(&self) -> &PromptPresence {
+            &self.presence
         }
         fn path(&self) -> &'static Path {
             self.path
@@ -503,9 +505,10 @@ mod tests {
         let m = MockV1 {
             layer: Layer::L1,
             path: Path::new("foo.rs"),
+            presence: PromptPresence::Missing,
         };
         assert_eq!(m.layer(), &Layer::L1);
-        assert!(!m.prompt_file_exists());
+        assert_eq!(m.prompt_presence(), &PromptPresence::Missing);
         assert!(m.prompt_header().is_none());
     }
 

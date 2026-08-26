@@ -108,7 +108,7 @@ mod tests {
             layer: Layer::L1,
             language: Language::Rust,
             prompt_header: None,
-            prompt_file_exists: false,
+            prompt_presence: crate::contracts::prompt_reader::PromptPresence::Missing,
             prompt_refs: vec![],
             has_test_coverage: false,
             imports: vec![],

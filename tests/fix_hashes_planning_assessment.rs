@@ -70,7 +70,7 @@ impl HashRewriter for Spy {
         answer.answer
     }
 
-    fn compute_hash(&self, prompt_path: &str) -> Option<String> {
+    fn compute_hash(&self, prompt_path: &str) -> Result<Option<String>, String> {
         self.calls
             .borrow_mut()
             .push(format!("prompt:{prompt_path}"));
@@ -80,7 +80,7 @@ impl HashRewriter for Spy {
             .pop_front()
             .expect("unexpected compute_hash");
         assert_eq!(answer.path, Path::new(prompt_path));
-        answer.answer
+        Ok(answer.answer)
     }
 
     fn compute_source_hash(&self, source_path: &Path) -> Option<String> {

@@ -8,7 +8,28 @@ use std::borrow::Cow;
 
 use crate::contracts::file_provider::SourceError;
 use crate::contracts::parse_error::ParseError;
+use crate::contracts::prompt_reader::PromptPresence;
+use crate::entities::rule_traits::HasPromptFilesystem;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
+
+pub fn prompt_access_violation<'a, T: HasPromptFilesystem<'a>>(file: &T) -> Option<Violation<'a>> {
+    let PromptPresence::InfrastructureFailure { reason } = file.prompt_presence() else {
+        return None;
+    };
+    let prompt = file
+        .prompt_header()
+        .map_or("<unknown>", |header| header.prompt_path);
+    Some(Violation {
+        rule_id: "V0".to_string(),
+        level: ViolationLevel::Fatal,
+        message: format!("Falha ao resolver prompt `{prompt}`: {reason}"),
+        location: Location {
+            path: Cow::Borrowed(file.path()),
+            line: 1,
+            column: 0,
+        },
+    })
+}
 
 pub fn source_error_to_violation(err: &SourceError) -> Violation<'static> {
     match err {

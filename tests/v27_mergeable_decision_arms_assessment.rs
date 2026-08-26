@@ -12,11 +12,14 @@ use crystalline_lint::rules::mergeable_decision_arms;
 #[derive(Clone)]
 struct NoPrompts;
 impl PromptReader for NoPrompts {
-    fn exists(&self, _path: &str) -> bool {
-        false
+    fn presence(&self, _path: &str) -> crystalline_lint::contracts::prompt_reader::PromptPresence {
+        crystalline_lint::contracts::prompt_reader::PromptPresence::Missing
     }
-    fn read_hash(&self, _path: &str) -> Option<String> {
-        None
+    fn read_hash(
+        &self,
+        _path: &str,
+    ) -> crystalline_lint::contracts::prompt_reader::PromptHashResolution {
+        crystalline_lint::contracts::prompt_reader::PromptHashResolution::Missing
     }
 }
 

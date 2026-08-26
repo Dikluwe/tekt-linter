@@ -85,7 +85,7 @@ fn sentinel_parsed(file: &SourceFile) -> ParsedFile<'_> {
             layer: Layer::L2,
             updated: Some("sentinel-updated"),
         }),
-        prompt_file_exists: true,
+        prompt_presence: crystalline_lint::contracts::prompt_reader::PromptPresence::Present,
         prompt_refs: vec!["sentinel-prompt-ref"],
         has_test_coverage: true,
         imports: vec![Import {

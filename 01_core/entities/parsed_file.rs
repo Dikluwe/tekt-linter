@@ -297,6 +297,7 @@ pub struct PromptHeader<'a> {
 // ── Trait Implementations for Rules (via entities::rule_traits) ─────────────
 // Direção correta: entities → contracts (nunca entities → rules)
 
+use crate::contracts::prompt_reader::PromptPresence;
 use crate::entities::rule_traits::{
     DecisionExpr, HasConstants, HasCoverage, HasDecisionArms, HasHashes, HasImports,
     HasModuleDecls, HasPromptFilesystem, HasPromptRefs, HasPubLeak, HasPublicInterface,
@@ -311,8 +312,8 @@ impl<'a> HasPromptFilesystem<'a> for ParsedFile<'a> {
     fn prompt_header(&self) -> Option<&PromptHeader<'a>> {
         self.prompt_header.as_ref()
     }
-    fn prompt_file_exists(&self) -> bool {
-        self.prompt_file_exists
+    fn prompt_presence(&self) -> &PromptPresence {
+        &self.prompt_presence
     }
     fn path(&self) -> &'a Path {
         self.path
@@ -492,8 +493,8 @@ pub struct ParsedFile<'a> {
 
     /// For V1: None means header is absent.
     pub prompt_header: Option<PromptHeader<'a>>,
-    /// For V1: true if prompt_header.prompt_path exists in 00_nucleo/.
-    pub prompt_file_exists: bool,
+    /// Resolution of the prompt path; infrastructure failures remain distinct from absence.
+    pub prompt_presence: PromptPresence,
 
     /// For V15: every `@prompt` value found in the doc-header block
     /// (`//!` lines at the top), in order of appearance.
@@ -567,7 +568,7 @@ mod tests {
             layer: Layer::L1,
             language: Language::Rust,
             prompt_header: None,
-            prompt_file_exists: false,
+            prompt_presence: PromptPresence::Missing,
             prompt_refs: vec![],
             has_test_coverage: false,
             imports: vec![],

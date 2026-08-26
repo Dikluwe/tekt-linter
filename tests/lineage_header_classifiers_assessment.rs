@@ -1,3 +1,4 @@
+use crystalline_lint::contracts::prompt_reader::PromptPresence;
 use crystalline_lint::entities::layer::Layer;
 use crystalline_lint::entities::parsed_file::PromptHeader;
 use crystalline_lint::entities::rule_traits::{HasPromptFilesystem, HasPromptRefs};
@@ -8,7 +9,7 @@ use std::path::Path;
 struct HeaderFixture<'a> {
     layer: Layer,
     header: Option<PromptHeader<'a>>,
-    exists: bool,
+    presence: PromptPresence,
     path: &'a Path,
 }
 
@@ -19,8 +20,8 @@ impl<'a> HasPromptFilesystem<'a> for HeaderFixture<'a> {
     fn prompt_header(&self) -> Option<&PromptHeader<'a>> {
         self.header.as_ref()
     }
-    fn prompt_file_exists(&self) -> bool {
-        self.exists
+    fn prompt_presence(&self) -> &PromptPresence {
+        &self.presence
     }
     fn path(&self) -> &'a Path {
         self.path
@@ -52,7 +53,11 @@ fn v1_seven_layers_by_three_states_truth_table_and_exemption_priority() {
             let fixture = HeaderFixture {
                 layer: layer.clone(),
                 header: (state != "none").then(|| header(layer.clone())),
-                exists: state == "exists",
+                presence: if state == "exists" {
+                    PromptPresence::Present
+                } else {
+                    PromptPresence::Missing
+                },
                 path: Path::new("strict/module.rs"),
             };
             let violations = prompt_header::check(&fixture, &["strict".to_string()]);
@@ -76,13 +81,13 @@ fn v1_missing_lineage_and_missing_reference_are_distinct_and_preserve_literal_ev
     let absent = HeaderFixture {
         layer: Layer::L1,
         header: None,
-        exists: false,
+        presence: PromptPresence::Missing,
         path,
     };
     let missing = HeaderFixture {
         layer: Layer::L1,
         header: Some(header(Layer::L1)),
-        exists: false,
+        presence: PromptPresence::Missing,
         path,
     };
     let absent_violation = prompt_header::check(&absent, &[]).pop().unwrap();
@@ -115,7 +120,7 @@ fn v1_strict_directories_match_path_components_not_textual_prefixes() {
             let fixture = HeaderFixture {
                 layer: Layer::L2,
                 header: (cause == "missing").then(|| header(Layer::L2)),
-                exists: false,
+                presence: PromptPresence::Missing,
                 path: Path::new(path),
             };
             let violations = prompt_header::check(&fixture, &strict);
@@ -233,7 +238,7 @@ fn v1_and_v15_are_deterministic_and_preserve_distinct_unicode_representations() 
     let missing = HeaderFixture {
         layer: Layer::L4,
         header: Some(header(Layer::L4)),
-        exists: false,
+        presence: PromptPresence::Missing,
         path: Path::new("04_wiring/Á.rs"),
     };
     let a = prompt_header::check(&missing, &[]);

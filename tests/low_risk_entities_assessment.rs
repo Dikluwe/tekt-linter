@@ -106,7 +106,7 @@ fn parsed_sentinel(layer: Layer) -> ParsedFile<'static> {
             layer,
             updated: None,
         }),
-        prompt_file_exists: true,
+        prompt_presence: crystalline_lint::contracts::prompt_reader::PromptPresence::Present,
         prompt_refs: vec![],
         has_test_coverage: false,
         imports: vec![],

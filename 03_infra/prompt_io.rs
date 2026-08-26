@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
-fn validate_local_root(root: &Path) -> Result<(), String> {
+pub fn validate_local_root(root: &Path) -> Result<(), String> {
     if root.as_os_str().is_empty() {
         return Err("prompt root must not be empty".to_string());
     }
@@ -44,6 +44,19 @@ fn validate_local_root(root: &Path) -> Result<(), String> {
 }
 
 pub fn confined_regular_file(root: &Path, relative: &Path) -> Result<PathBuf, String> {
+    match probe_confined_regular_file(root, relative)? {
+        Some(path) => Ok(path),
+        None => Err(format!(
+            "cannot inspect prompt path {}: not found",
+            root.join(relative).display()
+        )),
+    }
+}
+
+pub fn probe_confined_regular_file(
+    root: &Path,
+    relative: &Path,
+) -> Result<Option<PathBuf>, String> {
     if relative.as_os_str().is_empty()
         || relative.is_absolute()
         || !relative
@@ -57,11 +70,21 @@ pub fn confined_regular_file(root: &Path, relative: &Path) -> Result<PathBuf, St
         .canonicalize()
         .map_err(|error| format!("cannot resolve prompt root: {error}"))?;
     let mut current = root.clone();
-    for component in relative.components() {
+    let component_count = relative.components().count();
+    for (index, component) in relative.components().enumerate() {
         current.push(component.as_os_str());
-        let metadata = fs::symlink_metadata(&current).map_err(|error| {
-            format!("cannot inspect prompt path {}: {error}", current.display())
-        })?;
+        let metadata = match fs::symlink_metadata(&current) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                if error.kind() == std::io::ErrorKind::NotFound && index + 1 == component_count {
+                    return Ok(None);
+                }
+                return Err(format!(
+                    "cannot inspect prompt path {}: {error}",
+                    current.display()
+                ));
+            }
+        };
         if metadata.file_type().is_symlink() {
             return Err(format!(
                 "prompt path contains symlink: {}",
@@ -79,7 +102,7 @@ pub fn confined_regular_file(root: &Path, relative: &Path) -> Result<PathBuf, St
     if !metadata.file_type().is_file() {
         return Err("prompt path is not a regular local file".to_string());
     }
-    Ok(canonical)
+    Ok(Some(canonical))
 }
 
 pub fn read_confined(root: &Path, relative: &Path, limit: usize) -> Result<Vec<u8>, String> {

@@ -101,7 +101,8 @@ impl LanguageParser for Spy {
                 layer: file.layer.clone(),
                 language: file.language.clone(),
                 prompt_header: None,
-                prompt_file_exists: false,
+                prompt_presence:
+                    crystalline_lint::contracts::prompt_reader::PromptPresence::Missing,
                 prompt_refs: vec![],
                 has_test_coverage: file.has_adjacent_test,
                 imports: vec![],

@@ -6,6 +6,7 @@
 
 use std::borrow::Cow;
 
+use crate::contracts::prompt_reader::PromptPresence;
 use crate::entities::layer::Layer;
 use crate::entities::rule_traits::HasPromptFilesystem;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
@@ -30,7 +31,7 @@ pub fn check<'a, T: HasPromptFilesystem<'a>>(
 
     let message = match file.prompt_header() {
         None => "Arquivo Cristalino sem linhagem causal @prompt encontrada".to_string(),
-        Some(header) if !file.prompt_file_exists() => format!(
+        Some(header) if matches!(file.prompt_presence(), PromptPresence::Missing) => format!(
             "Arquivo Cristalino referencia prompt inexistente: '{}'",
             header.prompt_path
         ),
@@ -59,7 +60,7 @@ mod tests {
     struct MockFile {
         layer: Layer,
         header: Option<PromptHeader<'static>>,
-        exists: bool,
+        presence: PromptPresence,
         path: &'static Path,
     }
 
@@ -70,8 +71,8 @@ mod tests {
         fn prompt_header(&self) -> Option<&PromptHeader<'static>> {
             self.header.as_ref()
         }
-        fn prompt_file_exists(&self) -> bool {
-            self.exists
+        fn prompt_presence(&self) -> &PromptPresence {
+            &self.presence
         }
         fn path(&self) -> &'static Path {
             self.path
@@ -82,7 +83,7 @@ mod tests {
         MockFile {
             layer: Layer::L1,
             header: None,
-            exists: false,
+            presence: PromptPresence::Missing,
             path: Path::new("01_core/foo.rs"),
         }
     }
@@ -101,7 +102,7 @@ mod tests {
     fn no_violation_when_header_present_and_file_exists() {
         let mut file = base_file();
         file.header = Some(valid_header());
-        file.exists = true;
+        file.presence = PromptPresence::Present;
         assert!(check(&file, &[]).is_empty());
     }
 
@@ -128,7 +129,7 @@ mod tests {
     fn violation_when_header_present_but_file_missing() {
         let mut file = base_file();
         file.header = Some(valid_header());
-        file.exists = false;
+        file.presence = PromptPresence::Missing;
         let violations = check(&file, &[]);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "V1");
@@ -168,7 +169,11 @@ mod tests {
                 let file = MockFile {
                     layer: layer.clone(),
                     header,
-                    exists,
+                    presence: if exists {
+                        PromptPresence::Present
+                    } else {
+                        PromptPresence::Missing
+                    },
                     path: Path::new("some/file.rs"),
                 };
                 let applicable = matches!(layer, Layer::L1 | Layer::L2 | Layer::L3 | Layer::L4);
