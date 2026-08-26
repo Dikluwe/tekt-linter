@@ -233,3 +233,31 @@ fn every_unavailable_result_state_is_distinguishable_and_exposes_its_payload() {
         }
     }
 }
+
+#[test]
+fn empty_and_skipped_result_counts_have_exact_boundary_behavior() {
+    let nothing = format_results(&[], 0, 7);
+    assert!(nothing.contains("Nothing to fix"));
+    assert!(!nothing.contains("Skipped"));
+
+    let nonempty_zero = format_results(
+        &[FixResult::Applied {
+            source_path: PathBuf::from("a.rs"),
+            prompt_path: "a.md".into(),
+            new_hash: "a".into(),
+            source_hash: "b".into(),
+        }],
+        0,
+        0,
+    );
+    assert!(!nonempty_zero.contains("Skipped"));
+
+    let one = format_results(&[], 1, 0);
+    assert!(!one.contains("Nothing to fix"));
+    assert!(one.contains("Skipped"));
+    assert!(one.contains("1 file(s)"));
+
+    let two = format_results(&[], 2, 0);
+    assert!(two.contains("Skipped"));
+    assert!(two.contains("2 file(s)"));
+}
