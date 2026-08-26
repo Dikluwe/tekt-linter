@@ -171,6 +171,25 @@ fn all_collisions_are_reported_in_deterministic_byte_order() {
     assert!(rendered[0].find("p/a.md").unwrap() < rendered[0].find("p/b.md").unwrap());
     assert!(rendered[0].find("a.rs").unwrap() < rendered[0].find("b.rs").unwrap());
     assert!(rendered[0].contains("y.rs") && rendered[0].contains("z.rs"));
+    assert_eq!(
+        rendered[0],
+        "ownership collisions: p/a.md=[a.rs, b.rs] p/b.md=[y.rs, z.rs]"
+    );
+}
+
+#[test]
+fn plan_deduplicates_only_the_exact_same_bijective_identity() {
+    let inputs = vec![
+        pair("same.rs", "a.md"),
+        pair("same.rs", "a.md"),
+        pair("same.rs", "b.md"),
+    ];
+    let spy = Spy::seeded(&inputs);
+    let plan = plan_bijective(&inputs, &spy).expect("distinct prompt identity remains distinct");
+
+    assert_eq!(plan.pairs.len(), 2);
+    assert_eq!(plan.pairs[0].prompt_path, "a.md");
+    assert_eq!(plan.pairs[1].prompt_path, "b.md");
 }
 
 #[test]
