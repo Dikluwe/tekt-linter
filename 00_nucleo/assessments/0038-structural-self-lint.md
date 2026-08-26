@@ -1,6 +1,6 @@
 # Assessment 0038 — fechamento estrutural V2/V3
 
-**Estado:** READY TO MERGE — zero RED/SPEC-GAP aberto
+**Estado:** MERGED AND INSTALLED — zero RED/SPEC-GAP aberto
 **Data:** 2026-08-25
 **Passo:** P0110
 **Branch:** `codex/p0110-structural-self-lint`
@@ -83,3 +83,16 @@ SHA-256 da saída integral final do auto-lint:
 
 Não resta RED, gate ou SPEC-GAP do P0110. O branch está apto ao merge conjunto dos
 fechamentos P0109/P0110.
+
+## Integração e instalação
+
+- merge não fast-forward em `master`: `f42e9e7`;
+- tip auditado `ea772d9` confirmado como ancestral do merge;
+- conflitos: zero;
+- gates pós-merge: fmt, suíte integral, auto-lint, dry-run e diff PASS;
+- instalação atualizada: `/home/dikluwe/.cargo/bin/crystalline-lint`;
+- SHA-256 do binário instalado e de `target/release/crystalline-lint`:
+  `eb7494979040e70feb6ac3b738c86979488b8c26927480126746aae2ff707c9d`;
+- execução pelo binário instalado: exit 0, V19=68, V20=17 e `Nothing to fix`.
+
+P0109 e P0110 estão integrados e a instalação local do sistema corresponde ao `master`.
