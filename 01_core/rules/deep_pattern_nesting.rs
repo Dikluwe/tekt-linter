@@ -113,6 +113,7 @@ mod tests {
             or_alternatives: 1,
             body_form: BodyForm::LiteralNeutral,
             body_snippet: "0",
+            mergeability: None,
             line: 40,
             column: 12,
         };
@@ -149,6 +150,7 @@ mod tests {
             or_alternatives: 1,
             body_form: BodyForm::LiteralNeutral,
             body_snippet: "0",
+            mergeability: None,
             line: 40,
             column: 12,
         };

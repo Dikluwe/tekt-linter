@@ -20,8 +20,9 @@ use crate::entities::parsed_file::{
     PromptHeader, PublicInterface, StaticDeclaration, Token, TokenKind, TypeKind, TypeSignature,
 };
 use crate::entities::rule_traits::{
-    BodyForm, Citation, CitationKind, ConstantKind, DecisionArm, DecisionExpr, ScrutineeForm,
-    SemanticObservation, SemanticObservationKind, SourceConstant,
+    BindingMode, BodyForm, Citation, CitationKind, ConstantKind, DecisionArm,
+    DecisionArmMergeability, DecisionExpr, PatternBinding, ScrutineeForm, SemanticObservation,
+    SemanticObservationKind, SourceConstant,
 };
 use crate::infra::config::{CrystallineConfig, SemanticContractsConfig};
 use crate::infra::crate_registry::{CrateRegistry, MemberCrate};
@@ -1405,6 +1406,14 @@ fn parse_match_arm<'a>(node: Node, source: &'a [u8]) -> Option<DecisionArm<'a>> 
     let body_raw = std::str::from_utf8(&source[body.start_byte()..body.end_byte()]).unwrap_or("");
     let body_snippet = truncate_str_safe(body_raw.trim(), 80);
 
+    let bindings = extract_pattern_bindings(match_pattern, pattern_end_byte, source);
+    let body_structure = canonical_syntax(body, source, &bindings);
+    let guard_structure = guard_node.map(|guard| canonical_syntax(guard, source, &bindings));
+    let has_macro = contains_kind(body, "macro_invocation")
+        || guard_node.is_some_and(|guard| contains_kind(guard, "macro_invocation"));
+    let is_placeholder = contains_placeholder_macro(body, source);
+    let has_conditional_attribute = contains_conditional_attribute(node, source);
+
     let span_pos = node.start_position();
 
     Some(DecisionArm {
@@ -1419,9 +1428,174 @@ fn parse_match_arm<'a>(node: Node, source: &'a [u8]) -> Option<DecisionArm<'a>> 
         or_alternatives,
         body_form,
         body_snippet,
+        mergeability: Some(DecisionArmMergeability {
+            body_structure,
+            guard_structure,
+            bindings,
+            has_macro,
+            has_conditional_attribute,
+            is_placeholder,
+        }),
         line: span_pos.row + 1,
         column: span_pos.column,
     })
+}
+
+fn extract_pattern_bindings<'a>(
+    pattern: Node,
+    limit_byte: usize,
+    source: &'a [u8],
+) -> Vec<PatternBinding<'a>> {
+    fn visit<'a>(
+        node: Node,
+        limit_byte: usize,
+        source: &'a [u8],
+        out: &mut Vec<PatternBinding<'a>>,
+    ) {
+        if node.start_byte() >= limit_byte {
+            return;
+        }
+        if matches!(node.kind(), "identifier" | "shorthand_field_identifier") {
+            let parent_kind = node.parent().map(|parent| parent.kind()).unwrap_or("");
+            let name =
+                std::str::from_utf8(&source[node.start_byte()..node.end_byte()]).unwrap_or("");
+            let is_path = node.kind() == "identifier"
+                && matches!(
+                    parent_kind,
+                    "scoped_identifier"
+                        | "scoped_type_identifier"
+                        | "field_expression"
+                        | "field_pattern"
+                );
+            let is_binding = !is_path
+                && name != "_"
+                && name
+                    .chars()
+                    .next()
+                    .is_some_and(|first| first.is_lowercase());
+            if is_binding && !out.iter().any(|binding| binding.name == name) {
+                let prefix = std::str::from_utf8(&source[pattern_start(node)..node.start_byte()])
+                    .unwrap_or("");
+                let words: Vec<_> = prefix
+                    .split(|character: char| !(character.is_alphanumeric() || character == '_'))
+                    .filter(|word| !word.is_empty())
+                    .rev()
+                    .take(2)
+                    .collect();
+                let has_ref = words.contains(&"ref");
+                let mutable = words.contains(&"mut");
+                let mode = match (has_ref, mutable) {
+                    (true, true) => BindingMode::RefMut,
+                    (true, false) => BindingMode::Ref,
+                    _ => BindingMode::Move,
+                };
+                out.push(PatternBinding {
+                    name,
+                    mode,
+                    mutable,
+                });
+            }
+        }
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            visit(child, limit_byte, source, out);
+        }
+    }
+
+    fn pattern_start(node: Node) -> usize {
+        let mut current = node;
+        while let Some(parent) = current.parent() {
+            if parent.kind() == "match_pattern" {
+                return parent.start_byte();
+            }
+            current = parent;
+        }
+        node.start_byte()
+    }
+
+    let mut bindings = Vec::new();
+    visit(pattern, limit_byte, source, &mut bindings);
+    bindings
+}
+
+fn canonical_syntax(node: Node, source: &[u8], bindings: &[PatternBinding<'_>]) -> String {
+    fn visit(node: Node, source: &[u8], bindings: &[PatternBinding<'_>], out: &mut String) {
+        if node.kind() == "line_comment" || node.kind() == "block_comment" {
+            return;
+        }
+        out.push('(');
+        out.push_str(node.kind());
+        let mut cursor = node.walk();
+        let children: Vec<_> = node.children(&mut cursor).collect();
+        if children.is_empty() {
+            out.push(':');
+            let text =
+                std::str::from_utf8(&source[node.start_byte()..node.end_byte()]).unwrap_or("");
+            if node.kind() == "identifier" {
+                if let Some(index) = bindings.iter().position(|binding| binding.name == text) {
+                    out.push('$');
+                    out.push_str(&index.to_string());
+                } else {
+                    out.push_str(text);
+                }
+            } else {
+                out.push_str(text);
+            }
+        } else {
+            for child in children {
+                visit(child, source, bindings, out);
+            }
+        }
+        out.push(')');
+    }
+
+    let mut structure = String::new();
+    visit(node, source, bindings, &mut structure);
+    structure
+}
+
+fn contains_kind(node: Node, expected: &str) -> bool {
+    if node.kind() == expected {
+        return true;
+    }
+    let mut cursor = node.walk();
+    let found = node
+        .children(&mut cursor)
+        .any(|child| contains_kind(child, expected));
+    found
+}
+
+fn contains_placeholder_macro(node: Node, source: &[u8]) -> bool {
+    if node.kind() == "macro_invocation" {
+        let text = std::str::from_utf8(&source[node.start_byte()..node.end_byte()])
+            .unwrap_or("")
+            .trim_start();
+        if ["todo!", "unimplemented!", "unreachable!"]
+            .iter()
+            .any(|prefix| text.starts_with(prefix))
+        {
+            return true;
+        }
+    }
+    let mut cursor = node.walk();
+    let found = node
+        .children(&mut cursor)
+        .any(|child| contains_placeholder_macro(child, source));
+    found
+}
+
+fn contains_conditional_attribute(node: Node, source: &[u8]) -> bool {
+    if node.kind() == "attribute_item" {
+        let text = std::str::from_utf8(&source[node.start_byte()..node.end_byte()]).unwrap_or("");
+        if text.contains("cfg") {
+            return true;
+        }
+    }
+    let mut cursor = node.walk();
+    let found = node
+        .children(&mut cursor)
+        .any(|child| contains_conditional_attribute(child, source));
+    found
 }
 
 fn check_is_catchall(match_pattern: Node, limit_byte: usize, source: &[u8]) -> bool {

@@ -48,6 +48,7 @@ fn arm<'a>(
         or_alternatives: 1,
         body_form: body,
         body_snippet,
+        mergeability: None,
         line,
         column: 7,
     }

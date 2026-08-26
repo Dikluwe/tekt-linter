@@ -70,9 +70,10 @@ use crystalline_lint::rules::pub_leak::L1Ports;
 use crystalline_lint::rules::{
     alien_file, compound_guard, context_erasure, dangling_contract, decision_ownership,
     deep_pattern_nesting, external_type_in_contract, forbidden_import, impure_core,
-    multi_prompt_header, mutable_state_core, or_pattern_alternatives, orphan_prompt, prompt_drift,
-    prompt_header, prompt_stale, provenance_inventory, pub_leak, quarantine_leak, range_pattern,
-    semantic_field_loss, test_file, unsourced_constant, wildcard_saturation, wiring_logic_leak,
+    mergeable_decision_arms, multi_prompt_header, mutable_state_core, or_pattern_alternatives,
+    orphan_prompt, prompt_drift, prompt_header, prompt_stale, provenance_inventory, pub_leak,
+    quarantine_leak, range_pattern, semantic_field_loss, test_file, unsourced_constant,
+    wildcard_saturation, wiring_logic_leak,
 };
 use crystalline_lint::shell::cli::{validate_args, Cli, EnabledChecks, OutputFormat};
 use crystalline_lint::shell::fix_hashes::{self, HashRewriter, TransactionalHashRewriter};
@@ -875,6 +876,7 @@ fn main() {
                 v24: false,
                 v25: false,
                 v26: false,
+                v27: false,
             };
             let (violations, _, _) = run_pipeline(
                 &re_files,
@@ -1010,6 +1012,7 @@ fn main() {
                 v24: false,
                 v25: false,
                 v26: false,
+                v27: false,
             };
             let (violations, _, _) = run_pipeline(
                 &re_files,
@@ -1431,6 +1434,9 @@ fn run_checks<'a>(
     }
     if enabled.v20 {
         violations.extend(deep_pattern_nesting::check(file));
+    }
+    if enabled.v27 {
+        violations.extend(mergeable_decision_arms::check(file));
     }
     if enabled.v21 {
         violations.extend(unsourced_constant::check(

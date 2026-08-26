@@ -262,6 +262,7 @@ mod tests {
             or_alternatives: 1,
             body_form: BodyForm::LiteralNeutral,
             body_snippet: "0",
+            mergeability: None,
             line: 10,
             column: 12,
         };
@@ -277,6 +278,7 @@ mod tests {
             or_alternatives: 1,
             body_form: BodyForm::LiteralNeutral,
             body_snippet: "0",
+            mergeability: None,
             line: 11,
             column: 12,
         };
@@ -292,6 +294,7 @@ mod tests {
             or_alternatives: 1,
             body_form: BodyForm::EnumPath,
             body_snippet: "Unit::Percent",
+            mergeability: None,
             line: 12,
             column: 12,
         };
@@ -329,6 +332,7 @@ mod tests {
             or_alternatives: 1,
             body_form: BodyForm::LiteralNeutral,
             body_snippet: "0",
+            mergeability: None,
             line: 10,
             column: 12,
         };
@@ -344,6 +348,7 @@ mod tests {
             or_alternatives: 1,
             body_form: BodyForm::LiteralNeutral,
             body_snippet: "0",
+            mergeability: None,
             line: 11,
             column: 12,
         };
@@ -359,6 +364,7 @@ mod tests {
             or_alternatives: 1,
             body_form: BodyForm::Call,
             body_snippet: "f(other)",
+            mergeability: None,
             line: 12,
             column: 12,
         };
@@ -393,6 +399,7 @@ mod tests {
             or_alternatives: 1,
             body_form: BodyForm::LiteralNeutral,
             body_snippet: "0",
+            mergeability: None,
             line: 10,
             column: 12,
         };
@@ -408,6 +415,7 @@ mod tests {
             or_alternatives: 1,
             body_form: BodyForm::LiteralNeutral,
             body_snippet: "0",
+            mergeability: None,
             line: 11,
             column: 12,
         };
@@ -423,6 +431,7 @@ mod tests {
             or_alternatives: 1,
             body_form: BodyForm::EnumPath,
             body_snippet: "Unit::Percent",
+            mergeability: None,
             line: 12,
             column: 12,
         };
@@ -464,6 +473,7 @@ mod tests {
             or_alternatives: 1,
             body_form: BodyForm::LiteralNeutral,
             body_snippet: "0",
+            mergeability: None,
             line: 10,
             column: 12,
         };
@@ -479,6 +489,7 @@ mod tests {
             or_alternatives: 1,
             body_form: BodyForm::LiteralNeutral,
             body_snippet: "0",
+            mergeability: None,
             line: 11,
             column: 12,
         };
@@ -494,6 +505,7 @@ mod tests {
             or_alternatives: 1,
             body_form: BodyForm::EnumPath,
             body_snippet: "Unit::Percent",
+            mergeability: None,
             line: 12,
             column: 12,
         };

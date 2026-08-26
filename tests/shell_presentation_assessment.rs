@@ -158,7 +158,7 @@ fn sarif_catalog_levels_positions_and_result_order_are_coherent() {
         ViolationLevel::Warning,
         ViolationLevel::Info,
     ];
-    let violations: Vec<_> = (0..=26)
+    let violations: Vec<_> = (0..=27)
         .map(|index| {
             violation(
                 &format!("V{index}"),
@@ -180,10 +180,10 @@ fn sarif_catalog_levels_positions_and_result_order_are_coherent() {
         .map(|rule| rule["id"].as_str().unwrap())
         .collect();
     let unique: BTreeSet<_> = ids.iter().map(|id| (*id).to_owned()).collect();
-    assert_eq!(ids.len(), 27);
+    assert_eq!(ids.len(), 28);
     assert_eq!(
         unique,
-        (0..=26)
+        (0..=27)
             .map(|index| format!("V{index}"))
             .collect::<BTreeSet<_>>()
     );
