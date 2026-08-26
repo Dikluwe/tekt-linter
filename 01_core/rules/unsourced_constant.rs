@@ -227,7 +227,8 @@ pub fn check<'a, T: HasConstants<'a>, R: CitationFreshnessResolver + ?Sized>(
                         },
                     });
                 }
-                _ => {}
+                CitationKind::Spec(_) => {}
+                CitationKind::Rationale(_) => {}
             },
         }
     }
