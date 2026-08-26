@@ -1,6 +1,6 @@
 # Assessment 0040 — mutação dirigida do núcleo L1 puro
 
-**Estado:** BASELINE E AUTORIDADES CONGELADOS — rodada pendente
+**Estado:** BATCH FOUND NO ACTIONABLE SURVIVORS
 **Data:** 2026-08-26
 **Passo:** P0112
 **Branch:** `codex/p0112-mutation-l1-pure`
@@ -46,4 +46,55 @@ As saídas `mutants.out` e `mutants.out.old` de P0111 foram preservadas como
 | hash da saída do dry-run | `bf3511c5c7cb1a9202071d8a2d60204a30f29cc11ee58ff2963a063a9f835b25` |
 
 Não existe RED, `GATE-DRIFT` ou `SPEC-GAP` no baseline. Nenhuma produção ou teste foi
-editado. Próxima transição autorizada: rodada cega dos 38 mutantes.
+editado antes da rodada cega.
+
+## Rodada cega e classificação
+
+Os 38 mutantes fixados foram executados uma vez com quatro jobs e sem shuffle. Resultado:
+
+| Resultado | Quantidade |
+|---|---:|
+| `CAUGHT` | 22 |
+| `MISSED` | 0 |
+| `UNVIABLE` | 16 |
+| `TIMEOUT` | 0 |
+
+| Artefato | SHA-256 |
+|---|---|
+| `mutants.json` | `6f691944ddf506ecb656eb7ab38540ff8d7ad40c99bcaf7cce3918b7fd80af1b` |
+| `outcomes.json` | `a7b1d1a77c59cf813228eddd1246ad716dc030ecd92ae1d68563f6c013da3c8b` |
+| `caught.txt` | `6bc5ee5706e935610a0f22523099720ce988f77ff9d729bbace5ff35e42e5269` |
+| `missed.txt` vazio | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `unviable.txt` | `51143160b8dad4398951ad85621ea85a3c5e2e510f11e455934efe89d8079ba8` |
+| `timeout.txt` vazio | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+
+Como `MISSED=0`, não existe sobrevivente a reproduzir serialmente nem `TEST-GAP` a
+sanear. Os 16 inviáveis foram inventariados integralmente em
+`0040-mutation-verdicts.tsv` como `TOOL-LIMIT`: onze substituições não satisfazem o tipo ou
+lifetime de `Self`; cinco tentam construir `Violation::default()`, inexistente por contrato.
+Inviável não foi contado como morto nem convertido em alegação semântica.
+
+## Decisão
+
+Neste universo fechado, os testes existentes mataram todo mutante compilável. P0112
+responde **não há sobreviventes acionáveis**. Isso não prova os módulos, não atribui score
+de 100% e não autoriza campanha infinita. Não houve `PRODUCTION-RED`, `SPEC-GAP` ou
+`ARCH-RED`; produção e testes permanecem byte a byte inalterados.
+
+Um eventual P0113 exige nova decisão baseada no sinal combinado: P0111 encontrou 57 gaps,
+enquanto este lote puro pequeno encontrou zero. Não há promoção automática para CI.
+
+## Gates finais
+
+| Gate | Resultado |
+|---|---|
+| `cargo fmt --check` | PASS |
+| `cargo test --all-targets` | PASS — 635 unitários e toda a suíte de integração |
+| ratchet P0109 | PASS 2/2 |
+| auto-lint completo | exit 0; hash idêntico ao baseline; V19=68/V20=17 |
+| `fix-hashes --dry-run` | `Nothing to fix`; hash idêntico ao baseline |
+| `git diff --check` | PASS |
+| manifesto `0040-mutation-verdicts.tsv` | `b31a21ae03ad88937ee74ea59906709ec64f5d221c40b431111a27cba3d9db60` |
+
+P0112 termina sem RED, gate, `SPEC-GAP` ou mudança funcional. Branch apto a merge; a
+integração não está incluída automaticamente neste fechamento.
