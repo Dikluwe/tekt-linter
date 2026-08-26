@@ -1,6 +1,6 @@
 # Passo operacional 0110 — fechar V2/V3 estruturais do próprio linter
 
-> **Estado:** ESCRITO — não executado
+> **Estado:** EXECUTADO — fechado pelo Assessment 0038
 > **Data:** 2026-08-25
 > **Branch:** `codex/p0110-structural-self-lint`
 > **Baseline:** `cc357d9c3bfa26a4ce1bd71c72bc9cba5b3b027c`

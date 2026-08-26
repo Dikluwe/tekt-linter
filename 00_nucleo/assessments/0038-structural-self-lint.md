@@ -1,6 +1,6 @@
 # Assessment 0038 — fechamento estrutural V2/V3
 
-**Estado:** BASELINE CONGELADO — saneamento pendente
+**Estado:** READY TO MERGE — zero RED/SPEC-GAP aberto
 **Data:** 2026-08-25
 **Passo:** P0110
 **Branch:** `codex/p0110-structural-self-lint`
@@ -45,3 +45,41 @@ configuração, regra ou exclusões seria RED do gate.
 - H7: o resselo toca superfície não causal.
 
 Todas permanecem bloqueantes até os gates finais.
+
+## Execução e confronto
+
+- `1abde37`: adicionou dois testes puros ao contrato de frescor; V2 passou de 1 para 0;
+- `d812380`: moveu os dois DTOs para `entities::hash_pair`, preservou a reexportação L2 e
+  alterou L4 somente nos imports; V3 passou de 1 para 0;
+- `caaca09`: resselou exclusivamente o novo par owner/prompt.
+
+H1–H7 foram refutadas:
+
+- os testes L1 não importam I/O nem camada superior;
+- busca nominal encontra uma definição de cada DTO, ambas em L1;
+- testes históricos continuam compilando pela reexportação de L2;
+- fields, derives, paths e bytes foram movidos sem alteração;
+- `hash_writer.rs` não importa L2;
+- o novo prompt tem owner exclusivo e V15/V26 estão zerados;
+- o resselo tocou somente `hash_pair.rs` e `hash-pair.md`.
+
+## Gates finais
+
+| Gate | Resultado |
+|---|---|
+| `cargo fmt --check` | PASS |
+| `cargo test` | PASS — 634 unitários e toda a suíte de integração/doc-tests |
+| testes `citation_freshness` | PASS 2/2 |
+| testes `hash_pair` | PASS 2/2 |
+| transação/bijeção histórica | PASS 10/10 |
+| ratchet P0109 | PASS 2/2 |
+| auto-lint completo | exit 0; V19=68 e V20=17 |
+| V1/V2/V3/V5/V7/V9/V14/V15/V16/V17/V26 | zero |
+| `fix-hashes --dry-run` | `Nothing to fix` |
+| `git diff --check` | PASS |
+
+SHA-256 da saída integral final do auto-lint:
+`92c51980f1574d87359a810c27c29b40c1a84b5a7119bfab2690d1277ab622c8`.
+
+Não resta RED, gate ou SPEC-GAP do P0110. O branch está apto ao merge conjunto dos
+fechamentos P0109/P0110.
