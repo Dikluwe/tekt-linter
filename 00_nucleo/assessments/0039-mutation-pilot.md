@@ -56,3 +56,24 @@ executar a rodada cega.
 
 O mapa sugere maior probabilidade de sinal em loader e transação, mas não altera o universo
 de 192 mutantes já congelado.
+
+## Rodada C congelada
+
+Resultado autoritativo: 192 testados, 101 `CAUGHT`, 66 `MISSED`, 25 `UNVIABLE` e zero
+timeouts.
+
+| Artefato | SHA-256 |
+|---|---|
+| `mutants.json` | `9132c12196772127bd8f19a18fc1ea58f1a3f11d14ee2130888d867c1420d56e` |
+| `outcomes.json` | `5c97149f1d5e6e93732f7ccad44c5468021aa5d6e7fecc1da8a9d8a4f0823982` |
+| `caught.txt` | `7929eda5f8cdbbbf145be5bf64f6698a9d00289498ffc1dbbf7b0332eaa04785` |
+| `missed.txt` | `3ad1220072f46fe2fbc970321e915416ad07e4d24566469d67922b871a389570` |
+| `unviable.txt` | `97753c444818fcdfb373506455df9193d189acf15b51e01ba6d0ff5687739399` |
+
+Distribuição preliminar dos 91 não mortos: 65 `TEST-GAP`, 1 `EQUIVALENT` e 25
+`TOOL-LIMIT`. O equivalente altera apenas o texto auxiliar `serde::Visitor::expecting`,
+fora do contrato de classes de erro. Os gaps agrupam-se em: rótulo de verdict, limites e
+fechamento dos loaders, apresentação transacional e identidade de deduplicação.
+
+Nenhuma produção ou teste foi editado. Próxima transição: reprodução dirigida dos 66
+`MISSED` e congelamento da classificação antes do saneamento.
