@@ -1,0 +1,6 @@
+path	functions_total	functions_covered	regions_total	regions_covered	branches_total	branches_covered	risk_note
+01_core/entities/refinement_seal.rs	5	5	48	47	0	0	mutation classifies semantic bite; percentages are not a gate
+01_core/rules/forbidden_import.rs	22	22	242	240	0	0	mutation classifies semantic bite; percentages are not a gate
+01_core/rules/prompt_drift.rs	10	10	107	107	0	0	mutation classifies semantic bite; percentages are not a gate
+02_shell/fix_hashes.rs	37	37	673	623	0	0	mutation classifies semantic bite; percentages are not a gate
+03_infra/refinement_snapshot.rs	41	31	581	521	0	0	mutation classifies semantic bite; percentages are not a gate

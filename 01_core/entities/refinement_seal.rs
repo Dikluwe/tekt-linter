@@ -74,6 +74,13 @@ mod tests {
     use crate::entities::refinement::{Inconclusive, UnknownReason};
 
     #[test]
+    fn verdict_names_are_the_stable_public_vocabulary() {
+        assert_eq!(VerdictName::Preserved.as_str(), "PRESERVED");
+        assert_eq!(VerdictName::Violated.as_str(), "VIOLATED");
+        assert_eq!(VerdictName::Unknown.as_str(), "UNKNOWN");
+    }
+
+    #[test]
     fn negative_rejects_violation_with_inconclusive_results() {
         let clean = RefinementVerdict::Violated {
             witnesses: Vec::new(),
