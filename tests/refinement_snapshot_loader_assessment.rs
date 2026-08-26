@@ -180,6 +180,68 @@ fn practical_byte_string_and_cardinality_limits_fail_before_exhaustion() {
 }
 
 #[test]
+fn byte_string_key_and_cardinality_limits_are_inclusive() {
+    let exact_bytes = vec![b' '; 4 * 1024 * 1024];
+    let exact_error = load_snapshot_from_bytes(&exact_bytes, "assessment://exact-bytes")
+        .expect_err("whitespace is invalid JSON, but is inside the byte budget");
+    assert!(exact_error.starts_with("json-syntax:"), "{exact_error}");
+
+    let exact = "x".repeat(64 * 1024);
+    assert!(load(&valid(&format!(
+        r#""k":{{"state":"known","value":"{exact}"}}"#
+    )))
+    .is_ok());
+    assert!(load(&format!(
+        r#"{{"format_version":1,"artifact_id":"{exact}","extractor_version":"e","observables":{{}}}}"#
+    )).is_ok());
+    assert!(load(&format!(
+        r#"{{"format_version":1,"artifact_id":"a","extractor_version":"{exact}","observables":{{}}}}"#
+    )).is_ok());
+    assert!(load(&valid(&format!(r#""{exact}":{{"state":"absent"}}"#))).is_ok());
+    for observable in [
+        format!(r#""k":{{"state":"{exact}"}}"#),
+        format!(r#""k":{{"state":"unknown","reason":"{exact}"}}"#),
+    ] {
+        let error = load(&valid(&observable)).expect_err("boundary discriminant is schema-invalid");
+        assert!(error.starts_with("schema:"), "{error}");
+    }
+
+    let observables = (0..4096)
+        .map(|i| format!(r#""k{i}":{{"state":"absent"}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    assert!(load(&valid(&observables)).is_ok());
+}
+
+#[test]
+fn regular_file_byte_limit_is_inclusive() {
+    let exact = temporary_file();
+    let oversized = exact.with_extension("oversized.json");
+    fs::write(&exact, vec![b' '; 4 * 1024 * 1024]).unwrap();
+    fs::write(&oversized, vec![b' '; 4 * 1024 * 1024 + 1]).unwrap();
+    let exact_error = load_snapshot(&exact).expect_err("whitespace remains invalid JSON");
+    assert!(exact_error.starts_with("json-syntax:"), "{exact_error}");
+    assert_prefix(load_snapshot(&oversized), "limit:");
+    fs::remove_file(exact).unwrap();
+    fs::remove_file(oversized).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn filesystem_loader_rejects_directories_and_symlink_components() {
+    use std::os::unix::fs::symlink;
+
+    let target = temporary_file();
+    let link = target.with_extension("link.json");
+    fs::write(&target, valid("")).unwrap();
+    symlink(&target, &link).unwrap();
+    assert_prefix(load_snapshot(&link), "io:");
+    assert_prefix(load_snapshot(target.parent().unwrap()), "io:");
+    fs::remove_file(link).unwrap();
+    fs::remove_file(target).unwrap();
+}
+
+#[test]
 fn small_regular_file_matches_from_bytes_and_missing_path_is_io() {
     let bytes = valid(r#""k":{"state":"known","value":"v"}"#);
     let path = temporary_file();
@@ -193,6 +255,5 @@ fn small_regular_file_matches_from_bytes_and_missing_path_is_io() {
     assert_prefix(load_snapshot(&path), "io:");
 }
 
-// Symlink traversal and concurrent replacement are intentionally absent: the normative
-// outcome depends on filesystem timing/platform behavior, so this blind gate keeps only
-// deterministic from-bytes and stable regular-file coverage.
+// Concurrent replacement remains outside this deterministic gate: covering it without a
+// controllable I/O seam would turn scheduler timing into an unreliable test oracle.

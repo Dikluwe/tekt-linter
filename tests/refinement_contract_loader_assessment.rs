@@ -218,6 +218,85 @@ fn distinguishes_utf8_syntax_schema_and_limit_error_classes() {
 }
 
 #[test]
+fn byte_string_relation_and_accepted_limits_are_inclusive() {
+    let exact_bytes = vec![b' '; 4 * 1024 * 1024];
+    let error = load_contract_from_bytes(&exact_bytes, "assessment-exact-bytes")
+        .expect_err("whitespace is invalid TOML schema, but is inside the byte budget");
+    assert!(!error.starts_with("limit:"), "{error}");
+
+    let exact = "x".repeat(64 * 1024);
+    load_ok(&format!(
+        "id='{exact}'\n[[relation]]\nkind='must-not-invent'\ntarget='{exact}'"
+    ));
+    load_ok(&format!(
+        "id='c'\n[[relation]]\nkind='preserve'\nsource='{exact}'\ntarget='t'"
+    ));
+    load_ok(&format!(
+        "id='c'\n[[relation]]\nkind='may-normalize'\nsource='{exact}'\ntarget='t'\naccepted_targets=['{exact}']"
+    ));
+    assert_error(
+        format!("id='c'\n[[relation]]\nkind='{exact}'\ntarget='t'").as_bytes(),
+        "schema:",
+    );
+
+    let relations = (0..4096)
+        .map(|i| format!("[[relation]]\nkind='must-not-invent'\ntarget='t{i}'\n"))
+        .collect::<String>();
+    load_ok(&format!("id='c'\n{relations}"));
+    let too_many_relations = (0..4097)
+        .map(|i| format!("[[relation]]\nkind='must-not-invent'\ntarget='u{i}'\n"))
+        .collect::<String>();
+    assert_error(format!("id='c'\n{too_many_relations}").as_bytes(), "limit:");
+
+    let accepted = (0..4096)
+        .map(|i| format!("'v{i}'"))
+        .collect::<Vec<_>>()
+        .join(",");
+    load_ok(&format!(
+        "id='c'\n[[relation]]\nkind='may-normalize'\nsource='s'\ntarget='t'\naccepted_targets=[{accepted}]"
+    ));
+}
+
+#[test]
+fn toml_key_limit_is_inclusive() {
+    let exact = "k".repeat(64 * 1024);
+    let over = "k".repeat(64 * 1024 + 1);
+    assert_error(
+        format!("id='c'\n{exact}=1\n[[relation]]\nkind='must-not-invent'\ntarget='t'").as_bytes(),
+        "schema:",
+    );
+    assert_error(
+        format!("id='c'\n{over}=1\n[[relation]]\nkind='must-not-invent'\ntarget='t'").as_bytes(),
+        "limit:",
+    );
+}
+
+#[test]
+fn accepted_target_total_is_accumulated_across_relations() {
+    fn contract(counts: &[usize]) -> String {
+        let mut text = String::from("id='c'\n");
+        let mut serial = 0usize;
+        for (relation, count) in counts.iter().enumerate() {
+            let values = (0..*count)
+                .map(|_| {
+                    let value = format!("'v{serial}'");
+                    serial += 1;
+                    value
+                })
+                .collect::<Vec<_>>()
+                .join(",");
+            text.push_str(&format!(
+                "[[relation]]\nkind='may-normalize'\nsource='s{relation}'\ntarget='t{relation}'\naccepted_targets=[{values}]\n"
+            ));
+        }
+        text
+    }
+
+    load_ok(&contract(&[4096, 4096, 4096, 4096]));
+    assert_error(contract(&[4096, 4096, 4096, 4096, 1]).as_bytes(), "limit:");
+}
+
+#[test]
 fn from_bytes_treats_hostile_source_as_an_opaque_preserved_label() {
     let marker = unique_temp_file("must-not-exist");
     let source = format!(
