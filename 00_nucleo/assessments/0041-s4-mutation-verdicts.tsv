@@ -1,0 +1,2 @@
+mutant_id	path	function	mutation	outcome	serial_reproduction	semantic_effect	verdict	authority	action	final_outcome
+S4-M001	01_core/rules/range_pattern.rs	check	replace check -> Vec<Violation<'a>> with vec![Default::default()]	UNVIABLE	not applicable: compile failure recorded	Violation does not implement Default, so the generated replacement is outside the Rust type contract	TOOL-LIMIT	rustc type system + cargo-mutants	retain as inventory only; make no semantic claim	UNVIABLE
