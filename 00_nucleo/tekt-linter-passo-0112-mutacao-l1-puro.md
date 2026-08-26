@@ -1,9 +1,9 @@
 # Passo operacional 0112 — mutação dirigida do núcleo L1 puro
 
-> **Estado inicial:** ESCRITO — execução não iniciada  
-> **Branch de execução:** `codex/p0112-mutation-l1-pure`  
-> **Precondição:** P0111 integrado em `master` e linter do sistema atualizado  
-> **Assessment:** 0040  
+> **Estado inicial:** ESCRITO — execução não iniciada
+> **Branch de execução:** `codex/p0112-mutation-l1-pure`
+> **Precondição:** P0111 integrado em `master` e linter do sistema atualizado
+> **Assessment:** 0040
 > **Objetivo terminal:** executar e fechar um universo fixo de 38 mutantes em seis módulos
 > L1 puros, saneando todo `TEST-GAP` acionável sem transferir política, I/O ou coordenação
 > para o núcleo Tekt.
