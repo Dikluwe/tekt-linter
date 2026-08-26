@@ -41,3 +41,49 @@ impl CitationFreshnessResolver for UnknownCitationFreshness {
         CitationFreshness::Unknown(CitationUnknownReason::Io)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn closed_modalities_and_reasons_preserve_identity() {
+        let stale = [
+            CitationStaleReason::MissingFile,
+            CitationStaleReason::InvalidLine,
+            CitationStaleReason::EmptyLine,
+        ];
+        let unknown = [
+            CitationUnknownReason::OutsideRoot,
+            CitationUnknownReason::Symlink,
+            CitationUnknownReason::InvalidRoot,
+            CitationUnknownReason::Io,
+            CitationUnknownReason::InvalidUtf8,
+            CitationUnknownReason::BudgetExceeded,
+            CitationUnknownReason::ConcurrentMutation,
+        ];
+
+        assert_eq!(CitationFreshness::Valid.clone(), CitationFreshness::Valid);
+        for reason in stale {
+            let value = CitationFreshness::Stale(reason);
+            assert_eq!(value.clone(), value);
+            assert_ne!(value, CitationFreshness::Valid);
+        }
+        for reason in unknown {
+            let value = CitationFreshness::Unknown(reason);
+            assert_eq!(value.clone(), value);
+            assert_ne!(value, CitationFreshness::Valid);
+        }
+    }
+
+    #[test]
+    fn default_resolver_is_total_and_fail_closed_without_io() {
+        let resolver = UnknownCitationFreshness;
+        for (path, line) in [("", 0), ("../hostile", usize::MAX), ("núcleo/α.md", 7)] {
+            assert_eq!(
+                resolver.resolve(path, line),
+                CitationFreshness::Unknown(CitationUnknownReason::Io)
+            );
+        }
+    }
+}
