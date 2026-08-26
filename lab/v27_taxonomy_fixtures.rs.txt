@@ -1,0 +1,108 @@
+#![allow(dead_code, unreachable_patterns, unused_variables)]
+
+enum Kind { A, B, C, D }
+enum Wrapped { One(u8), Two(u8), Empty }
+struct Config { enabled: bool }
+
+fn sink(_: u8) {}
+
+// EXPECT ALIAS-EQUIVALENCE: explicit local alias evidence.
+fn alias_equivalence(value: &str) -> u8 {
+    match value {
+        // "cyan" and "aqua" are public aliases accepted by this interface.
+        "cyan" => 1,
+        "aqua" => 1,
+        _ => 0,
+    }
+}
+
+// EXPECT DECISION-EQUIVALENCE: closed disjoint unit variants.
+fn decision_equivalence(value: Kind) -> u8 {
+    match value { Kind::A => 1, Kind::B => 1, Kind::C => 2, Kind::D => 3 }
+}
+
+// EXPECT CONFIGURED-EQUIVALENCE: same explicit configuration expression.
+fn configured_equivalence(value: Kind, config: &Config) -> bool {
+    match value {
+        Kind::A => config.enabled,
+        Kind::B => config.enabled,
+        _ => false,
+    }
+}
+
+// EXPECT DECLARATIVE-TABLE: lookup table, not an actionable merge.
+fn declarative_table(value: &str) -> u8 {
+    match value {
+        "a" => 1, "b" => 1, "c" => 1, "d" => 1,
+        "e" => 2, "f" => 3, "g" => 4, "h" => 5,
+        _ => 0,
+    }
+}
+
+// EXPECT EVIDENCE-PRESERVING-SEPARATION: evidence belongs to one arm.
+fn evidence_separation(value: Kind) -> u8 {
+    match value {
+        // See https://example.invalid/a for the compatibility reason.
+        Kind::A => 1,
+        Kind::B => 1,
+        _ => 0,
+    }
+}
+
+// EXPECT EMPTY-EQUIVALENCE.
+fn empty_equivalence(value: Kind) {
+    match value { Kind::A => {}, Kind::B => {}, _ => {} }
+}
+
+// EXPECT MACRO-EQUIVALENCE.
+fn macro_equivalence(value: Kind) {
+    match value { Kind::A => println!("same"), Kind::B => println!("same"), _ => {} }
+}
+
+// EXPECT OVERLAP-OR-SUBSUMPTION.
+fn overlap(value: (Kind, u8)) -> u8 {
+    match value { (Kind::A, _) => 1, (_, _) => 1 }
+}
+
+// EXPECT BINDING-DEPENDENT.
+fn binding_dependent(value: Wrapped) -> u8 {
+    match value { Wrapped::One(x) => 7, Wrapped::Two(x) => 7, _ => 0 }
+}
+
+// EXPECT silence: different bodies and a distinct guard.
+fn negative_guard_and_body(value: Kind, enabled: bool) -> u8 {
+    match value { Kind::A if enabled => 1, Kind::B => 1, Kind::C => 2, _ => 0 }
+}
+
+// EXPECT silence: unnamed operator tokens are semantically relevant.
+fn negative_operator(value: Kind, number: u8) -> bool {
+    match value { Kind::A => number == 1, Kind::B => number != 1, _ => false }
+}
+
+// EXPECT DECISION-EQUIVALENCE, not alias: alias comment names another pair.
+fn alias_scope_attack(value: &str) -> u8 {
+    match value {
+        // "one" and "two" are aliases.
+        "one" => 1,
+        "two" => 1,
+        "alpha" => 2,
+        "beta" => 2,
+        _ => 0,
+    }
+}
+
+// EXPECT DECLARATIVE-TABLE: reduced analogue of the ported font table.
+fn ported_font_table(value: &str) -> u16 {
+    match value {
+        // Ported from upstream; keep entries individually auditable.
+        "Font-A" => 700,
+        "Font-B" => 700,
+        "Font-C" => 700,
+        "Font-D" => 700,
+        "Font-E" => 400,
+        "Font-F" => 500,
+        "Font-G" => 600,
+        "Font-H" => 800,
+        _ => 0,
+    }
+}

@@ -1,0 +1,41 @@
+path	line	owner	baseline	human_class	rationale
+03_infra/src/fonts.rs	517	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	521	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	527	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	536	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	537	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	644	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	654	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	660	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	662	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	670	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	675	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	679	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	687	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	693	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	699	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	717	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	738	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	749	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	750	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	751	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	752	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	753	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	754	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	755	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	770	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	771	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	772	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	773	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+03_infra/src/fonts.rs	784	find_exception	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+01_core/src/entities/math_class.rs	66	default_math_class	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+01_core/src/compiler/stdlib/shapes.rs	41	parse_color	PROVEN-SYNTACTIC	ALIAS-EQUIVALENCE	P477 declares two CSS aliases; gray/grey is already condensed, leaving cyan/aqua as the second pair
+01_core/src/compiler/math/symbols.rs	74	ident_to_unicode	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+01_core/src/compiler/math/symbols.rs	109	ident_to_unicode	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+01_core/src/compiler/parse/math.rs	203	math_op	PROVEN-SYNTACTIC	DECISION-EQUIVALENCE	class reviewed against local match context
+01_core/src/compiler/lexer/markup.rs	42	markup	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+01_core/src/compiler/eval/rules.rs	211	math_elem_params	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+01_core/src/compiler/lexer/mod.rs	212	keyword	PROVEN-SYNTACTIC	DECLARATIVE-TABLE	class reviewed against local match context
+01_core/src/compiler/eval/operators/ordering.rs	73	apply_binary	PROVEN-SYNTACTIC	FALSE-EQUIVALENCE	fingerprint P0114 erased operator token
+01_core/src/compiler/eval/operators/ordering.rs	74	apply_binary	PROVEN-SYNTACTIC	FALSE-EQUIVALENCE	fingerprint P0114 erased operator token
+01_core/src/compiler/stdlib/structural/table_grid.rs	291	extract_usize_or_none_min	PROVEN-SYNTACTIC	DECISION-EQUIVALENCE	class reviewed against local match context

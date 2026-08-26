@@ -1,0 +1,55 @@
+#![allow(dead_code, irrefutable_let_patterns, unused_variables)]
+
+enum Kind { A, B, C, D }
+fn sink(_: u8) {}
+
+// V27 POSITIVE: two unit patterns, identical literal body.
+fn v27_positive_two(value: Kind) -> u8 {
+    match value { Kind::A => 1, Kind::B => 1, _ => 0 }
+}
+
+// V27 POSITIVE: three equal calls, including a non-adjacent pair/group.
+fn v27_positive_three(value: Kind) {
+    match value {
+        Kind::A => sink(1),
+        Kind::D => sink(2),
+        Kind::B => sink(1),
+        Kind::C => sink(1),
+    }
+}
+
+// V27 POSITIVE: comments and whitespace are irrelevant.
+fn v27_positive_layout(value: Kind) -> u8 {
+    match value {
+        Kind::A => { /* layout */ 7 },
+        Kind::B => {
+            7
+        },
+        _ => 0,
+    }
+}
+
+// V27 NEGATIVE: argument differs.
+fn v27_negative_argument(value: Kind) {
+    match value { Kind::A => sink(1), Kind::B => sink(2), _ => {} }
+}
+
+// V27 NEGATIVE: guard differs.
+fn v27_negative_guard(value: Kind, enabled: bool) -> u8 {
+    match value { Kind::A if enabled => 1, Kind::B => 1, _ => 0 }
+}
+
+// V27 NEGATIVE: bindings feed different expressions.
+fn v27_negative_binding(value: Option<u8>) -> u8 {
+    match value { Some(x) => x, None => 0 }
+}
+
+// V27 UNKNOWN: equal empty bodies do not prove beneficial composition.
+fn v27_unknown_empty(value: Kind) {
+    match value { Kind::A => {}, Kind::B => {}, _ => {} }
+}
+
+// V27 UNKNOWN: macro expansion is outside the syntactic oracle.
+fn v27_unknown_macro(value: Kind) {
+    match value { Kind::A => println!("same"), Kind::B => println!("same"), _ => {} }
+}

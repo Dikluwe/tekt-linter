@@ -1,0 +1,12 @@
+alias_equivalence	ALIAS-EQUIVALENCE
+alias_scope_attack	ALIAS-EQUIVALENCE
+alias_scope_attack	DECISION-EQUIVALENCE
+binding_dependent	BINDING-DEPENDENT
+configured_equivalence	CONFIGURED-EQUIVALENCE
+decision_equivalence	DECISION-EQUIVALENCE
+declarative_table	DECLARATIVE-TABLE
+empty_equivalence	EMPTY-EQUIVALENCE
+evidence_separation	EVIDENCE-PRESERVING-SEPARATION
+macro_equivalence	MACRO-EQUIVALENCE
+overlap	OVERLAP-OR-SUBSUMPTION
+ported_font_table	DECLARATIVE-TABLE
