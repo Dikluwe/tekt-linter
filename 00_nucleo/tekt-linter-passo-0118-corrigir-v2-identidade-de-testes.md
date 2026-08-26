@@ -61,8 +61,8 @@ SourceRole::Unknown
 - `Production`: pode receber V2 quando L1 e sem teste associado;
 - `Test`: é evidência candidata para outro artefato e nunca recebe V2;
 - `DeclarationOnly`: preserva a isenção vigente, sem fingir cobertura;
-- `Unknown`: não vira `Test` nem cobertura por default; em L1 produtivo permanece
-  conservador e observável conforme decisão do contrato.
+- `Unknown`: não vira `Test`, `Production` nem cobertura por default. É projetado como
+  exatamente um V0 Fatal com razão fechada e path, nunca como V2 ou sucesso silencioso.
 
 Não codificar `Test` como `has_test_coverage = true`: papel do arquivo e relação de
 cobertura são observáveis diferentes.
@@ -75,17 +75,19 @@ O primeiro lote deve preservar as convenções já reconhecidas pelo walker:
 |---|---|
 | Python | `test_<stem>.py`, `<stem>_test.py` |
 | Rust | `<stem>_test.rs` e bloco inline `#[cfg(test)]` no produtivo |
-| TypeScript | `<stem>.test.ts[x]`, `<stem>.spec.ts[x]` |
+| TypeScript | `<stem>.test.ts[x]`, `<stem>.spec.ts[x]`; preservar a matriz cruzada atual, na qual `.ts` e `.tsx` procuram os quatro sufixos |
 | Zig | `<stem>_test.zig` |
 | Go | `<stem>_test.go` |
 | C | `test_<stem>.c`, `<stem>_test.c` |
-| C++ | `test_<stem>.cpp|cc`, `<stem>_test.cpp|cc` |
-| Java | convenções `Test`/`Tests` já aceitas pelo walker |
-| Elixir | convenção vigente extraída do parser/walker |
+| C++ | para fontes `.cpp`, `.cc` e `.cxx`: `test_<stem>.cpp|cc`, `<stem>_test.cpp|cc`; headers permanecem fora desta associação |
+| Java | `<stem>Test.java`, `<stem>Tests.java`, `Test<stem>.java`, `<stem>_test.java`, com `<stem>` não vazio e case-sensitive |
+| Elixir | `<stem>_test.exs` e `<stem>_test.ex`, com `<stem>` não vazio e case-sensitive |
 
-O inventário A deve fechar precisamente Java e Elixir antes do contrato. Convenção não
-enumerada, path não UTF-8, ambiguidade de stem, artefato gerado opaco ou configuração
-externa não resolvida é `Unknown`, nunca associação inventada.
+Convenção não enumerada, path não UTF-8, ambiguidade de stem, artefato gerado opaco ou
+configuração externa não resolvida é `Unknown` e produz V0 Fatal, nunca associação
+inventada. Um nome apenas parecido (`Testament.java`, `contest.py`,
+`catalogo_test_helper.py`) não casa sem que a transformação fechada produza um stem alvo
+não vazio e um candidato produtivo compatível no inventário.
 
 ### 3.3 Relação de cobertura
 
@@ -99,6 +101,22 @@ Substituir o booleano sobrecarregado por informação que preserve pelo menos:
 
 L3 extrai papel e relações físicas. L1 recebe somente valores puros e decide V2. L1 não
 abre diretórios nem interpreta nomes de arquivo.
+
+A relação substitui a antiga formulação informal 1:1 de cobertura por:
+
+```text
+cada evidência de teste aponta para no máximo um módulo produtivo
+um módulo produtivo pode possuir um ou mais artefatos de teste
+```
+
+Múltiplos testes válidos do mesmo módulo continuam produzindo apenas o estado `Covered`.
+Um teste que corresponda a dois módulos é `Unknown(AmbiguousTarget)` e gera V0 Fatal; não
+cobre nenhum deles por ordem de descoberta.
+
+Paths relacionais em L1 usam identidade lógica UTF-8 relativa à raiz, separador `/`, sem
+`.`/`..`/prefixo absoluto, preservando case e bytes Unicode. Path físico não representável
+é `Unknown(NonUtf8Path)`. Ordenação é lexical pelos bytes UTF-8 do path lógico e depois
+pela ordem normativa da origem, nunca por `PathBuf` dependente da plataforma.
 
 ## 4. Prompts que originam programa e testes
 
@@ -220,7 +238,7 @@ negativas. O verificador sela somente com score 1.0 sobre mutantes válidos.
 | `<stem>_test.py` só com helpers | Test | não aplicável | 0 |
 | arquivo produtivo chamando `pytest.raises` | Production | ausente | 1 |
 | arquivo declarativo | DeclarationOnly | isento | 0 |
-| path ambíguo/opaco | Unknown | unknown | nunca sucesso implícito |
+| path ambíguo/opaco | Unknown | unknown | V0 Fatal, zero V2 |
 | teste excluído/symlink/diretório | não aceito como evidência | ausente | 1 no produtivo |
 | teste associado a dois módulos sem declaração | Unknown | unknown | bloqueia associação |
 
@@ -295,4 +313,3 @@ O passo pode terminar em:
 8. decidir separadamente o manifesto para layouts não adjacentes;
 9. produzir assessment, recibos e veredito;
 10. solicitar autorização de merge e atualização do linter.
-
