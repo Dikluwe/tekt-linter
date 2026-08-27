@@ -39,7 +39,7 @@ Saídas terminais:
 | Estado observado | Resultado |
 |---|---|
 | arquivo ausente e topologia reconhecível | criar exatamente um TOML; exit 0 |
-| arquivo regular já existente | não escrever; exit 1 com mensagem “já existe” |
+| arquivo regular já existente | não escrever; exit 1 |
 | destino é symlink, diretório ou tipo especial | não seguir/não escrever; exit 2 |
 | raiz inexistente, symlink ou inacessível | zero escrita; exit 2 |
 | topologia ambígua ou sem evidência suficiente | zero escrita; exit 2 e listar a ambiguidade |
@@ -47,6 +47,52 @@ Saídas terminais:
 
 Não adicionar `--force` neste passo. Sobrescrita e migração de configuração existente são
 problemas diferentes e exigem decisão própria.
+
+`init` passa a ser palavra reservada no primeiro argumento. Para analisar um diretório
+literalmente chamado `init`, usar `crystalline-lint ./init`. O subcomando aceita somente
+seu `PATH`; flags próprias do lint (`--config`, `--fix-hashes`, `--update-snapshot`,
+`--dry-run`, `--quiet`, `--format`, `--checks`) combinadas com `init` são erro de parsing
+Clap, exit 2 e zero escrita.
+
+### Apresentação normativa
+
+Usar `human_path` para representar paths. Não imprimir aspas. Os resultados de domínio
+têm bytes e canais exatos:
+
+```text
+sucesso  stdout: CREATED <path>/crystalline.toml\n
+         stderr: vazio
+
+Present  stdout: vazio
+         stderr: crystalline-lint: config already exists: <path>/crystalline.toml\n
+
+Unsafe   stdout: vazio
+         stderr: crystalline-lint: unsafe config initialization: <reason>\n
+
+Unknown  stdout: vazio
+         stderr: crystalline-lint: cannot infer Tekt topology: <reason>\n
+```
+
+Razões fechadas deste passo:
+
+- `project root does not exist`;
+- `project root is not a physical directory`;
+- `project root is not accessible`;
+- `config destination is not a regular file` (quando o destino existe mas não é regular;
+  symlink, inclusive dangling/loop, é `Unsafe`, não `Present`);
+- `required directories missing: 00_nucleo, 01_core` (listar somente ausentes, nessa ordem);
+- `case-ambiguous layer directories: <nomes>` (nomes ordenados por bytes e separados por
+  `, `);
+- `cannot inventory project root: <erro-do-SO>`;
+- `cannot create temporary config: <erro-do-SO>`;
+- `cannot write temporary config: <erro-do-SO>`;
+- `generated config failed validation: <erro-do-loader>`;
+- `config destination appeared concurrently`;
+- `cannot publish config: <erro-do-SO>`;
+- `cannot clean temporary config: <erro-do-SO>`.
+
+Erros de parsing pertencem ao Clap e seguem sua apresentação vigente; os oráculos exigem
+apenas exit 2 e zero escrita para eles.
 
 ## 3. Obrigação observável
 
@@ -86,10 +132,14 @@ Regras:
 2. ordenar por bytes/path antes de construir o plano;
 3. pelo menos L0 e L1 devem existir para reconhecer uma topologia Tekt neste passo;
 4. camadas opcionais ausentes não são emitidas em `[layers]`;
-5. dois candidatos para a mesma camada, aliases não reconhecidos ou diferença apenas de
-   caixa que possa ser confundida viram `Unknown`;
-6. não inferir camada pelo conteúdo, linguagem, `Cargo.toml`, `package.json` ou imports;
-7. não criar diretórios de camada nem `00_nucleo`; somente o TOML.
+5. para cada nome canônico, qualquer entrada de primeiro nível que seja diferente em
+   bytes, mas igual por `eq_ignore_ascii_case`, torna a topologia `Unknown`; comparar
+   somente ASCII e somente contra os seis nomes canônicos;
+6. diretórios arbitrários (`src`, `core`, `nucleus`, nomes Unicode e nomes não UTF-8) são
+   irrelevantes, salvo se satisfizerem a regra ASCII anterior; não existe outro conceito
+   de “alias não reconhecido” neste passo;
+7. não inferir camada pelo conteúdo, linguagem, `Cargo.toml`, `package.json` ou imports;
+8. não criar diretórios de camada nem `00_nucleo`; somente o TOML.
 
 Topologias personalizadas continuam suportadas pelo carregador, mas exigem TOML escrito
 deliberadamente pelo projeto. Inferi-las automaticamente fica fora deste passo.
@@ -162,6 +212,16 @@ Antes de escrever:
 Uma corrida em que outro processo cria `crystalline.toml` entre plano e publicação deve
 preservar o arquivo concorrente e retornar conflito. Nunca usar truncamento, rename que
 substitui destino existente ou escrita direta no arquivo final.
+
+As garantias de limpeza cobrem todos os erros retornados pelo processo. Queda abrupta,
+`SIGKILL`, kernel panic e perda de energia podem deixar temporário órfão e ficam fora do
+contrato. O nome temporário deve ser exclusivo e não previsível; a operação remove somente
+o temporário que criou. Durabilidade após publicação (incluindo `fsync` do diretório) fica
+fora deste passo; o sucesso atesta criação visível e conteúdo validado.
+
+O contrato executável obrigatório é Unix/Linux, ambiente do linter instalado. Em Windows,
+compilação e comportamento básico não devem regredir, mas nomes não UTF-8, arquivo especial
+e primitivas de publicação recebem testes condicionais e não compõem o selo P0119.
 
 ## 8. Compatibilidade com o lint atual
 
