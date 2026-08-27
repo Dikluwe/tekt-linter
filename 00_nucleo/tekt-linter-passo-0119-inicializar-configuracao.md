@@ -94,6 +94,26 @@ Razões fechadas deste passo:
 Erros de parsing pertencem ao Clap e seguem sua apresentação vigente; os oráculos exigem
 apenas exit 2 e zero escrita para eles.
 
+### Precedência total
+
+Classificar e interromper na primeira condição verdadeira, nesta ordem:
+
+1. erro de parsing Clap;
+2. raiz inexistente;
+3. raiz symlink, arquivo ou outro tipo que não diretório físico;
+4. raiz sem acesso suficiente para inventário;
+5. destino existente symlink/diretório/especial (`Unsafe`);
+6. destino existente arquivo regular (`Present`), mesmo se inválido ou se a topologia for
+   incompleta;
+7. falha de inventário;
+8. uma ou mais variantes ambíguas por caixa (`Unknown`);
+9. ausência de L0 e/ou L1 (`Unknown`);
+10. falhas de temporário, escrita, validação, publicação ou limpeza, na ordem operacional.
+
+Para ambiguidade, reunir todas as entradas conflitantes, ordenar pelos bytes do nome e
+separar por `, `. Ela precede a lista de diretórios obrigatórios ausentes. Para ausência,
+listar somente os canônicos ausentes, sempre `00_nucleo` antes de `01_core`.
+
 ## 3. Obrigação observável
 
 O inicializador deve ser função de um inventário congelado da raiz, não da ordem de
@@ -189,9 +209,12 @@ mesmo inventário, independentemente da plataforma e da ordem de criação dos d
   total de criação/recusa;
 - **L2:** comando `init`, mensagens, códigos de saída e apresentação do plano;
 - **L3:** inventário confinado, serialização TOML determinística e escrita atômica;
-- **L4:** sequência validar raiz → inventariar → planejar → publicar → reler/validar.
+- **L4:** sequência validar raiz → classificar destino → inventariar → planejar → criar,
+  escrever e sincronizar temporário → validar temporário → publicar sem substituição.
 
-`CrystallineConfig::load` continua sendo a autoridade de validação do TOML publicado. O
+`CrystallineConfig::load` continua sendo a autoridade de validação dos bytes candidatos.
+Ele lê o temporário completo antes da publicação. Não há releitura obrigatória depois da
+publicação, porque o objeto publicado deve ser o mesmo inode/bytes já validados; o
 inicializador não mantém um segundo validador permissivo.
 
 O caminho passado por `--config` não participa de `init` neste passo. O comando sempre
@@ -222,6 +245,16 @@ fora deste passo; o sucesso atesta criação visível e conteúdo validado.
 O contrato executável obrigatório é Unix/Linux, ambiente do linter instalado. Em Windows,
 compilação e comportamento básico não devem regredir, mas nomes não UTF-8, arquivo especial
 e primitivas de publicação recebem testes condicionais e não compõem o selo P0119.
+
+Nos motivos com `<erro-do-SO>`, interpolar exatamente `std::io::Error::to_string()`, sem
+`Debug`, cadeia adicional, código bruto ou path acrescentado. Em `<erro-do-loader>`, usar
+exatamente a `String` retornada por `CrystallineConfig::load`. O prefixo normativo fornece
+o contexto.
+
+Se a operação principal falhar e a remoção do temporário também falhar, o erro de limpeza
+tem precedência e a saída contém somente `cannot clean temporary config: <erro-do-SO>`.
+Se a limpeza tiver sucesso, preservar a razão da falha principal. Depois de publicação
+bem-sucedida não existe limpeza do destino final.
 
 ## 8. Compatibilidade com o lint atual
 
