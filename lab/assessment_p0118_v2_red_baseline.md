@@ -1,8 +1,8 @@
-# Assessment P0118 — baseline RED de V2
+# Assessment P0118 — observação externa RED de V2
 
 Data: 2026-08-26  
 Baseline do produto: `961030bb3520acfd74b53858cf55020bfebb8ffb`  
-Passo protegido: `fa13c368525d952ee1c102c32e3f47673e5f98fa` antes do fechamento nominal das razões
+Estado: evidência externa somente leitura; removida do selo reproduzível pela revisão de escopo
 
 ## Comando
 
@@ -10,7 +10,7 @@ Passo protegido: `fa13c368525d952ee1c102c32e3f47673e5f98fa` antes do fechamento 
 /home/dikluwe/.cargo/bin/crystalline-lint /repos/Antigravity/Tradução --checks v2
 ```
 
-Resultado congelado antes do primeiro patch funcional: exit `1`, exatamente cinco V2:
+Resultado observado antes do primeiro patch funcional: exit `1`, exatamente cinco V2:
 
 1. `01_core/algorithms/test_entities.py`
 2. `01_core/algorithms/test_glossary.py`
@@ -31,4 +31,7 @@ SHA-256 da saída combinada stdout/stderr:
 | `test_quality_estimation.py` | `243bc826b47030d761c6999e89c703a704adcdce1b308414cc1826a821272383` |
 | `test_veto.py` | `e7d256f2c6509e5d33b445b95fffae5d8616f07f7256e42579df45c1f5f28d65` |
 
-O repositório Tradução é evidência somente leitura. P0118 não autoriza nenhuma escrita nele.
+O repositório Tradução é evidência somente leitura. P0118 não autoriza nenhuma escrita
+nele nem a cópia de seus bytes para fixtures. Os hashes permitem confirmar que o smoke
+posterior observou os mesmos arquivos, mas não formam corpus autossuficiente e não compõem
+o selo do contrato. O gate reproduzível usa apenas fixtures sintéticas do `tekt-linter`.
