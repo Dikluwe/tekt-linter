@@ -1,11 +1,13 @@
 # Prompt: composição do linter
-Hash do Código: 07e23fdf
+Hash do Código: 3d891254
 
 Owner exclusivo: `04_wiring/main.rs`.
 
 Compor config, adapters, parsers, regras e shell respeitando L0→L1→L2→L3→L4. O wiring
 pode paralelizar trabalho independente, mas ordena resultados antes de apresentar e mantém
 falhas de infraestrutura distintas de violações. Nenhuma política de domínio nasce em L4.
+O subcomando explícito `init` é roteado antes do pipeline de lint: valida raiz e destino,
+obtém inventário L3, aplica plano L1, publica via adapter e apresenta pelo shell L2.
 
 ## Critério observável
 

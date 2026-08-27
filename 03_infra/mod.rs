@@ -7,6 +7,7 @@
 pub mod c_parser;
 pub mod citation_freshness;
 pub mod config;
+pub mod config_init;
 pub mod cpp_parser;
 pub mod crate_registry;
 pub mod elixir_parser;

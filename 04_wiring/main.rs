@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 669b4590
+//! @prompt-hash 4797620c
 //! @layer L4
 //! @updated 2026-08-24
 
@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process;
 
-use clap::Parser as ClapParser;
+use clap::{CommandFactory, FromArgMatches};
 use rayon::prelude::*;
 
 use crystalline_lint::contracts::citation_freshness::{
@@ -34,6 +34,7 @@ use crystalline_lint::entities::violation::{Location, Violation, ViolationLevel}
 use crystalline_lint::infra::c_parser::CParser;
 use crystalline_lint::infra::citation_freshness::FsCitationFreshnessResolver;
 use crystalline_lint::infra::config::CrystallineConfig;
+use crystalline_lint::infra::config_init::{inspect_root, publish_config, serialize_config};
 use crystalline_lint::infra::cpp_parser::CppParser;
 use crystalline_lint::infra::crate_registry::CrateRegistry;
 use crystalline_lint::infra::elixir_parser::ElixirParser;
@@ -76,11 +77,13 @@ use crystalline_lint::rules::{
     quarantine_leak, range_pattern, semantic_field_loss, test_file, unsourced_constant,
     wildcard_saturation, wiring_logic_leak,
 };
-use crystalline_lint::shell::cli::{validate_args, Cli, EnabledChecks, OutputFormat};
-use crystalline_lint::shell::fix_hashes::{self, HashRewriter, TransactionalHashRewriter};
-use crystalline_lint::shell::refinement::{
-    self, Command as RefinementCommand, RefinementOutputFormat,
+use crystalline_lint::shell::cli::{
+    init_options_are_clean, validate_args, Cli, EnabledChecks, OutputFormat,
 };
+use crystalline_lint::shell::command::Command as ShellCommand;
+use crystalline_lint::shell::config_init::{created, present, unknown_message, unsafe_message};
+use crystalline_lint::shell::fix_hashes::{self, HashRewriter, TransactionalHashRewriter};
+use crystalline_lint::shell::refinement::{self, RefinementOutputFormat};
 use crystalline_lint::shell::update_snapshot::{self, SnapshotRewriter};
 use crystalline_lint::{PromptOwnership, PromptOwnershipLayer};
 use std::collections::HashMap;
@@ -104,9 +107,67 @@ fn select_git_executable() -> Result<PathBuf, String> {
 }
 
 fn main() {
-    let cli = Cli::parse();
+    let matches = Cli::command().get_matches();
+    let init_options_clean = init_options_are_clean(&matches);
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|error| error.exit());
 
-    if let Some(RefinementCommand::SealRefinement(args)) = &cli.command {
+    if let Some(ShellCommand::Init(args)) = &cli.command {
+        use crystalline_lint::entities::config_init::{
+            decide_init, detect_topology, ConfigDestinationState, InitPlan, InitReceipt,
+            PublicationFailure,
+        };
+
+        if !init_options_clean {
+            eprintln!("error: lint options cannot be used with 'init'");
+            process::exit(2);
+        }
+        let inventory = inspect_root(&args.path).unwrap_or_else(|reason| {
+            eprint!("{}", unsafe_message(&reason));
+            process::exit(2)
+        });
+        let destination = args.path.join("crystalline.toml");
+        let topology = if matches!(inventory.destination, ConfigDestinationState::Absent) {
+            Some(detect_topology(&inventory.entries))
+        } else {
+            None
+        };
+        let receipt = match decide_init(inventory.destination, topology) {
+            InitPlan::Create(topology) => {
+                let bytes = serialize_config(&topology);
+                match publish_config(&args.path, &bytes) {
+                    Ok(_) => InitReceipt::Created,
+                    Err(reason) => InitReceipt::PublicationFailed(PublicationFailure(reason)),
+                }
+            }
+            InitPlan::RefusePresent => InitReceipt::RefusedPresent,
+            InitPlan::RefuseUnsafe(reason) => InitReceipt::RefusedUnsafe(reason),
+            InitPlan::RefuseUnknown(reason) => InitReceipt::RefusedUnknown(reason),
+        };
+        match receipt {
+            InitReceipt::Created => {
+                print!("{}", created(&destination));
+                process::exit(0);
+            }
+            InitReceipt::RefusedPresent => {
+                eprint!("{}", present(&destination));
+                process::exit(1);
+            }
+            InitReceipt::RefusedUnsafe(reason) => {
+                eprint!("{}", unsafe_message(&reason.0));
+                process::exit(2);
+            }
+            InitReceipt::RefusedUnknown(reason) => {
+                eprint!("{}", unknown_message(&reason));
+                process::exit(2);
+            }
+            InitReceipt::PublicationFailed(reason) => {
+                eprint!("{}", unsafe_message(&reason.0));
+                process::exit(2);
+            }
+        }
+    }
+
+    if let Some(ShellCommand::SealRefinement(args)) = &cli.command {
         let manifest_bytes = read_manifest(&args.manifest).unwrap_or_else(|error| {
             eprintln!("crystalline-lint: refinement seal manifest error: {error}");
             process::exit(2)
@@ -274,7 +335,7 @@ fn main() {
         process::exit(0);
     }
 
-    if let Some(RefinementCommand::Refine(args)) = &cli.command {
+    if let Some(ShellCommand::Refine(args)) = &cli.command {
         let source = load_snapshot(&args.before).unwrap_or_else(|error| {
             eprintln!("crystalline-lint: refinement input error: {error}");
             process::exit(2);
@@ -295,7 +356,7 @@ fn main() {
         process::exit(refinement::exit_code(&verdict));
     }
 
-    if let Some(RefinementCommand::Snapshot(args)) = &cli.command {
+    if let Some(ShellCommand::Snapshot(args)) = &cli.command {
         let specs = load_observable_specs(&args.contract).unwrap_or_else(|error| {
             eprintln!("crystalline-lint: snapshot contract error: {error}");
             process::exit(2);
@@ -320,7 +381,7 @@ fn main() {
         process::exit(0);
     }
 
-    if let Some(RefinementCommand::RefineRevisions(args)) = &cli.command {
+    if let Some(ShellCommand::RefineRevisions(args)) = &cli.command {
         let specs = load_observable_specs(&args.contract).unwrap_or_else(|error| {
             eprintln!("crystalline-lint: refinement contract error: {error}");
             process::exit(2);

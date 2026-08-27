@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use clap::{Parser, ValueEnum};
+use clap::{parser::ValueSource, ArgMatches, Parser, ValueEnum};
 use colored::Colorize;
 use serde_json::json;
 
@@ -21,7 +21,7 @@ use crate::shell::path_encoding::{human_path, machine_path_uri};
 #[command(name = "crystalline-lint", about = "Crystalline Architecture Linter")]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Option<crate::shell::refinement::Command>,
+    pub command: Option<crate::shell::command::Command>,
 
     /// Project root to analyse
     #[arg(default_value = ".")]
@@ -103,10 +103,30 @@ pub enum OutputFormat {
     N16Summary,
 }
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, ValueEnum, PartialEq, Eq)]
 pub enum FailLevel {
     Error,
     Warning,
+}
+
+pub fn init_options_are_clean(matches: &ArgMatches) -> bool {
+    const LINT_OPTION_IDS: [&str; 12] = [
+        "path",
+        "format",
+        "fail_on",
+        "checks",
+        "no_drift",
+        "no_stale",
+        "quiet",
+        "config",
+        "fix_hashes",
+        "update_snapshot",
+        "dry_run",
+        "emit_resolution",
+    ];
+    LINT_OPTION_IDS
+        .iter()
+        .all(|id| matches.value_source(id) != Some(ValueSource::CommandLine))
 }
 
 // ── Enabled checks ────────────────────────────────────────────────────────────

@@ -6,25 +6,13 @@
 
 use std::path::PathBuf;
 
-use clap::{Args, Subcommand, ValueEnum};
+use clap::{Args, ValueEnum};
 use serde_json::json;
 
 use crate::entities::refinement::{
     Inconclusive, ObservableValue, RefinementVerdict, UnknownReason, Witness,
 };
 use crate::shell::path_encoding::human_path;
-
-#[derive(Debug, Subcommand)]
-pub enum Command {
-    /// Compare explicit before/after semantic snapshots under a refinement contract
-    Refine(RefineArgs),
-    /// Extract a deterministic Rust-query refinement snapshot from a project
-    Snapshot(SnapshotArgs),
-    /// Compare two immutable Git revisions without checkout
-    RefineRevisions(RefineRevisionsArgs),
-    /// Validate frozen refinement oracles and publish a deterministic receipt
-    SealRefinement(SealRefinementArgs),
-}
 
 #[derive(Debug, Args)]
 pub struct SealRefinementArgs {

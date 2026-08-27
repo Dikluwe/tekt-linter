@@ -5,6 +5,8 @@
 //! @updated 2025-03-13
 
 pub mod cli;
+pub mod command;
+pub mod config_init;
 pub mod fix_hashes;
 pub mod n16_summary;
 pub mod path_encoding;
