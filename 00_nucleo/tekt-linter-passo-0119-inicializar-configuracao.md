@@ -236,11 +236,14 @@ Uma corrida em que outro processo cria `crystalline.toml` entre plano e publica�
 preservar o arquivo concorrente e retornar conflito. Nunca usar truncamento, rename que
 substitui destino existente ou escrita direta no arquivo final.
 
-As garantias de limpeza cobrem todos os erros retornados pelo processo. Queda abrupta,
-`SIGKILL`, kernel panic e perda de energia podem deixar temporário órfão e ficam fora do
-contrato. O nome temporário deve ser exclusivo e não previsível; a operação remove somente
-o temporário que criou. Durabilidade após publicação (incluindo `fsync` do diretório) fica
-fora deste passo; o sucesso atesta criação visível e conteúdo validado.
+Em toda falha retornada, a operação tenta remover somente o temporário que criou. Se essa
+remoção também falhar, retorna a razão normativa `cannot clean temporary config` e pode
+restar exclusivamente esse temporário pertencente à operação; esse é o único terminal
+retornado excepcionado da garantia de ausência de resíduos. Queda abrupta, `SIGKILL`,
+kernel panic e perda de energia também podem deixar temporário órfão e ficam fora do
+contrato. O nome temporário deve ser exclusivo e não previsível. Durabilidade após
+publicação (incluindo `fsync` do diretório) fica fora deste passo; o sucesso atesta criação
+visível e conteúdo validado.
 
 O contrato executável obrigatório é Unix/Linux, ambiente do linter instalado. Em Windows,
 compilação e comportamento básico não devem regredir, mas nomes não UTF-8, arquivo especial
@@ -287,7 +290,8 @@ Criar projetos sintéticos temporários, sem copiar configurações de consumido
 12. execução por caminho relativo e absoluto.
 
 O oráculo deve comparar bytes exatos, exit code, stdout/stderr, inventário antes/depois e
-ausência de temporários residuais.
+ausência de temporários residuais, salvo no caso explícito `cannot clean temporary config`,
+em que aceita somente o temporário próprio identificado pelo adapter.
 
 ## 10. Ataques obrigatórios
 
