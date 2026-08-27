@@ -1,12 +1,19 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/file-provider.md
-//! @prompt-hash d4ae996a
+//! @prompt-hash e11cdb37
 //! @layer L1
 //! @updated 2026-03-16
 
 use std::path::{Path, PathBuf};
 
 use crate::entities::layer::{Language, Layer};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceRole {
+    Production,
+    Test,
+    Unknown,
+}
 
 // ── SourceError ───────────────────────────────────────────────────────────────
 
@@ -35,6 +42,8 @@ pub struct SourceFile {
     pub language: Language,
     /// Resolved by FileWalker via crystalline.toml prefix matching.
     pub layer: Layer,
+    /// Structural role classified from path and language, never source contents.
+    pub source_role: SourceRole,
     /// true if foo_test.rs exists in the same directory as foo.rs.
     /// Checked by walker at discovery time.
     pub has_adjacent_test: bool,
@@ -69,6 +78,7 @@ mod tests {
             content: "fn main() {}".to_string(),
             language: Language::Rust,
             layer,
+            source_role: SourceRole::Production,
             has_adjacent_test: false,
         }
     }

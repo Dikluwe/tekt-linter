@@ -16,6 +16,9 @@ impl<'a> HasCoverage<'a> for CoverageFixture<'a> {
     fn layer(&self) -> &Layer {
         &self.layer
     }
+    fn source_role(&self) -> crystalline_lint::contracts::file_provider::SourceRole {
+        crystalline_lint::contracts::file_provider::SourceRole::Production
+    }
     fn has_test_coverage(&self) -> bool {
         self.covered
     }

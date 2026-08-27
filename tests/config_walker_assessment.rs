@@ -1,4 +1,4 @@
-use crystalline_lint::contracts::file_provider::{FileProvider, SourceFile};
+use crystalline_lint::contracts::file_provider::{FileProvider, SourceError, SourceFile};
 use crystalline_lint::entities::layer::{Language, Layer};
 use crystalline_lint::infra::config::CrystallineConfig;
 use crystalline_lint::infra::walker::FileWalker;
@@ -276,12 +276,14 @@ fn exclusions_are_component_and_exact_path_based_without_prefix_leakage() {
         fs::write(&first, "fn first() {}\n").unwrap();
         fs::write(&second, "fn second() {}\n").unwrap();
         let config = load_config(root.path(), "[excluded_files]\none='dir/lib.rs'\n").unwrap();
-        let files: Vec<_> = walk(root.path(), config)
-            .into_iter()
-            .map(Result::unwrap)
-            .collect();
-        assert!(files.iter().any(|file| file.path == first));
-        assert!(files.iter().any(|file| file.path == second));
+        let results = walk(root.path(), config);
+        for opaque in [first, second] {
+            assert!(results.iter().any(|result| matches!(
+                result,
+                Err(SourceError::Unreadable { path, reason })
+                    if path == &opaque && reason.contains("papel estrutural não classificável")
+            )));
+        }
     }
 }
 

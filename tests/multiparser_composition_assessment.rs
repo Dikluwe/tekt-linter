@@ -78,6 +78,7 @@ fn sentinel_parsed(file: &SourceFile) -> ParsedFile<'_> {
         path: file.path.as_path(),
         layer: Layer::L3,
         language: file.language.clone(),
+        source_role: file.source_role,
         prompt_header: Some(PromptHeader {
             prompt_path: "sentinel-prompt-path",
             prompt_hash: Some("sentinel-prompt-hash"),
@@ -178,6 +179,7 @@ fn source(language: Language) -> SourceFile {
         content: "sentinel source content".to_owned(),
         language,
         layer: Layer::Lab,
+        source_role: crystalline_lint::contracts::file_provider::SourceRole::Production,
         has_adjacent_test: false,
     }
 }

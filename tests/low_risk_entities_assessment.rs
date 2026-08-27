@@ -99,6 +99,7 @@ fn parsed_sentinel(layer: Layer) -> ParsedFile<'static> {
         path: Path::new("alien-P"),
         layer: layer.clone(),
         language: Language::Rust,
+        source_role: crystalline_lint::contracts::file_provider::SourceRole::Production,
         prompt_header: Some(PromptHeader {
             prompt_path: "prompt-P",
             prompt_hash: None,

@@ -1,11 +1,12 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/rule-traits.md
-//! @prompt-hash 2ebbf166
+//! @prompt-hash cacc9141
 //! @layer L1
 //! @updated 2026-03-22
 
 use std::path::Path;
 
+use crate::contracts::file_provider::SourceRole;
 use crate::contracts::prompt_reader::PromptPresence;
 use crate::entities::layer::{Language, Layer};
 use crate::entities::parsed_file::{
@@ -27,6 +28,7 @@ pub trait HasPromptFilesystem<'a> {
 /// Para V2 — verifica cobertura de testes em L1.
 pub trait HasCoverage<'a> {
     fn layer(&self) -> &Layer;
+    fn source_role(&self) -> SourceRole;
     fn has_test_coverage(&self) -> bool;
     fn path(&self) -> &'a Path;
 }
@@ -371,6 +373,9 @@ mod tests {
     impl HasCoverage<'static> for MockV2 {
         fn layer(&self) -> &Layer {
             &self.layer
+        }
+        fn source_role(&self) -> SourceRole {
+            SourceRole::Production
         }
         fn has_test_coverage(&self) -> bool {
             true

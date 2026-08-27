@@ -15,6 +15,7 @@ fn source(language: Language) -> SourceFile {
         content: "conteúdo sentinela \0 🦀".to_owned(),
         language,
         layer: Layer::Lab,
+        source_role: crystalline_lint::contracts::file_provider::SourceRole::Production,
         has_adjacent_test: true,
     }
 }
@@ -100,6 +101,7 @@ impl LanguageParser for Spy {
                 path: &file.path,
                 layer: file.layer.clone(),
                 language: file.language.clone(),
+                source_role: file.source_role,
                 prompt_header: None,
                 prompt_presence:
                     crystalline_lint::contracts::prompt_reader::PromptPresence::Missing,

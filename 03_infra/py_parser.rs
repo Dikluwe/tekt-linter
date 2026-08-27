@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/python.md
-//! @prompt-hash eb784a66
+//! @prompt-hash 5c948ca7
 //! @layer L3
 //! @updated 2026-03-20
 
@@ -145,10 +145,10 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for PyParser<R, S>
         // 3. Tokens — imports proibidos + call nodes (sem Motor de Duas Fases)
         let tokens = extract_tokens(root, source, &imports);
 
-        // 4. Test coverage — call pytest/unittest + adjacência + declaration-only
-        let has_test_ast = has_test_calls(root, source);
+        // 4. Test coverage — structural adjacency + declaration-only.
+        // Framework calls do not prove that a production module has a test.
         let is_decl_only = is_declaration_only(root, source);
-        let has_test_coverage = has_test_ast || file.has_adjacent_test || is_decl_only;
+        let has_test_coverage = file.has_adjacent_test || is_decl_only;
 
         // 5. PublicInterface + prompt_snapshot (V6)
         let public_interface = extract_public_interface(root, source);
@@ -178,6 +178,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for PyParser<R, S>
             path: file.path.as_path(),
             layer: file.layer.clone(),
             language: file.language.clone(),
+            source_role: file.source_role,
             prompt_header,
             prompt_presence,
             prompt_refs: vec![],
@@ -775,70 +776,6 @@ fn collect_forbidden_calls<'a>(node: Node, source: &'a [u8], tokens: &mut Vec<To
     }
 }
 
-// ── Test coverage (V2) ────────────────────────────────────────────────────────
-
-const TEST_CALL_NAMES: &[&str] = &["unittest", "pytest", "describe", "it", "test", "suite"];
-
-fn has_test_calls(root: Node, source: &[u8]) -> bool {
-    // Verificar call expressions de teste em qualquer nível
-    if check_test_call_nodes(root, source) {
-        return true;
-    }
-    // Verificar classes unittest apenas no nível de topo
-    for i in 0..root.child_count() {
-        if let Some(child) = root.child(i) {
-            if child.kind() == "class_definition" {
-                if is_unittest_class(child, source) {
-                    return true;
-                }
-            }
-        }
-    }
-    false
-}
-
-fn is_unittest_class(node: Node, source: &[u8]) -> bool {
-    // Condição 1: nome termina em Test ou Tests
-    let name_ok = node
-        .child_by_field_name("name")
-        .map(|n| {
-            let name = node_text(n, source);
-            name.ends_with("Test") || name.ends_with("Tests")
-        })
-        .unwrap_or(false);
-    if !name_ok {
-        return false;
-    }
-
-    // Condição 2: herda de TestCase
-    node.child_by_field_name("superclasses")
-        .map(|bases| node_text(bases, source).contains("TestCase"))
-        .unwrap_or(false)
-}
-
-fn check_test_call_nodes(node: Node, source: &[u8]) -> bool {
-    if node.kind() == "call" {
-        if let Some(func) = node
-            .child_by_field_name("function")
-            .or_else(|| node.child(0))
-        {
-            let text = node_text(func, source);
-            let first_seg = text.split('.').next().unwrap_or(text);
-            if TEST_CALL_NAMES.contains(&first_seg) || TEST_CALL_NAMES.contains(&text) {
-                return true;
-            }
-        }
-    }
-    for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
-            if check_test_call_nodes(child, source) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
 /// Returns true se o ficheiro declara apenas Protocol/ABC classes, imports e __all__.
 /// Ficheiros declaration-only são isentos de V2.
 fn is_declaration_only(root: Node, source: &[u8]) -> bool {
@@ -1420,6 +1357,7 @@ mod tests {
             content: content.to_string(),
             language: Language::Python,
             layer,
+            source_role: crate::contracts::file_provider::SourceRole::Production,
             has_adjacent_test: false,
         }
     }
@@ -1465,6 +1403,7 @@ import os
             content: "pub fn foo() {}".to_string(),
             language: Language::Rust,
             layer: Layer::L1,
+            source_role: crate::contracts::file_provider::SourceRole::Production,
             has_adjacent_test: false,
         };
         assert!(matches!(
@@ -1608,12 +1547,12 @@ import os
     // ── V2 test coverage tests ────────────────────────────────────────────────
 
     #[test]
-    fn test_class_inheriting_testcase_gives_coverage() {
+    fn unittest_calls_do_not_cover_a_production_module() {
         let src =
             "import unittest\nclass FooTest(unittest.TestCase):\n    def test_it(self): pass\n";
         let file = make_file("01_core/entities/layer.py", src, Layer::L1);
         let result = make_parser().parse(&file).unwrap();
-        assert!(result.has_test_coverage);
+        assert!(!result.has_test_coverage);
     }
 
     #[test]
@@ -1773,6 +1712,7 @@ class InternalHelper:
             content: src.to_string(),
             language: Language::Python,
             layer: Layer::L3,
+            source_role: crate::contracts::file_provider::SourceRole::Production,
             has_adjacent_test: false,
         };
         let result = parser.parse(&file).unwrap();
@@ -1833,6 +1773,7 @@ class OutputFormatter:
             content: src.to_string(),
             language: Language::Python,
             layer: Layer::L4,
+            source_role: crate::contracts::file_provider::SourceRole::Production,
             has_adjacent_test: false,
         };
         let result = parser.parse(&file).unwrap();

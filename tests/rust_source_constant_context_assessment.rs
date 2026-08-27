@@ -43,6 +43,7 @@ fn source_file(source: &str) -> SourceFile {
         content: source.to_owned(),
         language: Language::Rust,
         layer: Layer::L3,
+        source_role: crystalline_lint::contracts::file_provider::SourceRole::Production,
         has_adjacent_test: false,
     }
 }

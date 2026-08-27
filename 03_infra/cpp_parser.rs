@@ -141,6 +141,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for CppParser<R, S
             path: file.path.as_path(),
             layer: file.layer.clone(),
             language: file.language.clone(),
+            source_role: file.source_role,
             prompt_header,
             prompt_presence,
             prompt_refs: vec![],

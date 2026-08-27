@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/file-walker.md
-//! @prompt-hash a2006d12
+//! @prompt-hash f820e89e
 //! @layer L3
 //! @updated 2026-03-20
 
@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use walkdir::WalkDir;
 
-use crate::contracts::file_provider::{FileProvider, SourceError, SourceFile};
+use crate::contracts::file_provider::{FileProvider, SourceError, SourceFile, SourceRole};
 use crate::entities::layer::{Language, Layer};
 use crate::infra::config::CrystallineConfig;
 
@@ -32,11 +32,20 @@ impl FileProvider for FileWalker {
             self.config.excluded_files.values().cloned().collect();
         let config = self.config.clone();
         let root2 = root.clone();
+        let filter_excluded_dirs = excluded_dirs.clone();
+        let filter_excluded_files = excluded_files.clone();
 
         let mut results: Vec<Result<SourceFile, SourceError>> = WalkDir::new(&root)
             .follow_links(false)
             .into_iter()
-            .filter_entry(move |e| !is_ignored(e.path(), &root, &excluded_dirs, &excluded_files))
+            .filter_entry(move |e| {
+                !is_ignored(
+                    e.path(),
+                    &root,
+                    &filter_excluded_dirs,
+                    &filter_excluded_files,
+                )
+            })
             .filter_map(move |entry| match entry {
                 Err(error) => Some(Err(SourceError::Unreadable {
                     path: error.path().unwrap_or(&root2).to_path_buf(),
@@ -49,13 +58,27 @@ impl FileProvider for FileWalker {
                     let path = entry.path().to_path_buf();
                     let language = language_for_path(&path)?;
                     let layer = resolve_file_layer(&path, &root2, &config);
-                    let has_adjacent_test = check_adjacent_test(&path);
+                    let source_role = classify_source_role(&language, &path);
+                    if source_role == SourceRole::Unknown {
+                        return Some(Err(SourceError::Unreadable {
+                            path,
+                            reason: "papel estrutural não classificável: nome ou stem do arquivo não é UTF-8".to_string(),
+                        }));
+                    }
+                    let has_adjacent_test = source_role == SourceRole::Production
+                        && check_adjacent_test_with_exclusions(
+                            &path,
+                            &root2,
+                            &excluded_dirs,
+                            &excluded_files,
+                        );
                     Some(match std::fs::read_to_string(&path) {
                         Ok(content) => Ok(SourceFile {
                             path,
                             content,
                             language,
                             layer,
+                            source_role,
                             has_adjacent_test,
                         }),
                         Err(error) => Err(SourceError::Unreadable {
@@ -169,7 +192,17 @@ fn is_regular_file(path: PathBuf) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(test)]
 fn check_adjacent_test(path: &Path) -> bool {
+    check_adjacent_test_with_exclusions(path, Path::new(""), &HashSet::new(), &HashSet::new())
+}
+
+fn check_adjacent_test_with_exclusions(
+    path: &Path,
+    root: &Path,
+    excluded_dirs: &HashSet<String>,
+    excluded_files: &HashSet<String>,
+) -> bool {
     let stem = match path.file_stem().and_then(|s| s.to_str()) {
         Some(s) => s,
         None => return false,
@@ -178,79 +211,109 @@ fn check_adjacent_test(path: &Path) -> bool {
         Some(d) => d,
         None => return false,
     };
+    let accepted = |candidate: PathBuf| {
+        is_regular_file(candidate.clone())
+            && !is_ignored(&candidate, root, excluded_dirs, excluded_files)
+    };
 
     match path.extension().and_then(|e| e.to_str()) {
-        Some("rs") => {
-            if stem.ends_with("_test") {
-                return false;
-            }
-            is_regular_file(dir.join(format!("{}_test.rs", stem)))
-        }
-        Some("go") => {
-            if stem.ends_with("_test") {
-                return true;
-            }
-            is_regular_file(dir.join(format!("{}_test.go", stem)))
-        }
+        Some("rs") => accepted(dir.join(format!("{}_test.rs", stem))),
+        Some("go") => accepted(dir.join(format!("{}_test.go", stem))),
         Some("ts") | Some("tsx") => {
-            if stem.contains(".test") || stem.contains(".spec") {
-                return false;
-            }
-            is_regular_file(dir.join(format!("{}.test.ts", stem)))
-                || is_regular_file(dir.join(format!("{}.spec.ts", stem)))
-                || is_regular_file(dir.join(format!("{}.test.tsx", stem)))
-                || is_regular_file(dir.join(format!("{}.spec.tsx", stem)))
+            accepted(dir.join(format!("{}.test.ts", stem)))
+                || accepted(dir.join(format!("{}.spec.ts", stem)))
+                || accepted(dir.join(format!("{}.test.tsx", stem)))
+                || accepted(dir.join(format!("{}.spec.tsx", stem)))
         }
         Some("py") => {
-            if stem.ends_with("_test") || stem.starts_with("test_") {
-                return false;
-            }
-            is_regular_file(dir.join(format!("{}_test.py", stem)))
-                || is_regular_file(dir.join(format!("test_{}.py", stem)))
+            accepted(dir.join(format!("{}_test.py", stem)))
+                || accepted(dir.join(format!("test_{}.py", stem)))
         }
-        Some("zig") => {
-            if stem.ends_with("_test") {
-                return false;
-            }
-            is_regular_file(dir.join(format!("{}_test.zig", stem)))
-        }
+        Some("zig") => accepted(dir.join(format!("{}_test.zig", stem))),
         Some("c") => {
-            if stem.ends_with("_test") || stem.starts_with("test_") {
-                return false;
-            }
-            is_regular_file(dir.join(format!("{}_test.c", stem)))
-                || is_regular_file(dir.join(format!("test_{}.c", stem)))
+            accepted(dir.join(format!("{}_test.c", stem)))
+                || accepted(dir.join(format!("test_{}.c", stem)))
         }
         Some("cpp") | Some("cc") | Some("cxx") => {
-            if stem.ends_with("_test") || stem.starts_with("test_") {
-                return false;
-            }
-            is_regular_file(dir.join(format!("{}_test.cpp", stem)))
-                || is_regular_file(dir.join(format!("{}_test.cc", stem)))
-                || is_regular_file(dir.join(format!("test_{}.cpp", stem)))
-                || is_regular_file(dir.join(format!("test_{}.cc", stem)))
+            accepted(dir.join(format!("{}_test.cpp", stem)))
+                || accepted(dir.join(format!("{}_test.cc", stem)))
+                || accepted(dir.join(format!("test_{}.cpp", stem)))
+                || accepted(dir.join(format!("test_{}.cc", stem)))
         }
         Some("java") => {
-            if stem.ends_with("Test")
-                || stem.ends_with("Tests")
-                || stem.starts_with("Test")
-                || stem.ends_with("_test")
-            {
-                return true;
-            }
-            is_regular_file(dir.join(format!("{}Test.java", stem)))
-                || is_regular_file(dir.join(format!("{}_test.java", stem)))
-                || is_regular_file(dir.join(format!("Test{}.java", stem)))
+            accepted(dir.join(format!("{}Test.java", stem)))
+                || accepted(dir.join(format!("{}_test.java", stem)))
+                || accepted(dir.join(format!("Test{}.java", stem)))
         }
         Some("ex") | Some("exs") => {
-            if stem.ends_with("_test") {
-                return true;
-            }
-            is_regular_file(dir.join(format!("{}_test.exs", stem)))
-                || is_regular_file(dir.join(format!("{}_test.ex", stem)))
+            accepted(dir.join(format!("{}_test.exs", stem)))
+                || accepted(dir.join(format!("{}_test.ex", stem)))
         }
         _ => false,
     }
+}
+
+/// Classifies an accepted source from its complete file name and language convention.
+/// Source contents never influence this role.
+pub fn classify_source_role(language: &Language, path: &Path) -> SourceRole {
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return SourceRole::Unknown;
+    };
+    let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+        return SourceRole::Unknown;
+    };
+    let prefixed = || {
+        stem.strip_prefix("test_")
+            .is_some_and(|value| !value.is_empty())
+    };
+    let suffixed = || {
+        stem.strip_suffix("_test")
+            .is_some_and(|value| !value.is_empty())
+    };
+
+    let is_test = match language {
+        Language::Python => prefixed() || suffixed(),
+        Language::C => {
+            path.extension().and_then(|extension| extension.to_str()) == Some("c")
+                && (prefixed() || suffixed())
+        }
+        Language::Rust => suffixed(),
+        Language::Zig => suffixed(),
+        Language::Go => suffixed(),
+        Language::Elixir => suffixed(),
+        Language::TypeScript => [".test", ".spec"].iter().any(|suffix| {
+            stem.strip_suffix(suffix)
+                .is_some_and(|value| !value.is_empty())
+        }),
+        Language::Cpp => {
+            let extension = path.extension().and_then(|extension| extension.to_str());
+            (extension == Some("cpp") || extension == Some("cc")) && (prefixed() || suffixed())
+        }
+        Language::Java => {
+            let class = name.strip_suffix(".java").unwrap_or("");
+            class.strip_prefix("Test").is_some_and(starts_uppercase)
+                || class
+                    .strip_suffix("Tests")
+                    .is_some_and(|value| !value.is_empty())
+                || class
+                    .strip_suffix("Test")
+                    .is_some_and(|value| !value.is_empty())
+                || class
+                    .strip_suffix("_test")
+                    .is_some_and(|value| !value.is_empty())
+        }
+        Language::Unknown => false,
+    };
+
+    if is_test {
+        SourceRole::Test
+    } else {
+        SourceRole::Production
+    }
+}
+
+fn starts_uppercase(value: &str) -> bool {
+    value.chars().next().is_some_and(char::is_uppercase)
 }
 
 #[cfg(test)]
@@ -477,6 +540,7 @@ mod tests {
             content: String::new(),
             language: Language::Rust,
             layer: Layer::Unknown,
+            source_role: SourceRole::Production,
             has_adjacent_test: false,
         };
         let mut results = vec![

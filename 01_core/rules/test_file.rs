@@ -1,11 +1,12 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/test-file.md
-//! @prompt-hash c3f78fd7
+//! @prompt-hash 808666c5
 //! @layer L1
 //! @updated 2026-03-14
 
 use std::borrow::Cow;
 
+use crate::contracts::file_provider::SourceRole;
 use crate::entities::layer::Layer;
 use crate::entities::rule_traits::HasCoverage;
 use crate::entities::violation::{Location, Violation, ViolationLevel};
@@ -18,6 +19,10 @@ use crate::entities::violation::{Location, Violation, ViolationLevel};
 /// has_test_coverage = true for such files — L1 never re-derives it.
 pub fn check<'a, T: HasCoverage<'a>>(file: &T) -> Vec<Violation<'a>> {
     if *file.layer() != Layer::L1 {
+        return vec![];
+    }
+
+    if file.source_role() != SourceRole::Production {
         return vec![];
     }
 
@@ -56,6 +61,9 @@ mod tests {
         }
         fn has_test_coverage(&self) -> bool {
             self.has_coverage
+        }
+        fn source_role(&self) -> SourceRole {
+            SourceRole::Production
         }
         fn path(&self) -> &'static Path {
             self.path

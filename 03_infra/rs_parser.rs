@@ -183,6 +183,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for RustParser<R, 
             path: file.path.as_path(),
             layer: file.layer.clone(),
             language: file.language.clone(),
+            source_role: file.source_role,
             prompt_header,
             prompt_presence,
             prompt_refs,
@@ -2990,6 +2991,7 @@ mod tests {
             content: content.to_string(),
             language: Language::Rust,
             layer,
+            source_role: crate::contracts::file_provider::SourceRole::Production,
             has_adjacent_test: false,
         }
     }
@@ -3013,6 +3015,7 @@ mod tests {
             content: content.to_string(),
             language: Language::Rust,
             layer: Layer::L1,
+            source_role: crate::contracts::file_provider::SourceRole::Production,
             has_adjacent_test: false,
         }
     }

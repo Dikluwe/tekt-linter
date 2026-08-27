@@ -42,6 +42,7 @@ fn observed(source: &str) -> Vec<(ConstantKind, String, usize, usize)> {
         content: source.to_owned(),
         language: Language::Rust,
         layer: Layer::L1,
+        source_role: crystalline_lint::contracts::file_provider::SourceRole::Production,
         has_adjacent_test: true,
     };
     let parser = RustParser::new(

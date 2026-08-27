@@ -60,6 +60,7 @@ fn parsed<'a>(
         path,
         layer: Layer::L2,
         language: Language::Rust,
+        source_role: crystalline_lint::contracts::file_provider::SourceRole::Production,
         prompt_header: prompt_path.map(|prompt_path| PromptHeader {
             prompt_path,
             prompt_hash: None,

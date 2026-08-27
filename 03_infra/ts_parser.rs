@@ -183,6 +183,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for TsParser<R, S>
             path: file.path.as_path(),
             layer: file.layer.clone(),
             language: file.language.clone(),
+            source_role: file.source_role,
             prompt_header,
             prompt_presence,
             prompt_refs: vec![],
@@ -1309,6 +1310,7 @@ mod tests {
             content: content.to_string(),
             language: Language::TypeScript,
             layer: Layer::L3,
+            source_role: crate::contracts::file_provider::SourceRole::Production,
             has_adjacent_test: false,
         }
     }
@@ -1319,6 +1321,7 @@ mod tests {
             content: content.to_string(),
             language: Language::TypeScript,
             layer,
+            source_role: crate::contracts::file_provider::SourceRole::Production,
             has_adjacent_test: false,
         }
     }
@@ -1333,6 +1336,7 @@ mod tests {
             content: "fn main() {}".to_string(),
             language: Language::Rust,
             layer: Layer::L1,
+            source_role: crate::contracts::file_provider::SourceRole::Production,
             has_adjacent_test: false,
         };
         assert!(matches!(

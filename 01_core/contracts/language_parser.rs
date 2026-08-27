@@ -107,6 +107,7 @@ mod tests {
             path: Path::new("01_core/foo.rs"),
             layer: Layer::L1,
             language: Language::Rust,
+            source_role: crate::contracts::file_provider::SourceRole::Production,
             prompt_header: None,
             prompt_presence: crate::contracts::prompt_reader::PromptPresence::Missing,
             prompt_refs: vec![],
@@ -133,6 +134,7 @@ mod tests {
             content: "fn main() {}".to_string(),
             language: Language::Rust,
             layer: Layer::L1,
+            source_role: crate::contracts::file_provider::SourceRole::Production,
             has_adjacent_test: false,
         }
     }

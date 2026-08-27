@@ -1,5 +1,5 @@
 # Prompt: Rule V2 - Missing Test File (test-file)
-Hash do Código: f9074a5f
+Hash do Código: 87694d9f
 
 **Camada**: L1 (Core - Rules)
 **Regra**: V2
@@ -11,6 +11,16 @@ Sob a restrição da Regra Simuntânea (Testes), toda materialização de núcle
 ## Especificação
 - A regra V2 acusa a ausência de cobertura de testes explícita num módulo em `L1` (`01_core/`).
 - Ela verifica, dada uma entidade abstrata (via trait `HasCoverage`) cuja camada declarada seja `Layer::L1`, se há a cobertura de testes associada.
+- A obrigação aplica-se somente a artefatos com papel estrutural `Production`. Um arquivo
+  reconhecido pelo walker como `Test` nunca precisa possuir outro teste e não recebe V2,
+  independentemente de usar `assert`, `pytest.raises` ou qualquer framework.
+- O papel `Production`/`Test` é derivado do path e da linguagem pelo walker e transportado
+  integralmente pelos parsers. Ele não pode ser reconstruído a partir do conteúdo nem do
+  booleano de cobertura.
+- `Unknown` não é reinterpretado por V2 como produção nem cobertura; o walker o interrompe
+  como erro de infraestrutura e o projetor emite V0 Fatal.
+- Chamadas ou imports de `pytest`/`unittest` dentro de um módulo Python produtivo não
+  constituem, isoladamente, cobertura V2.
 - **Isenções**: Arquivos que apenas declaram e exportam `pub trait`, `pub struct` ou `pub enum` _sem possuírem implementações de lógica (blocos `impl` que contenham funções/métodos com corpo lógico)_ são isentos dessa regra. O construtor (L3) deduz essa isenção inspecionando o AST no momento do parse.
 
 ## Estrutura da Violação Gerada
@@ -20,6 +30,7 @@ Sob a restrição da Regra Simuntânea (Testes), toda materialização de núcle
 
 ## Restrições (L1 Pura)
 - O processamento em L1 não olhará em disco para o test_file — o L3 (`FileWalker`/`LanguageParser`) injeta o metadado sobre se a cobertura existe na instância final inspecionada pela Trait.
+- Diretórios, symlinks e arquivos excluídos não contam como evidência adjacente.
 
 ## Fundamentação Teórica
 

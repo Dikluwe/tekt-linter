@@ -1,5 +1,5 @@
 # Prompt: Contract - File Provider (file-provider)
-Hash do Código: f5405ecc
+Hash do Código: ee00e97d
 
 **Camada**: L1 (Core — Contracts)
 **Criado em**: 2025-03-13
@@ -43,11 +43,19 @@ pub struct SourceFile {
     pub language: Language,
     /// Resolvido pelo walker via crystalline.toml
     pub layer: Layer,
+    /// Papel estrutural derivado do path/linguagem, nunca do conteúdo
+    pub source_role: SourceRole,
     /// true se foo_test.rs existe no mesmo diretório que foo.rs
     /// Verificado pelo walker no momento da descoberta
     pub has_adjacent_test: bool,
 }
 ```
+
+`SourceRole` é fechado em `Production | Test | Unknown`. O walker é a única autoridade de
+classificação; parsers apenas transportam o valor. `Unknown` preserva fontes aceitas cujo
+nome não pode ser classificado deterministicamente e deve originar `SourceError::Unreadable`/V0 antes
+do parse. Um arquivo `Test` não é considerado produção coberta e não precisa possuir outro
+teste.
 
 ### `SourceError` (ADR-0004)
 ```rust

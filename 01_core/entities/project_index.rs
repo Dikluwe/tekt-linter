@@ -174,6 +174,7 @@ mod tests {
             path,
             layer: Layer::L1,
             language: Language::Rust,
+            source_role: crate::contracts::file_provider::SourceRole::Production,
             prompt_header: Some(PromptHeader {
                 prompt_path,
                 prompt_hash: None,

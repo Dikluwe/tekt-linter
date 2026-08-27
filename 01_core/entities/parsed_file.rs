@@ -1,12 +1,13 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/entities/parsed-file.md
-//! @prompt-hash f2e3ad95
+//! @prompt-hash 64ca7e92
 //! @layer L1
 //! @updated 2026-06-09
 
 use std::borrow::Cow;
 use std::path::Path;
 
+use crate::contracts::file_provider::SourceRole;
 use crate::entities::layer::{Language, Layer};
 
 // ── Import ────────────────────────────────────────────────────────────────────
@@ -336,6 +337,9 @@ impl<'a> HasCoverage<'a> for ParsedFile<'a> {
     fn layer(&self) -> &Layer {
         &self.layer
     }
+    fn source_role(&self) -> SourceRole {
+        self.source_role
+    }
     fn has_test_coverage(&self) -> bool {
         self.has_test_coverage
     }
@@ -490,6 +494,7 @@ pub struct ParsedFile<'a> {
     pub path: &'a Path,
     pub layer: Layer,
     pub language: Language,
+    pub source_role: SourceRole,
 
     /// For V1: None means header is absent.
     pub prompt_header: Option<PromptHeader<'a>>,
@@ -567,6 +572,7 @@ mod tests {
             path: Path::new("01_core/foo.rs"),
             layer: Layer::L1,
             language: Language::Rust,
+            source_role: SourceRole::Production,
             prompt_header: None,
             prompt_presence: PromptPresence::Missing,
             prompt_refs: vec![],

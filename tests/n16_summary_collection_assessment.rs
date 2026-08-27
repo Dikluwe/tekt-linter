@@ -12,6 +12,7 @@ fn source(path: &str, content: &str) -> SourceFile {
         content: content.to_owned(),
         language: Language::Rust,
         layer: Layer::L1,
+        source_role: crystalline_lint::contracts::file_provider::SourceRole::Production,
         has_adjacent_test: false,
     }
 }

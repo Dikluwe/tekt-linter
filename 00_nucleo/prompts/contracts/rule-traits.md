@@ -1,5 +1,5 @@
 # Prompt: Rule Traits (rule-traits)
-Hash do Código: e9d12481
+Hash do Código: 6539efde
 
 **Camada**: L1 (Core — Contracts)
 **Criado em**: 2026-03-15 (ADR-0006 refactor)
@@ -57,6 +57,7 @@ pub trait HasPromptFilesystem<'a> {
 /// Para V2 — verifica cobertura de testes em L1
 pub trait HasCoverage<'a> {
     fn layer(&self) -> &Layer;
+    fn source_role(&self) -> SourceRole;
     fn has_test_coverage(&self) -> bool;
     fn path(&self) -> &'a Path;
 }

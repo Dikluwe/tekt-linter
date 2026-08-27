@@ -1,5 +1,5 @@
 # Prompt: Python Parser (parsers/python)
-Hash do Código: 043d8f85
+Hash do Código: 6373b906
 
 **Camada**: L3 (Infra)
 **Padrão**: Adapter over `tree-sitter-python`
@@ -323,27 +323,24 @@ do AST e os `import_statement`/`import_from_statement` proibidos.
 
 ## 5. Test coverage (V2)
 
-`has_test_coverage = true` se qualquer das condições:
+O parser transporta `source_file.source_role` sem reconstruí-lo pelo AST. Arquivos
+`test_<stem>.py` e `<stem>_test.py` são `Test` independentemente de usarem somente
+`assert`, helpers ou `pytest.raises`.
 
-**1. Construto de teste no AST:**
-Nós `call` com função `identifier` ou `attribute` cujo nome é
-`unittest`, `pytest`, `describe`, `it`, `test` ou `suite`.
-Detecta unittest, pytest, mamba e equivalentes.
+`has_test_coverage = true` para produção apenas nas condições:
 
-Também: `class_definition` de **nível de topo** cujo nome termina
-em `Test` ou `Tests` **e** herda de `TestCase` (ambas as condições
-são obrigatórias — nome apenas não é suficiente).
-
-**2. Ficheiro de teste adjacente:**
+**1. Ficheiro de teste adjacente:**
 `source_file.has_adjacent_test` — `true` se existe
 `<stem>_test.py` ou `test_<stem>.py` no mesmo directório
 (verificado pelo walker antes de chamar `parse()`).
 
-**3. Declaration-only (isento de V2):**
+**2. Declaration-only (isento de V2):**
 Ficheiro que contém apenas `class_definition` com base
 `Protocol`/`ABC`/`ABCMeta`, `import_statement`/`import_from_statement`,
 e `assignment` de `__all__`. Nenhuma `function_definition` com
 corpo não-trivial (não é `...` ou `pass`).
+
+Chamadas/imports `pytest` ou `unittest` dentro de produção não provam cobertura V2.
 
 ---
 

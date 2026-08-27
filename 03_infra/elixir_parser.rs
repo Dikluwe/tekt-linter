@@ -116,6 +116,7 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for ElixirParser<R
             path: &file.path,
             layer: file.layer.clone(),
             language: file.language.clone(),
+            source_role: file.source_role,
             prompt_refs,
             prompt_header,
             prompt_presence,

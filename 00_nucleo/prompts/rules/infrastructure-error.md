@@ -1,6 +1,5 @@
 # Prompt L0 — projeções puras V0/PARSE
-
-Hash do Código: ausente
+Hash do Código: 0d65c9fe
 
 **Camada:** L1 (`01_core/rules/infrastructure_error.rs`)
 **Consumidor:** L4 (`04_wiring/main.rs`)
@@ -22,6 +21,8 @@ pub fn parse_error_to_violation(err: ParseError) -> Violation<'static>;
 
 - `SourceError::Unreadable { path, reason }` → V0 `Fatal`, mensagem
   `Arquivo ilegível: {reason}`, `Cow::Owned(path.clone())`, linha/coluna zero.
+- uma impossibilidade de classificar o papel estrutural usa `SourceError::Unreadable` com
+  razão explícita, preserva o path e portanto também projeta V0 `Fatal`.
 - `ParseError::SyntaxError { path, line, column, message }` → PARSE `Error`, mensagem
   `Erro de sintaxe: {message}`, `Cow::Owned(path)`, posição preservada.
 - `ParseError::UnsupportedLanguage { path, language }` → PARSE `Warning`, mensagem

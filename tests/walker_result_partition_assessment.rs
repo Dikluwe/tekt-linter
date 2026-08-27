@@ -68,6 +68,7 @@ fn source(
         content: content.to_owned(),
         language,
         layer,
+        source_role: crystalline_lint::contracts::file_provider::SourceRole::Production,
         has_adjacent_test,
     }
 }

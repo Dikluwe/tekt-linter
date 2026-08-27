@@ -1193,6 +1193,7 @@ fn n16_summary_emits_small_sample_warning_for_synthetic_fixture() {
         content: fixture_content,
         language: Language::Rust,
         layer: crystalline_lint::entities::layer::Layer::L1,
+        source_role: crystalline_lint::contracts::file_provider::SourceRole::Production,
         has_adjacent_test: true,
     }];
 
@@ -1223,6 +1224,7 @@ fn n16_summary_custom_min_sample_size_threshold() {
         content: fixture_content,
         language: Language::Rust,
         layer: crystalline_lint::entities::layer::Layer::L1,
+        source_role: crystalline_lint::contracts::file_provider::SourceRole::Production,
         has_adjacent_test: true,
     }];
 

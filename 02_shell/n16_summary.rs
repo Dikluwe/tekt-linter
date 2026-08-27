@@ -370,6 +370,7 @@ mod tests {
             content: source_code.to_string(),
             language: Language::Rust,
             layer: Layer::L1,
+            source_role: crate::contracts::file_provider::SourceRole::Production,
             has_adjacent_test: true,
         }];
 
