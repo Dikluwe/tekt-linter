@@ -1,9 +1,10 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash c363811f
+//! @prompt-hash 8e3e8b40
 //! @layer L4
 //! @updated 2026-09-26
 
+use crystalline_lint::entities::analysis_policy::ParseCounts;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -509,7 +510,9 @@ fn main() {
                             crystalline_lint::shell::cli::format_sarif(&violations)
                         );
                     }
-                    OutputFormat::N16Summary => unreachable!("validated by CLI"),
+                    OutputFormat::N16Summary => {
+                        eprint!("{}", crystalline_lint::shell::cli::format_text(&violations));
+                    }
                 }
             }
             process::exit(1);
@@ -650,7 +653,7 @@ fn main() {
     // source_files so it outlives them — required for V7's check_orphans.
     let (source_files, source_errors) = collect_walker_results(walker.files());
 
-    let (mut all_violations, all_parsed, project_index) = run_pipeline(
+    let (mut all_violations, all_parsed, project_index, parse_counts) = run_pipeline(
         &source_files,
         &source_errors,
         &parser,
@@ -780,6 +783,15 @@ fn main() {
     // Rayon não garante ordem — Fatal → Error → Warning, depois path, depois linha.
     crystalline_lint::shell::cli::sort_violations(&mut all_violations);
 
+    if (cli.fix_hashes || cli.update_snapshot)
+        && crystalline_lint::entities::analysis_policy::repair_is_blocked(&all_violations)
+    {
+        if !cli.quiet {
+            eprintln!("crystalline-lint: repair blocked by incomplete analysis (V0/PARSE)");
+        }
+        process::exit(2);
+    }
+
     // ── --fix-hashes branch ───────────────────────────────────────────────────
     if cli.fix_hashes {
         let rewriter = L3HashRewriter {
@@ -813,7 +825,10 @@ fn main() {
             }
             process::exit(2);
         }
-        let entries = fix_hashes::plan(&all_violations, &rewriter);
+        let entries = fix_hashes::plan_complete(&all_parsed, &rewriter).unwrap_or_else(|reason| {
+            eprintln!("crystalline-lint: --fix-hashes blocked by incomplete preflight: {reason}");
+            process::exit(2);
+        });
         if entries
             .iter()
             .any(|entry| matches!(entry, fix_hashes::FixEntry::Unavailable { .. }))
@@ -994,7 +1009,7 @@ fn main() {
                 v26: false,
                 v27: false,
             };
-            let (violations, _, _) = run_pipeline(
+            let (violations, _, _, _) = run_pipeline(
                 &re_files,
                 &re_errors,
                 &reparser,
@@ -1130,7 +1145,7 @@ fn main() {
                 v26: false,
                 v27: false,
             };
-            let (violations, _, _) = run_pipeline(
+            let (violations, _, _, _) = run_pipeline(
                 &re_files,
                 &re_errors,
                 &reparser,
@@ -1195,6 +1210,8 @@ fn main() {
                 &all_parsed,
                 crystalline_lint::shell::cli::ScopeSettings {
                     checks: &cli.checks,
+                    parse_counts,
+                    source_read_errors: source_errors.len(),
                     no_drift: cli.no_drift,
                     no_stale: cli.no_stale,
                     policy: &config.rule_policy(),
@@ -1305,6 +1322,10 @@ impl HashRewriter for L3HashRewriter {
         hash_writer::compute_source_hash(source_path)
     }
 
+    fn source_hash_matches(&self, prompt_path: &str, expected: &str) -> Result<bool, String> {
+        hash_writer::source_hash_matches(&self.nucleo_root, prompt_path, expected)
+    }
+
     fn write_hash(&self, source_path: &Path, new_hash: &str) -> Result<(), String> {
         hash_writer::write_hash(source_path, new_hash)
     }
@@ -1409,23 +1430,39 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
     v21_config: &crystalline_lint::rules::unsourced_constant::V21RuleConfig,
     semantic_levels: &[ViolationLevel; 3],
     citation_freshness: &(dyn CitationFreshnessResolver + Sync),
-) -> (Vec<Violation<'a>>, Vec<ParsedFile<'a>>, ProjectIndex<'a>) {
+) -> (
+    Vec<Violation<'a>>,
+    Vec<ParsedFile<'a>>,
+    ProjectIndex<'a>,
+    ParseCounts,
+) {
     // Fase Map ─────────────────────────────────────────────────────────────────
 
     // V0: unreadable files — Fatal, never silenced
     let error_map = source_errors.par_iter().map(
-        |err| -> (Vec<Violation<'a>>, Option<ParsedFile<'a>>, LocalIndex<'a>) {
+        |err| -> (
+            Vec<Violation<'a>>,
+            Option<ParsedFile<'a>>,
+            LocalIndex<'a>,
+            ParseCounts,
+        ) {
             (
                 vec![source_error_to_violation(err)],
                 None,
                 LocalIndex::from_source_error(),
+                ParseCounts::default(),
             )
         },
     );
 
     // V1–V20 per file
     let file_map = source_files.par_iter().map(
-        |source_file| -> (Vec<Violation<'a>>, Option<ParsedFile<'a>>, LocalIndex<'a>) {
+        |source_file| -> (
+            Vec<Violation<'a>>,
+            Option<ParsedFile<'a>>,
+            LocalIndex<'a>,
+            ParseCounts,
+        ) {
             match parser.parse(source_file) {
                 Ok(parsed) => {
                     let violations = run_checks(
@@ -1442,13 +1479,17 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
                         citation_freshness,
                     );
                     let local = LocalIndex::from_parsed(&parsed);
-                    (violations, Some(parsed), local)
+                    (violations, Some(parsed), local, ParseCounts::default())
                 }
-                Err(err) => (
-                    vec![parse_error_to_violation(err)],
-                    None,
-                    LocalIndex::from_parse_error(),
-                ),
+                Err(err) => {
+                    let counts = ParseCounts::from_error(&err);
+                    (
+                        vec![parse_error_to_violation(err)],
+                        None,
+                        LocalIndex::from_parse_error(),
+                        counts,
+                    )
+                }
             }
         },
     );
@@ -1467,23 +1508,36 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
                     Vec::<Violation<'a>>::new(),
                     Vec::<ParsedFile<'a>>::new(),
                     ProjectIndex::<'a>::new(),
+                    ParseCounts::default(),
                 )
             },
-            |(mut viols, mut parsed_acc, mut idx), (v, pf, local)| {
+            |(mut viols, mut parsed_acc, mut idx, counts), (v, pf, local, local_counts)| {
                 viols.extend(v);
                 if let Some(p) = pf {
                     parsed_acc.push(p);
                 }
                 idx.merge_local(local);
-                (viols, parsed_acc, idx)
+                (viols, parsed_acc, idx, counts.merge(local_counts))
             },
         )
         .reduce(
-            || (Vec::new(), Vec::new(), ProjectIndex::new()),
-            |(mut viols_a, mut parsed_a, idx_a), (viols_b, parsed_b, idx_b)| {
+            || {
+                (
+                    Vec::new(),
+                    Vec::new(),
+                    ProjectIndex::new(),
+                    ParseCounts::default(),
+                )
+            },
+            |(mut viols_a, mut parsed_a, idx_a, counts_a), (viols_b, parsed_b, idx_b, counts_b)| {
                 viols_a.extend(viols_b);
                 parsed_a.extend(parsed_b);
-                (viols_a, parsed_a, idx_a.merge(idx_b))
+                (
+                    viols_a,
+                    parsed_a,
+                    idx_a.merge(idx_b),
+                    counts_a.merge(counts_b),
+                )
             },
         )
 }

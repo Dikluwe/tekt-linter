@@ -1,5 +1,5 @@
 # Prompt: CLI e formatadores do linter
-Hash do Código: 01de36a5
+Hash do Código: 2b615536
 
 ## Owner
 
@@ -24,3 +24,7 @@ localização; quiet mantém apenas o código de saída.
 ## Revisão 2026-09-26
 
 Aceitar --analysis-scope em lint text/SARIF, rejeitando combinação com reparos, emit-resolution ou n16-summary. Relatar arquivos lidos, parseados e erros, linguagens observadas, regras selecionadas, filtros de política, exclusões configuradas (sem alegar contagem dos arquivos excluídos), imports Unknown (externos ou não resolvidos) e limites. quiet não emite nada. --checks rejeita IDs desconhecidos e lista vazia, preserva all e v0.
+
+## Revisão 2026-09-26 — completude dos reparos
+
+O alcance distingue sourceReadErrors, syntaxErrors, unsupportedLanguageFiles e emptySourceFiles, além de filesParsed e sourceFilesRead; os contadores derivam dos erros tipados, sem interpretar mensagens.

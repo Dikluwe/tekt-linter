@@ -1,5 +1,5 @@
 # Prompt: escrita transacional de hashes
-Hash do Código: 98939785
+Hash do Código: c9ccd30f
 
 Owner exclusivo: `03_infra/hash_writer.rs`.
 
@@ -10,3 +10,7 @@ preflight, revalidação e rollback. Nunca alterar bytes funcionais ou deixar lo
 
 Testes provam preservação de BOM/CRLF/permissões, escrita atômica, rollback e substituição
 exclusiva das linhas de metadado autorizadas.
+
+## Revisão 2026-09-26 — completude dos reparos
+
+Expor verificação do Hash do Código contra o digest atual do owner; ler prompt confinado à raiz, com limite de tamanho, e validar metadado canônico único usando o mesmo parser das escritas. Retornar erro para metadados ausentes ou inválidos.

@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/fix-hashes.md
-//! @prompt-hash e1795780
+//! @prompt-hash d6f27e44
 //! @layer L2
-//! @updated 2026-03-20
+//! @updated 2026-09-26
 
 use std::path::{Path, PathBuf};
 use std::{collections::BTreeMap, fmt};
@@ -29,6 +29,11 @@ pub trait HashRewriter {
 
     /// Compute SHA256[0..8] of the source file, ignoring its own @prompt-hash line.
     fn compute_source_hash(&self, source_path: &Path) -> Option<String>;
+
+    /// Check canonical reverse metadata. Adapters must support complete planning.
+    fn source_hash_matches(&self, _prompt_path: &str, _expected: &str) -> Result<bool, String> {
+        Err("reverse hash verification unavailable".into())
+    }
 
     /// Atomically replace `@prompt-hash <old>` with `@prompt-hash <new>` in source file.
     fn write_hash(&self, source_path: &Path, new_hash: &str) -> Result<(), String>;
@@ -344,6 +349,45 @@ pub fn plan(violations: &[Violation<'_>], rewriter: &dyn HashRewriter) -> Vec<Fi
             },
         })
         .collect()
+}
+
+/// Inspect both directions for every productive owner, regardless of selected checks.
+pub fn plan_complete(
+    files: &[crate::entities::parsed_file::ParsedFile<'_>],
+    rewriter: &dyn HashRewriter,
+) -> Result<Vec<FixEntry>, String> {
+    use crate::entities::layer::Layer;
+    let mut owners: Vec<_> = files
+        .iter()
+        .filter(|file| {
+            matches!(file.layer, Layer::L1 | Layer::L2 | Layer::L3 | Layer::L4)
+                && file.prompt_header.is_some()
+        })
+        .collect();
+    owners.sort_by_key(|file| file.path);
+    let mut entries = Vec::new();
+    for file in owners {
+        let (prompt_path, old_hash) = rewriter
+            .read_header(file.path)
+            .ok_or_else(|| format!("{}: header unreadable or unsupported", file.path.display()))?;
+        let new_hash = rewriter
+            .compute_hash(&prompt_path)?
+            .ok_or_else(|| format!("{prompt_path}: prompt hash unavailable"))?;
+        let source_hash = rewriter
+            .compute_source_hash(file.path)
+            .ok_or_else(|| format!("{}: source hash unavailable", file.path.display()))?;
+        let reverse_matches = rewriter.source_hash_matches(&prompt_path, &source_hash)?;
+        if old_hash != new_hash || !reverse_matches {
+            entries.push(FixEntry::Ready {
+                source_path: file.path.to_path_buf(),
+                prompt_path,
+                old_hash,
+                new_hash,
+                source_hash,
+            });
+        }
+    }
+    Ok(entries)
 }
 
 /// Execute or dry-run based on entries.

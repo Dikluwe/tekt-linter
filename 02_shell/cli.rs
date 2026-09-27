@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/sarif-formatter.md
-//! @prompt-hash c6e2354a
+//! @prompt-hash d02783f4
 //! @layer L2
 //! @updated 2026-09-26
 
@@ -607,6 +607,8 @@ pub fn should_fail(violations: &[Violation<'_>], fail_on: &FailLevel) -> bool {
 
 /// Scope metadata describes observations, not proof of behavioral conformance.
 pub struct ScopeSettings<'a> {
+    pub parse_counts: crate::entities::analysis_policy::ParseCounts,
+    pub source_read_errors: usize,
     pub checks: &'a str,
     pub no_drift: bool,
     pub no_stale: bool,
@@ -623,6 +625,8 @@ pub fn analysis_scope(
     settings: ScopeSettings<'_>,
 ) -> serde_json::Value {
     let ScopeSettings {
+        parse_counts,
+        source_read_errors,
         checks,
         no_drift,
         no_stale,
@@ -650,6 +654,10 @@ pub fn analysis_scope(
     let excluded_dirs: std::collections::BTreeSet<_> = excluded_dirs.into_iter().collect();
     let excluded_files: std::collections::BTreeSet<_> = excluded_files.into_iter().collect();
     json!({
+        "sourceReadErrors": source_read_errors,
+        "syntaxErrors": parse_counts.syntax_errors,
+        "unsupportedLanguageFiles": parse_counts.unsupported_languages,
+        "emptySourceFiles": parse_counts.empty_sources,
         "sourceFilesRead": read, "filesParsed": files.len(), "infrastructureDiagnostics": errors,
         "languagesObserved": crate::entities::analysis_policy::language_counts(files),
         "selectedRules": selected, "configuredRulePolicy": policy,

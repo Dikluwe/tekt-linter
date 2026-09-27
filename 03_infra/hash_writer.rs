@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/infra/hash-writer.md
-//! @prompt-hash c1a72345
+//! @prompt-hash 18d11314
 //! @layer L3
-//! @updated 2026-03-13
+//! @updated 2026-09-26
 
 use crate::entities::hash_pair::{BijectivePair, PairSnapshot};
 use crate::infra::prompt_io::{atomic_replace, eight_hex, replace_meta_line, without_meta_line};
@@ -55,6 +55,18 @@ pub fn write_prompt_meta(path: &Path, code_hash: &str) -> Result<(), String> {
     let marker = "Hash do Código: ".as_bytes();
     let replaced = replace_meta_line(&bytes, marker, code_hash.as_bytes(), true)?;
     atomic_replace(path, &replaced, permissions)
+}
+
+/// Validate reverse metadata with the same canonical rules used by the writer.
+pub fn source_hash_matches(root: &Path, prompt: &str, expected: &str) -> Result<bool, String> {
+    let bytes = crate::infra::prompt_io::read_confined(root, Path::new(prompt), 10 * 1024 * 1024)?;
+    let replaced = replace_meta_line(
+        &bytes,
+        "Hash do Código: ".as_bytes(),
+        expected.as_bytes(),
+        true,
+    )?;
+    Ok(replaced == bytes)
 }
 
 pub fn prepare_pair(

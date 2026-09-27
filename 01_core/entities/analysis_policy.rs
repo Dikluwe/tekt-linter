@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/entities/analysis-policy.md
-//! @prompt-hash 36578d9d
+//! @prompt-hash 75ba3076
 //! @layer L1
 //! @updated 2026-09-26
 
@@ -90,6 +90,37 @@ pub fn unknown_imports(files: &[ParsedFile<'_>]) -> usize {
         .flat_map(|file| &file.imports)
         .filter(|import| import.target_layer == Layer::Unknown)
         .count()
+}
+/// Counts parser outcomes before diagnostics are formatted.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ParseCounts {
+    pub syntax_errors: usize,
+    pub unsupported_languages: usize,
+    pub empty_sources: usize,
+}
+impl ParseCounts {
+    pub fn from_error(error: &crate::contracts::parse_error::ParseError) -> Self {
+        use crate::contracts::parse_error::ParseError;
+        let mut counts = Self::default();
+        match error {
+            ParseError::SyntaxError { .. } => counts.syntax_errors = 1,
+            ParseError::UnsupportedLanguage { .. } => counts.unsupported_languages = 1,
+            ParseError::EmptySource { .. } => counts.empty_sources = 1,
+        }
+        counts
+    }
+    pub fn merge(self, other: Self) -> Self {
+        Self {
+            syntax_errors: self.syntax_errors + other.syntax_errors,
+            unsupported_languages: self.unsupported_languages + other.unsupported_languages,
+            empty_sources: self.empty_sources + other.empty_sources,
+        }
+    }
+}
+pub fn repair_is_blocked(violations: &[Violation<'_>]) -> bool {
+    violations
+        .iter()
+        .any(|finding| matches!(finding.rule_id.as_str(), "V0" | "PARSE"))
 }
 #[cfg(test)]
 mod tests {
