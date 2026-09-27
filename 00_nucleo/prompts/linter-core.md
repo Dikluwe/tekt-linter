@@ -1,5 +1,5 @@
 # Prompt: composição do linter
-Hash do Código: 426cc04f
+Hash do Código: c8fe3506
 
 Owner exclusivo: `04_wiring/main.rs`.
 
@@ -21,3 +21,7 @@ Compor política L1 após análise e antes do veredito normal. Reparos continuam
 ## Revisão 2026-09-26 — completude dos reparos
 
 Reparos de hashes e snapshots são bloqueados com saída 2 quando houver V0 ou PARSE, inclusive em dry-run e com checks restritos. Raiz inválida no formato N16 produz diagnóstico normal, nunca panic. Transportar contagens tipadas de parsing para o relatório de alcance.
+
+## Revisão 2026-09-26 — instrumentação de resolução
+
+No modo --emit-resolution, falhas de leitura ou parsing impedem publicação de resultados parciais: stdout vazio, diagnóstico em stderr e saída 2. Com --quiet, manter somente o exit code. Violações arquiteturais não impedem instrumentação de fontes completamente parseadas.

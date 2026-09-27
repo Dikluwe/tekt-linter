@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/sarif-formatter.md
-//! @prompt-hash d02783f4
+//! @prompt-hash 99bea55a
 //! @layer L2
 //! @updated 2026-09-26
 
@@ -94,6 +94,9 @@ pub fn validate_args(cli: &Cli) -> Result<(), String> {
             || cli.format == OutputFormat::N16Summary)
     {
         return Err("--analysis-scope requires normal text or SARIF lint output".into());
+    }
+    if cli.emit_resolution && (cli.fix_hashes || cli.update_snapshot) {
+        return Err("--emit-resolution cannot be combined with repair modes".into());
     }
     if cli.fix_hashes && cli.update_snapshot {
         return Err("--fix-hashes and --update-snapshot cannot be used simultaneously".to_string());

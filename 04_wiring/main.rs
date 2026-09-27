@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 8e3e8b40
+//! @prompt-hash 3bf6edef
 //! @layer L4
 //! @updated 2026-09-26
 
@@ -670,8 +670,17 @@ fn main() {
     );
 
     // ── --emit-resolution (instrumentação 0058, fora do selo de veredito) ──────
-    // Despeja a resolução de todo import (incl. Unknown) e sai — não roda regras.
+    // Publica a resolução de todo import (incl. Unknown), sem emitir veredito de lint.
     if cli.emit_resolution {
+        if !source_errors.is_empty() || all_parsed.len() != source_files.len() {
+            if !cli.quiet {
+                eprintln!("crystalline-lint: --emit-resolution blocked by incomplete analysis");
+            }
+            process::exit(2);
+        }
+        if cli.quiet {
+            return;
+        }
         // Resolve o nome de superfície ao crate real via o registry do linter
         // (renomeação por-membro), para o emit refletir a resolução do próprio linter.
         let resolve_crate = |path: &Path, seg: &str| -> String {

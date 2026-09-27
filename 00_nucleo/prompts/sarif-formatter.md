@@ -1,5 +1,5 @@
 # Prompt: CLI e formatadores do linter
-Hash do Código: 2b615536
+Hash do Código: 844ae36a
 
 ## Owner
 
@@ -28,3 +28,7 @@ Aceitar --analysis-scope em lint text/SARIF, rejeitando combinação com reparos
 ## Revisão 2026-09-26 — completude dos reparos
 
 O alcance distingue sourceReadErrors, syntaxErrors, unsupportedLanguageFiles e emptySourceFiles, além de filesParsed e sourceFilesRead; os contadores derivam dos erros tipados, sem interpretar mensagens.
+
+## Revisão 2026-09-26 — instrumentação de resolução
+
+Rejeitar --emit-resolution combinado com --fix-hashes ou --update-snapshot, inclusive dry-run, para que nenhuma operação solicitada seja ignorada. O modo de instrumentação preserva quiet e não publica resolução parcial em análise incompleta.
