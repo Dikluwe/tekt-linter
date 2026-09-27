@@ -1,5 +1,5 @@
 # Prompt: composição do linter
-Hash do Código: 10871355
+Hash do Código: c156bb1c
 
 Owner exclusivo: `04_wiring/main.rs`.
 
@@ -29,3 +29,7 @@ No modo --emit-resolution, falhas de leitura ou parsing impedem publicação de 
 ## Revisão 2026-09-26 — raiz independente dos checks
 
 Validar a raiz local antes de carregar configuração ou criar adapters, para qualquer seleção de checks. Raiz inexistente ou arquivo em lugar de diretório produz V0 no formato normal solicitado, saída 1 e silêncio em quiet. Em --emit-resolution, raiz inválida produz somente diagnóstico em stderr e saída 2, nunca texto em stdout JSONL. Diretório existente vazio continua válido.
+
+## Revisão 2026-09-26 — completude do resumo N16
+
+Antes de publicar n16-summary, exigir leitura e parsing completos das fontes selecionadas. Se houver erro de leitura ou fonte não parseada, sair com código 2, não publicar estatísticas em stdout e apresentar os diagnósticos em stderr; quiet suprime ambos os canais. Falhas não são inferidas da severidade configurada. Diretório vazio válido continua produzindo resumo vazio com sucesso.

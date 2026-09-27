@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 9e45b4b0
+//! @prompt-hash d72c7026
 //! @layer L4
 //! @updated 2026-09-26
 
@@ -1187,6 +1187,18 @@ fn main() {
             process::exit(1);
         }
         return;
+    }
+
+    if cli.format == OutputFormat::N16Summary
+        && (!source_errors.is_empty() || all_parsed.len() != source_files.len())
+    {
+        if !cli.quiet {
+            eprint!(
+                "{}",
+                crystalline_lint::shell::cli::format_text(&all_violations)
+            );
+        }
+        process::exit(2);
     }
 
     crystalline_lint::entities::analysis_policy::apply_policy(
