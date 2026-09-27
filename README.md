@@ -623,3 +623,40 @@ injeção de dependência. `rayon` é restrito a L4.
 ## Licença
 
 MIT — [https://github.com/Dikluwe/tekt-linter](https://github.com/Dikluwe/tekt-linter)
+
+## Política estrita e alcance da análise
+
+```bash
+crystalline-lint --checks v1,v3 --analysis-scope .
+crystalline-lint --format sarif --analysis-scope . > results.sarif
+```
+
+`--analysis-scope` acrescenta metadados ao texto ou a
+`runs[0].properties.analysisScope` no SARIF após o pipeline normal. Informa fontes
+lidas, arquivos parseados por linguagem, diagnósticos de infraestrutura, regras
+selecionadas, política e exclusões configuradas. Não enumera arquivos excluídos.
+Imports `Unknown` incluem externos e não resolvidos: sua contagem não é um veredito.
+As limitações do relatório distinguem seleção de regras de suporte e aplicabilidade.
+Falhas de entrada que impedem o pipeline continuam sendo erros, sem relatório completo.
+
+A opção é incompatível com reparos, `--emit-resolution` e `n16-summary`; `--quiet`
+continua sem saída. Saídas padrão permanecem compatíveis sem a opção.
+
+Chaves desconhecidas, IDs fora de V0–V27, níveis ou linguagens inválidos são erros
+de configuração. `--checks` aceita IDs minúsculos `v0`–`v27` e `all`; lista vazia
+e IDs desconhecidos falham. Configuração explicitamente indicada e ausente não
+cai em defaults.
+
+`[rules.V1] level = "info"` passa a alterar diagnóstico e veredito;
+`languages = ["python"]` filtra achados dessa regra para Python. V0/V8/V10 exigem
+`fatal` quando o nível é declarado e não admitem filtro. V7/V11/V15/V26 são globais
+e rejeitam filtros de linguagem. V22 agrega somente evidência Rust. V0 permanece
+ativo independentemente de `--checks`; as demais regras seguem a seleção.
+
+Os filtros e níveis da política normal não suprimem os achados intrínsecos usados
+pelos reparos. Estes mantêm seus próprios bloqueios de integridade.
+
+Compatibilidade das tabelas legadas: `[project] root = "."` e `[languages]` com
+gramáticas embutidas e `enabled = true` são aceitos. Outra raiz, desabilitação ou
+gramática customizada eram ignoradas; agora são rejeitadas explicitamente. Use o
+argumento de raiz da CLI e filtros por regra.

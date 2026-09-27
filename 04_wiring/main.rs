@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 4797620c
+//! @prompt-hash c363811f
 //! @layer L4
-//! @updated 2026-08-24
+//! @updated 2026-09-26
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -461,6 +461,15 @@ fn main() {
     } else {
         cli.config.clone()
     };
+    if !config_path.exists()
+        && matches.value_source("config") == Some(clap::parser::ValueSource::CommandLine)
+    {
+        eprintln!(
+            "crystalline-lint: explicit config does not exist: {}",
+            config_path.display()
+        );
+        process::exit(2);
+    }
     let config = if config_path.exists() {
         CrystallineConfig::load(&config_path).unwrap_or_else(|e| {
             eprintln!("crystalline-lint: config error: {e}");
@@ -536,9 +545,9 @@ fn main() {
     let v21_config = config.v21_rule_config();
     let citation_freshness = FsCitationFreshnessResolver::new(cli.path.clone(), 4 * 1024 * 1024);
     let semantic_levels = [
-        config.level_for("V23", ViolationLevel::Warning),
-        config.level_for("V24", ViolationLevel::Warning),
-        config.level_for("V25", ViolationLevel::Warning),
+        ViolationLevel::Warning,
+        ViolationLevel::Warning,
+        ViolationLevel::Warning,
     ];
 
     let wiring_config = WiringConfig {
@@ -1152,6 +1161,13 @@ fn main() {
         return;
     }
 
+    crystalline_lint::entities::analysis_policy::apply_policy(
+        &mut all_violations,
+        &all_parsed,
+        &config.rule_policy(),
+    );
+    crystalline_lint::shell::cli::sort_violations(&mut all_violations);
+
     // ── Normal output ─────────────────────────────────────────────────────────
     if !cli.quiet {
         let output = match cli.format {
@@ -1167,6 +1183,28 @@ fn main() {
                     config.n16_min_sample_size(),
                 )
             }
+        };
+        let output = if cli.analysis_scope {
+            let errors = all_violations
+                .iter()
+                .filter(|finding| finding.rule_id == "V0")
+                .count();
+            let scope = crystalline_lint::shell::cli::analysis_scope(
+                source_files.len(),
+                errors,
+                &all_parsed,
+                crystalline_lint::shell::cli::ScopeSettings {
+                    checks: &cli.checks,
+                    no_drift: cli.no_drift,
+                    no_stale: cli.no_stale,
+                    policy: &config.rule_policy(),
+                    excluded_dirs: config.excluded.values().cloned().collect(),
+                    excluded_files: config.excluded_files.values().cloned().collect(),
+                },
+            );
+            crystalline_lint::shell::cli::format_with_scope(&output, &cli.format, scope)
+        } else {
+            output
         };
         print!("{output}");
     }

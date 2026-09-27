@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/sarif-formatter.md
-//! @prompt-hash d6d0c12b
+//! @prompt-hash c6e2354a
 //! @layer L2
-//! @updated 2026-03-22
+//! @updated 2026-09-26
 
 use std::path::PathBuf;
 
@@ -40,6 +40,7 @@ pub struct Cli {
     /// rule_traits in L1/contracts/ are implemented by ParsedFile (L1), not L2/L3.
     #[arg(
         long,
+        value_parser = parse_checks,
         default_value = "v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15,v16,v17,v18,v19,v20,v21,v23,v24,v25,v26"
     )]
     pub checks: String,
@@ -77,10 +78,23 @@ pub struct Cli {
     /// changes no rule, only dumps what `classify_import` resolved per import.
     #[arg(long)]
     pub emit_resolution: bool,
+
+    /// Include analysis scope and limitations in text or SARIF output
+    #[arg(long)]
+    pub analysis_scope: bool,
 }
 
 /// Returns Err with a user-facing message if the arg combination is invalid.
 pub fn validate_args(cli: &Cli) -> Result<(), String> {
+    parse_checks(&cli.checks)?;
+    if cli.analysis_scope
+        && (cli.fix_hashes
+            || cli.update_snapshot
+            || cli.emit_resolution
+            || cli.format == OutputFormat::N16Summary)
+    {
+        return Err("--analysis-scope requires normal text or SARIF lint output".into());
+    }
     if cli.fix_hashes && cli.update_snapshot {
         return Err("--fix-hashes and --update-snapshot cannot be used simultaneously".to_string());
     }
@@ -110,7 +124,7 @@ pub enum FailLevel {
 }
 
 pub fn init_options_are_clean(matches: &ArgMatches) -> bool {
-    const LINT_OPTION_IDS: [&str; 12] = [
+    const LINT_OPTION_IDS: [&str; 13] = [
         "path",
         "format",
         "fail_on",
@@ -123,10 +137,26 @@ pub fn init_options_are_clean(matches: &ArgMatches) -> bool {
         "update_snapshot",
         "dry_run",
         "emit_resolution",
+        "analysis_scope",
     ];
     LINT_OPTION_IDS
         .iter()
         .all(|id| matches.value_source(id) != Some(ValueSource::CommandLine))
+}
+
+pub fn parse_checks(value: &str) -> Result<String, String> {
+    if value.trim().is_empty() {
+        return Err("--checks cannot be empty".into());
+    }
+    for token in value.split(',').map(str::trim) {
+        if token != "all"
+            && !(token.starts_with('v')
+                && crate::entities::analysis_policy::rule_id(&token.to_uppercase()))
+        {
+            return Err(format!("Unknown check `{token}`; expected v0–v27 or all"));
+        }
+    }
+    Ok(value.to_string())
 }
 
 // ── Enabled checks ────────────────────────────────────────────────────────────
@@ -575,6 +605,81 @@ pub fn should_fail(violations: &[Violation<'_>], fail_on: &FailLevel) -> bool {
     })
 }
 
+/// Scope metadata describes observations, not proof of behavioral conformance.
+pub struct ScopeSettings<'a> {
+    pub checks: &'a str,
+    pub no_drift: bool,
+    pub no_stale: bool,
+    pub policy:
+        &'a std::collections::BTreeMap<String, crate::entities::analysis_policy::RulePolicy>,
+    pub excluded_dirs: Vec<String>,
+    pub excluded_files: Vec<String>,
+}
+
+pub fn analysis_scope(
+    read: usize,
+    errors: usize,
+    files: &[ParsedFile<'_>],
+    settings: ScopeSettings<'_>,
+) -> serde_json::Value {
+    let ScopeSettings {
+        checks,
+        no_drift,
+        no_stale,
+        policy,
+        excluded_dirs,
+        excluded_files,
+    } = settings;
+    let mut selected: std::collections::BTreeSet<String> = checks
+        .split(',')
+        .map(str::trim)
+        .filter(|id| *id != "all")
+        .map(|id| id.to_uppercase())
+        .collect();
+    if checks.split(',').any(|id| id.trim() == "all") {
+        selected.extend((1..=27).map(|n| format!("V{n}")));
+    }
+    selected.insert("V0".into());
+    if no_drift {
+        selected.remove("V5");
+    }
+    if no_stale {
+        selected.remove("V6");
+    }
+    let policy: std::collections::BTreeMap<_, _> = policy.iter().map(|(id, entry)| (id, json!({"level": entry.level.as_ref().map(|level| format!("{level:?}").to_lowercase()), "languages": entry.languages}))).collect();
+    let excluded_dirs: std::collections::BTreeSet<_> = excluded_dirs.into_iter().collect();
+    let excluded_files: std::collections::BTreeSet<_> = excluded_files.into_iter().collect();
+    json!({
+        "sourceFilesRead": read, "filesParsed": files.len(), "infrastructureDiagnostics": errors,
+        "languagesObserved": crate::entities::analysis_policy::language_counts(files),
+        "selectedRules": selected, "configuredRulePolicy": policy,
+        "configuredExcludedDirectories": excluded_dirs, "configuredExcludedFiles": excluded_files,
+        "importsWithUnknownTarget": crate::entities::analysis_policy::unknown_imports(files),
+        "limitations": [
+            "Unknown import targets include external dependencies and unresolved imports; this count is not a violation count.",
+            "Exclusions list configuration, not a census of skipped files. Unrecognized file extensions are not analyzed.",
+            "Selected rules are not proof that every property is supported by every parser or applicable to every file.",
+            "V16–V25 and V27 analyze Rust evidence; V23–V25 require explicit semantic contracts. V26 audits the nucleus graph.",
+            "A clean run does not prove behavioral conformance or sufficient test coverage."
+        ]
+    })
+}
+
+pub fn format_with_scope(output: &str, format: &OutputFormat, scope: serde_json::Value) -> String {
+    match format {
+        OutputFormat::Sarif => {
+            let mut document: serde_json::Value =
+                serde_json::from_str(output).expect("formatter produced invalid SARIF");
+            document["runs"][0]["properties"]["analysisScope"] = scope;
+            serde_json::to_string_pretty(&document).expect("scope serialization failed")
+        }
+        _ => format!(
+            "{output}\nAnalysis scope:\n{}\n",
+            serde_json::to_string_pretty(&scope).expect("scope serialization failed")
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -736,6 +841,7 @@ mod tests {
             update_snapshot: false,
             dry_run: false,
             emit_resolution: false,
+            analysis_scope: false,
         }
     }
 

@@ -145,3 +145,7 @@ tem que provar a distinção que o 0052 trouxe: `use serde::…` (externo real) 
 Prompt nucleado antes do código; cabeçalhos de linhagem nos arquivos novos; TDD com
 prova-de-mordida (a mutação é a forma mecânica disso); suíte verde fora do débito
 `blanket_impl` pré-existente; nada mascarado; laudo ao fim.
+
+## Revisão 2026-09-26
+
+Fixtures devem declarar V0/V8/V10 como fatal; níveis error legados eram ignorados e agora são rejeitados pela configuração estrita. Preservar os cenários e vereditos de cada fixture.

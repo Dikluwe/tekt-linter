@@ -21,7 +21,7 @@ contracts = "contracts"
 rules = "rules"
 
 [rules]
-V0 = { level = "error" }
+V0 = { level = "fatal" }
 V1 = { level = "error" }
 V2 = { level = "error" }
 V3 = { level = "error" }
@@ -29,9 +29,9 @@ V4 = { level = "error" }
 V5 = { level = "error" }
 V6 = { level = "error" }
 V7 = { level = "error" }
-V8 = { level = "error" }
+V8 = { level = "fatal" }
 V9 = { level = "error" }
-V10 = { level = "error" }
+V10 = { level = "fatal" }
 V11 = { level = "error" }
 V12 = { level = "error" }
 V13 = { level = "error" }

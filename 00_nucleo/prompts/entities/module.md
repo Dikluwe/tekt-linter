@@ -1,5 +1,5 @@
 # Prompt: fachada das entidades L1
-Hash do Código: ea2c3010
+Hash do Código: 2cb38429
 
 Owner exclusivo: `01_core/entities/mod.rs`.
 
@@ -10,3 +10,7 @@ composição ou reexport que atravesse a gravidade arquitetural.
 
 A fachada compila contendo apenas declarações/reexports das entidades L1; análise de imports
 não encontra regra, adapter ou dependência L2/L3/L4.
+
+## Revisão 2026-09-26
+
+Expor analysis_policy como módulo nominal da fachada.

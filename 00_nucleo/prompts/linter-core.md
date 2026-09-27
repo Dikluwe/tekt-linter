@@ -1,5 +1,5 @@
 # Prompt: composição do linter
-Hash do Código: 3d891254
+Hash do Código: 9c0266e0
 
 Owner exclusivo: `04_wiring/main.rs`.
 
@@ -13,3 +13,7 @@ obtém inventário L3, aplica plano L1, publica via adapter e apresenta pelo she
 
 O binário compõe todas as portas/adapters, ordena saída independentemente de Rayon e mantém
 erro de infraestrutura distinto de violação; testes CLI e auto-lint cobrem o pipeline.
+
+## Revisão 2026-09-26
+
+Compor política L1 após análise e antes do veredito normal. Reparos continuam usando achados intrínsecos sem supressão pela política. --analysis-scope é somente leitura. Config explicitamente solicitada inexistente falha; configuração padrão ausente mantém defaults.

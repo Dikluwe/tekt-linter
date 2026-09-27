@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/entities/module.md
-//! @prompt-hash df94b35a
+//! @prompt-hash 9e36d44e
 //! @layer L1
-//! @updated 2026-03-22
+//! @updated 2026-09-26
 
 pub mod config_init;
 pub mod hash_pair;
@@ -14,3 +14,5 @@ pub mod refinement;
 pub mod refinement_seal;
 pub mod rule_traits;
 pub mod violation;
+
+pub mod analysis_policy;

@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/infra/config.md
-//! @prompt-hash 81b2ce55
+//! @prompt-hash 0e5507de
 //! @layer L3
-//! @updated 2026-06-09
+//! @updated 2026-09-26
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path};
@@ -30,6 +30,7 @@ fn is_language_key(key: &str) -> bool {
 
 /// Entrada individual de `[rules]` — nível configurável por regra.
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct RuleEntry {
     pub level: Option<String>,
     pub languages: Option<Vec<String>>,
@@ -41,7 +42,7 @@ pub struct RuleEntry {
 /// Type-level: `[l1_allowed_external.ecow] types = ["EcoString"]` (itens
 /// explicitamente autorizados de uma crate).
 #[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
+#[serde(untagged, deny_unknown_fields)]
 pub enum AllowedExternalEntry {
     Legacy(Vec<String>),
     TypeLevel { types: Vec<String> },
@@ -49,6 +50,7 @@ pub enum AllowedExternalEntry {
 
 /// Configuração de exceções para V12 — lida de `[wiring_exceptions]`.
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct WiringExceptionsConfig {
     /// `true` (padrão): structs de adapter são permitidas em L4.
     /// `false`: structs em L4 também disparam V12.
@@ -57,6 +59,7 @@ pub struct WiringExceptionsConfig {
 
 /// Configuração para V21 — lida de `[v21]`, `[v21.context_vars]`, etc.
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct V21ScopeConfig {
     #[serde(default)]
     pub modules: Option<Vec<String>>,
@@ -65,6 +68,7 @@ pub struct V21ScopeConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct V21TableConfig {
     #[serde(default)]
     pub context_vars: Option<Vec<String>>,
@@ -81,50 +85,56 @@ pub struct V21TableConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct V21TrivialConfig {
     #[serde(default)]
     pub literals: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
+#[serde(untagged, deny_unknown_fields)]
 pub enum V21TrivialEntry {
     List(Vec<String>),
     Table(V21TrivialConfig),
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct V21StrictConfig {
     #[serde(default)]
     pub modules: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
+#[serde(untagged, deny_unknown_fields)]
 pub enum V21StrictEntry {
     List(Vec<String>),
     Table(V21StrictConfig),
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct LineageConfig {
     #[serde(default)]
     pub strict_directories: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct AnalysisConfig {
     #[serde(default)]
     pub lineage: LineageConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct SemanticResolverConfig {
     pub symbol: String,
     pub context_arg: usize,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct ContextSemanticContract {
     pub id: String,
     #[serde(default)]
@@ -144,6 +154,7 @@ pub struct ContextSemanticContract {
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct ProjectionSemanticContract {
     pub id: String,
     #[serde(default)]
@@ -162,6 +173,7 @@ fn preserve_normalization() -> String {
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct DecisionSemanticContract {
     pub id: String,
     #[serde(default)]
@@ -182,6 +194,7 @@ pub struct DecisionSemanticContract {
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct SemanticContractsConfig {
     #[serde(default)]
     pub context: Vec<ContextSemanticContract>,
@@ -192,6 +205,7 @@ pub struct SemanticContractsConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CrystallineConfig {
     #[serde(default)]
     pub layers: HashMap<String, String>,
@@ -288,6 +302,7 @@ pub struct CrystallineConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Default, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct N16SummaryConfig {
     #[serde(default)]
     pub min_sample_size: Option<usize>,
@@ -297,10 +312,66 @@ impl CrystallineConfig {
     pub fn load(path: &Path) -> Result<Self, String> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("Cannot read {}: {}", path.display(), e))?;
-        let config: Self = toml::from_str(&content).map_err(|e| format!("Invalid TOML: {e}"))?;
+        let mut value: toml::Value =
+            toml::from_str(&content).map_err(|e| format!("Invalid TOML: {e}"))?;
+        validate_legacy_tables(&mut value)?;
+        let config: Self = value.try_into().map_err(|e| format!("Invalid TOML: {e}"))?;
+        config.validate_rules()?;
         config.validate_layers()?;
         config.validate_semantic_contracts()?;
         Ok(config)
+    }
+
+    fn validate_rules(&self) -> Result<(), String> {
+        use crate::entities::analysis_policy::{level, rule_id};
+        let ordered: std::collections::BTreeMap<_, _> = self.rules.iter().collect();
+        for (id, entry) in ordered {
+            if !rule_id(id) {
+                return Err(format!("Unknown rule `{id}`"));
+            }
+            if let Some(value) = &entry.level {
+                if level(value).is_none() {
+                    return Err(format!("Invalid level `{value}` for {id}"));
+                }
+                if matches!(id.as_str(), "V0" | "V8" | "V10")
+                    && level(value) != Some(ViolationLevel::Fatal)
+                {
+                    return Err(format!("{id} must remain fatal"));
+                }
+            }
+            if let Some(languages) = &entry.languages {
+                if matches!(
+                    id.as_str(),
+                    "V0" | "V7" | "V8" | "V10" | "V11" | "V15" | "V26"
+                ) {
+                    return Err(format!("Language filtering is unsupported for {id}"));
+                }
+                if languages.is_empty() || languages.iter().any(|name| !is_language_key(name)) {
+                    return Err(format!("Invalid languages for {id}"));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn rule_policy(
+        &self,
+    ) -> std::collections::BTreeMap<String, crate::entities::analysis_policy::RulePolicy> {
+        self.rules
+            .iter()
+            .map(|(id, entry)| {
+                (
+                    id.clone(),
+                    crate::entities::analysis_policy::RulePolicy {
+                        level: entry
+                            .level
+                            .as_deref()
+                            .and_then(crate::entities::analysis_policy::level),
+                        languages: entry.languages.clone(),
+                    },
+                )
+            })
+            .collect()
     }
 
     fn validate_layers(&self) -> Result<(), String> {
@@ -576,6 +647,48 @@ impl Default for CrystallineConfig {
             },
         }
     }
+}
+
+// Compatibility declarations are checked, never silently treated as executable options.
+fn validate_legacy_tables(value: &mut toml::Value) -> Result<(), String> {
+    let table = value.as_table_mut().ok_or("Config must be a table")?;
+    if let Some(project) = table.remove("project") {
+        let project = project.as_table().ok_or("project must be a table")?;
+        if project.keys().any(|key| key != "root")
+            || project
+                .get("root")
+                .is_some_and(|root| root.as_str() != Some("."))
+        {
+            return Err("Only legacy project.root = '.' is supported; use the CLI root".into());
+        }
+    }
+    if let Some(languages) = table.remove("languages") {
+        for (name, value) in languages.as_table().ok_or("languages must be a table")? {
+            if !is_language_key(name) {
+                return Err(format!("Unknown language `{name}`"));
+            }
+            let settings = value
+                .as_table()
+                .ok_or("Language settings must be a table")?;
+            if settings
+                .keys()
+                .any(|key| key != "grammar" && key != "enabled")
+                || settings
+                    .get("enabled")
+                    .is_some_and(|enabled| enabled.as_bool() != Some(true))
+            {
+                return Err(format!(
+                    "Unsupported settings for {name}; parsers are built in and enabled"
+                ));
+            }
+            if settings.get("grammar").is_some_and(|grammar| {
+                grammar.as_str() != Some(format!("tree-sitter-{name}").as_str())
+            }) {
+                return Err(format!("Unsupported grammar for {name}"));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
