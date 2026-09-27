@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 3bf6edef
+//! @prompt-hash 9e45b4b0
 //! @layer L4
 //! @updated 2026-09-26
 
@@ -456,6 +456,45 @@ fn main() {
         process::exit(1);
     }
 
+    // Root confinement is structural and precedes parsing. Otherwise a root
+    // failure can be multiplied into per-file errors or, for files without a
+    // header, misreported as V1.
+    if let Err(reason) = crystalline_lint::infra::prompt_io::validate_local_root(&cli.path) {
+        let violations = vec![Violation {
+            rule_id: "V0".into(),
+            level: ViolationLevel::Fatal,
+            message: format!("Falha ao validar raiz de prompts: {reason}"),
+            location: Location {
+                path: Cow::Owned(cli.path.clone()),
+                line: 0,
+                column: 0,
+            },
+        }];
+        if cli.emit_resolution {
+            if !cli.quiet {
+                eprint!("{}", crystalline_lint::shell::cli::format_text(&violations));
+            }
+            process::exit(2);
+        }
+        if !cli.quiet {
+            match cli.format {
+                OutputFormat::Text => {
+                    print!("{}", crystalline_lint::shell::cli::format_text(&violations));
+                }
+                OutputFormat::Sarif => {
+                    println!(
+                        "{}",
+                        crystalline_lint::shell::cli::format_sarif(&violations)
+                    );
+                }
+                OutputFormat::N16Summary => {
+                    eprint!("{}", crystalline_lint::shell::cli::format_text(&violations));
+                }
+            }
+        }
+        process::exit(1);
+    }
+
     // ── Config ────────────────────────────────────────────────────────────────
     let config_path = if cli.config.is_relative() {
         cli.path.join(&cli.config)
@@ -483,41 +522,6 @@ fn main() {
     // ── Phase 0: scan all prompts (sequential, before pipeline) ───────────────
     let nucleo_root = cli.path.clone();
     let enabled = EnabledChecks::from_cli(&cli.checks, cli.no_drift, cli.no_stale);
-
-    // Root confinement is structural and precedes parsing. Otherwise a root
-    // failure can be multiplied into per-file errors or, for files without a
-    // header, misreported as V1.
-    if !cli.emit_resolution && (enabled.v1 || enabled.v5 || cli.fix_hashes || cli.update_snapshot) {
-        if let Err(reason) = crystalline_lint::infra::prompt_io::validate_local_root(&cli.path) {
-            let violations = vec![Violation {
-                rule_id: "V0".into(),
-                level: ViolationLevel::Fatal,
-                message: format!("Falha ao validar raiz de prompts: {reason}"),
-                location: Location {
-                    path: Cow::Owned(cli.path.clone()),
-                    line: 0,
-                    column: 0,
-                },
-            }];
-            if !cli.quiet {
-                match cli.format {
-                    OutputFormat::Text => {
-                        print!("{}", crystalline_lint::shell::cli::format_text(&violations));
-                    }
-                    OutputFormat::Sarif => {
-                        println!(
-                            "{}",
-                            crystalline_lint::shell::cli::format_sarif(&violations)
-                        );
-                    }
-                    OutputFormat::N16Summary => {
-                        eprint!("{}", crystalline_lint::shell::cli::format_text(&violations));
-                    }
-                }
-            }
-            process::exit(1);
-        }
-    }
 
     let orphan_exceptions: std::collections::HashSet<String> =
         config.orphan_exceptions.keys().cloned().collect();

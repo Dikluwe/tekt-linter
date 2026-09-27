@@ -1,5 +1,5 @@
 # Prompt: composição do linter
-Hash do Código: c8fe3506
+Hash do Código: 10871355
 
 Owner exclusivo: `04_wiring/main.rs`.
 
@@ -25,3 +25,7 @@ Reparos de hashes e snapshots são bloqueados com saída 2 quando houver V0 ou P
 ## Revisão 2026-09-26 — instrumentação de resolução
 
 No modo --emit-resolution, falhas de leitura ou parsing impedem publicação de resultados parciais: stdout vazio, diagnóstico em stderr e saída 2. Com --quiet, manter somente o exit code. Violações arquiteturais não impedem instrumentação de fontes completamente parseadas.
+
+## Revisão 2026-09-26 — raiz independente dos checks
+
+Validar a raiz local antes de carregar configuração ou criar adapters, para qualquer seleção de checks. Raiz inexistente ou arquivo em lugar de diretório produz V0 no formato normal solicitado, saída 1 e silêncio em quiet. Em --emit-resolution, raiz inválida produz somente diagnóstico em stderr e saída 2, nunca texto em stdout JSONL. Diretório existente vazio continua válido.
