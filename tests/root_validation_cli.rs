@@ -24,6 +24,9 @@ fn invalid_roots_always_produce_sarif_v0_independent_of_checks() {
             let findings = json["runs"][0]["results"].as_array().unwrap();
             assert_eq!(findings.len(), 1);
             assert_eq!(findings[0]["ruleId"], "V0");
+            assert!(findings[0]["locations"][0]["physicalLocation"]
+                .get("region")
+                .is_none());
             assert!(out.stderr.is_empty());
             let silent = run(&root, &["--checks", checks, "--quiet"]);
             assert_eq!(silent.status.code(), Some(1));

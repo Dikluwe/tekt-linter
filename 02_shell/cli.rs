@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/sarif-formatter.md
-//! @prompt-hash 99bea55a
+//! @prompt-hash 3f84e44e
 //! @layer L2
 //! @updated 2026-09-26
 
@@ -271,20 +271,22 @@ pub fn format_sarif(violations: &[Violation<'_>]) -> String {
     let results: Vec<serde_json::Value> = violations
         .iter()
         .map(|v| {
+            let mut physical_location = json!({
+                "artifactLocation": { "uri": machine_path_uri(&v.location.path) }
+            });
+            if v.location.line > 0 {
+                let mut region = json!({ "startLine": v.location.line });
+                if let Some(column) = v.location.column.checked_add(1) {
+                    region["startColumn"] = json!(column);
+                }
+                physical_location["region"] = region;
+            }
             json!({
                 "ruleId": v.rule_id,
                 "level": sarif_level(&v.level),
                 "message": { "text": v.message },
                 "locations": [{
-                    "physicalLocation": {
-                        "artifactLocation": {
-                            "uri": machine_path_uri(&v.location.path)
-                        },
-                        "region": {
-                            "startLine": v.location.line,
-                            "startColumn": v.location.column + 1
-                        }
-                    }
+                    "physicalLocation": physical_location
                 }]
             })
         })
