@@ -137,10 +137,10 @@ fn v12_preserves_order_multiplicity_path_line_kind_name_and_unicode_evidence() {
     let missing: Vec<_> = violations
         .iter()
         .zip(expected)
-        .filter_map(|(violation, (name, kind))| {
-            (!(violation.message.contains(name) && violation.message.to_lowercase().contains(kind)))
-                .then(|| violation.message.clone())
+        .filter(|&(violation, (name, kind))| {
+            !(violation.message.contains(name) && violation.message.to_lowercase().contains(kind))
         })
+        .map(|(violation, _)| violation.message.clone())
         .collect();
     assert!(
         missing.is_empty(),

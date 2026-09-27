@@ -201,7 +201,8 @@ fn seal_language_never_claims_proven_isolation_or_independence() {
 #[test]
 fn missing_any_oracle_category_blocks() {
     let repo = Repository::new();
-    let cases: &[(&str, &[(&str, &str, &str, &str)])] = &[
+    type OracleCase<'a> = (&'a str, &'a [(&'a str, &'a str, &'a str, &'a str)]);
+    let cases: &[OracleCase<'_>] = &[
         ("all", &[]),
         (
             "positive",

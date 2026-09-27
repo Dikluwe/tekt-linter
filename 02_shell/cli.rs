@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/sarif-formatter.md
-//! @prompt-hash 3f84e44e
+//! @prompt-hash d2ef3464
 //! @layer L2
 //! @updated 2026-09-26
 
@@ -163,6 +163,21 @@ pub fn parse_checks(value: &str) -> Result<String, String> {
 }
 
 // ── Enabled checks ────────────────────────────────────────────────────────────
+
+#[derive(Clone, Copy)]
+pub struct CheckContext<'a> {
+    pub enabled: &'a EnabledChecks,
+    pub l1_ports: &'a crate::rules::pub_leak::L1Ports,
+    pub wiring_config: &'a crate::entities::parsed_file::WiringConfig,
+    pub l1_allowed: &'a crate::entities::l1_allowed_external::L1AllowedExternalSet,
+    pub strict_dirs: &'a [String],
+    pub check_test_imports: bool,
+    pub wildcard_exceptions: &'a std::collections::HashMap<String, String>,
+    pub v21_config: &'a crate::rules::unsourced_constant::V21RuleConfig,
+    pub semantic_levels: &'a [ViolationLevel; 3],
+    pub citation_freshness:
+        &'a (dyn crate::contracts::citation_freshness::CitationFreshnessResolver + Sync),
+}
 
 pub struct EnabledChecks {
     pub v1: bool,
@@ -1126,7 +1141,7 @@ mod tests {
     #[test]
     fn cli_accepts_n16_summary_format() {
         use clap::Parser;
-        let cli = Cli::try_parse_from(&["crystalline-lint", "--format", "n16-summary"]).unwrap();
+        let cli = Cli::try_parse_from(["crystalline-lint", "--format", "n16-summary"]).unwrap();
         assert_eq!(cli.format, OutputFormat::N16Summary);
     }
 

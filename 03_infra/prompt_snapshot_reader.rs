@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/infra/prompt-snapshot-reader.md
-//! @prompt-hash 85ffee7b
+//! @prompt-hash 3ed41754
 //! @layer L3
-//! @updated 2026-03-14
+//! @updated 2026-09-26
 
 use std::path::PathBuf;
 
@@ -138,7 +138,7 @@ impl PromptSnapshotReader for FsPromptSnapshotReader {
         )
         .ok()?;
         let content = std::str::from_utf8(&bytes).ok()?;
-        let json = extract_snapshot_json(&content)?;
+        let json = extract_snapshot_json(content)?;
         let owned: OwnedPublicInterface = serde_json::from_str(&json).ok()?;
         Some(owned_to_static(owned))
     }

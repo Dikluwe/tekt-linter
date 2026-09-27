@@ -1,5 +1,5 @@
 # Prompt: CLI e formatadores do linter
-Hash do Código: 61914cd3
+Hash do Código: f6040ed0
 
 ## Owner
 
@@ -36,3 +36,7 @@ Rejeitar --emit-resolution combinado com --fix-hashes ou --update-snapshot, incl
 ## Revisão 2026-09-26 — localizações SARIF
 
 Quando a linha do diagnóstico é zero (localização desconhecida ou achado no arquivo inteiro), preservar artifactLocation e omitir region; nunca inventar linha 1. Linhas positivas são preservadas. Colunas internas base zero são convertidas para base um com soma verificada; se não representáveis, omitir somente startColumn, sem panic ou wraparound. Testar achados mistos e erro real de raiz. Referência: https://docs.oasis-open.org/sarif/sarif/v2.1.0/os/schemas/sarif-schema-2.1.0.json (region exige coordenadas positivas).
+
+## Revisão 2026-09-26 — fechamento de qualidade
+
+Eliminar avisos do Clippy preservando resultados, ordem, localizações, interfaces públicas e invariantes acima. Manter compatibilidade das APIs utilizadas com Rust 1.75; simplificar expressões e remover parâmetros/auxiliares redundantes. Agrupar contexto interno de travessia quando necessário, sem reclassificar entradas. Validar com a suíte existente e autoverificação, e sincronizar hashes nos dois sentidos.

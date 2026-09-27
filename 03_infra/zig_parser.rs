@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/zig.md
-//! @prompt-hash 789e7202
+//! @prompt-hash c38fd019
 //! @layer L3
-//! @updated 2026-04-03
+//! @updated 2026-09-26
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
@@ -300,10 +300,11 @@ fn normalize(path: &Path, project_root: &Path) -> Option<PathBuf> {
         }
     }
     let result: PathBuf = components.iter().collect();
-    if project_root != Path::new(".") && !project_root.as_os_str().is_empty() {
-        if !result.starts_with(project_root) {
-            return None;
-        }
+    if project_root != Path::new(".")
+        && !project_root.as_os_str().is_empty()
+        && !result.starts_with(project_root)
+    {
+        return None;
     }
     Some(result)
 }
@@ -497,7 +498,7 @@ fn extract_static_declarations<'a>(root: Node, source: &'a [u8]) -> Vec<StaticDe
 fn collect_statics<'a>(node: Node, source: &'a [u8], decls: &mut Vec<StaticDeclaration<'a>>) {
     if node.kind() == "variable_declaration" {
         // Top-level variable in source_file usually
-        if node.parent().map_or(false, |p| p.kind() == "source_file") {
+        if node.parent().is_some_and(|p| p.kind() == "source_file") {
             let is_mut = node_text(node, source).contains("var");
             if let Some(name_node) = node.child_by_field_name("name") {
                 decls.push(StaticDeclaration {

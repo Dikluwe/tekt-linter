@@ -340,10 +340,10 @@ fn v9_guard_kinds_multiplicity_order_and_evidence_match_v3_guarantees() {
     let missing_evidence: Vec<_> = all
         .iter()
         .zip(expected_evidence)
-        .filter_map(|(violation, (import_path, subdir))| {
-            (!(violation.message.contains(import_path) && violation.message.contains(subdir)))
-                .then(|| (import_path, subdir, violation.message.clone()))
+        .filter(|&(violation, (import_path, subdir))| {
+            !(violation.message.contains(import_path) && violation.message.contains(subdir))
         })
+        .map(|(violation, (import_path, subdir))| (import_path, subdir, violation.message.clone()))
         .collect();
     let same_identity_messages: HashSet<_> = all[..4]
         .iter()

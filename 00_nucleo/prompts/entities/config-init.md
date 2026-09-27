@@ -1,5 +1,5 @@
 # Prompt: plano puro de inicialização da configuração
-Hash do Código: 7720ae99
+Hash do Código: d654d847
 
 Owner exclusivo: `01_core/entities/config_init.rs`.
 

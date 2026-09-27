@@ -1,5 +1,5 @@
 # Prompt: fachada das regras L1
-Hash do Código: 4b951c35
+Hash do Código: aa3f0b6a
 
 Owner exclusivo: `01_core/rules/mod.rs`.
 

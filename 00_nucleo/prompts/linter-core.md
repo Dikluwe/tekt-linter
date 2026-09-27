@@ -1,5 +1,5 @@
 # Prompt: composição do linter
-Hash do Código: 1186a2d4
+Hash do Código: a222e057
 
 Owner exclusivo: `04_wiring/main.rs`.
 
@@ -37,3 +37,7 @@ Antes de publicar n16-summary, exigir leitura e parsing completos das fontes sel
 ## Revisão 2026-09-26 — ausência versus erro de configuração
 
 Carregar configuração via porta L3 load_optional, sem Path::exists que suprime erros de inspeção. Config padrão realmente ausente permite defaults; config explícita ausente sai 2; configuração existente inválida ou ilegível sai 1. Erros de carregamento e ausência explícita respeitam --quiet, sem alterar o exit code.
+
+## Revisão 2026-09-26 — fechamento de qualidade
+
+Eliminar avisos do Clippy preservando resultados, ordem, localizações, interfaces públicas e invariantes acima. Manter compatibilidade das APIs utilizadas com Rust 1.75; simplificar expressões e remover parâmetros/auxiliares redundantes. Agrupar contexto interno de travessia quando necessário, sem reclassificar entradas. Validar com a suíte existente e autoverificação, e sincronizar hashes nos dois sentidos.

@@ -55,7 +55,7 @@ jobs:
         run: cargo test --all-targets
 
       - name: Cargo Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets --locked -- -D warnings
 
       - name: Install cargo-mutants
         uses: taiki-e/install-action@cargo-mutants

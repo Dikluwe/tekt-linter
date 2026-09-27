@@ -1,5 +1,5 @@
 # Prompt: Rule V5 - Prompt Drift (prompt-drift)
-Hash do Código: ff4e7d01
+Hash do Código: 177c66fb
 
 **Camada**: L1 (Core - Rules)
 **Regra**: V5

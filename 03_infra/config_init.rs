@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/infra/config-init.md
-//! @prompt-hash fae97064
+//! @prompt-hash 56521e83
 //! @layer L3
-//! @updated 2026-08-26
+//! @updated 2026-09-26
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -132,28 +132,28 @@ fn publish_config_at(root: &Path, bytes: &[u8], temporary: &Path) -> Result<Path
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
-            .open(&temporary)
+            .open(temporary)
             .map_err(|error| format!("cannot create temporary config: {error}"))?;
         owns_temporary = true;
         file.write_all(bytes)
             .and_then(|_| file.sync_all())
             .map_err(|error| format!("cannot write temporary config: {error}"))?;
         drop(file);
-        CrystallineConfig::load(&temporary)
+        CrystallineConfig::load(temporary)
             .map_err(|error| format!("generated config failed validation: {error}"))?;
-        if let Err(error) = fs::hard_link(&temporary, &destination) {
+        if let Err(error) = fs::hard_link(temporary, &destination) {
             if error.kind() == std::io::ErrorKind::AlreadyExists {
                 return Err("config destination appeared concurrently".to_string());
             }
             return Err(format!("cannot publish config: {error}"));
         }
-        fs::remove_file(&temporary)
+        fs::remove_file(temporary)
             .map_err(|error| format!("cannot clean temporary config: {error}"))?;
         Ok(destination.clone())
     })();
 
     if operation.is_err() && owns_temporary {
-        if let Err(error) = fs::remove_file(&temporary) {
+        if let Err(error) = fs::remove_file(temporary) {
             if cleanup_failure_is_reportable(error.kind()) {
                 return Err(format!("cannot clean temporary config: {error}"));
             }

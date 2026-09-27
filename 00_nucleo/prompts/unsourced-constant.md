@@ -1,5 +1,5 @@
 # Prompt: regra V21 HardcodedContextualValue
-Hash do Código: 438c0ae4
+Hash do Código: 0f9889c5
 
 ## Owner
 
@@ -21,3 +21,7 @@ contexto e sumidouro geométrico sem `spec`, `rationale` ou `ref` fresca.
 
 Os três eixos são necessários; triviais/isenções ficam silenciosos; candidato sem fonte
 gera localização, snippet e razão estáveis; refs válidas silenciam somente o alvo.
+
+## Revisão 2026-09-26 — fechamento de qualidade
+
+Eliminar avisos do Clippy preservando resultados, ordem, localizações, interfaces públicas e invariantes acima. Manter compatibilidade das APIs utilizadas com Rust 1.75; simplificar expressões e remover parâmetros/auxiliares redundantes. Agrupar contexto interno de travessia quando necessário, sem reclassificar entradas. Validar com a suíte existente e autoverificação, e sincronizar hashes nos dois sentidos.

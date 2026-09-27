@@ -1,10 +1,11 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 50e1f4e9
+//! @prompt-hash f0c96ee3
 //! @layer L4
 //! @updated 2026-09-26
 
 use crystalline_lint::entities::analysis_policy::ParseCounts;
+use crystalline_lint::shell::cli::CheckContext;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -13,9 +14,7 @@ use std::process;
 use clap::{CommandFactory, FromArgMatches};
 use rayon::prelude::*;
 
-use crystalline_lint::contracts::citation_freshness::{
-    CitationFreshnessResolver, UnknownCitationFreshness,
-};
+use crystalline_lint::contracts::citation_freshness::UnknownCitationFreshness;
 use crystalline_lint::contracts::file_provider::{
     collect_walker_results, FileProvider, SourceError, SourceFile,
 };
@@ -87,7 +86,6 @@ use crystalline_lint::shell::fix_hashes::{self, HashRewriter, TransactionalHashR
 use crystalline_lint::shell::refinement::{self, RefinementOutputFormat};
 use crystalline_lint::shell::update_snapshot::{self, SnapshotRewriter};
 use crystalline_lint::{PromptOwnership, PromptOwnershipLayer};
-use std::collections::HashMap;
 
 fn select_git_executable() -> Result<PathBuf, String> {
     let path = std::env::var_os("PATH").ok_or("PATH is not set")?;
@@ -663,16 +661,18 @@ fn main() {
         &source_files,
         &source_errors,
         &parser,
-        &enabled,
-        &l1_ports,
-        &wiring_config,
-        &l1_allowed,
-        &config.analysis.lineage.strict_directories,
-        config.check_test_imports.unwrap_or(false),
-        &config.wildcard_exceptions,
-        &v21_config,
-        &semantic_levels,
-        &citation_freshness,
+        CheckContext {
+            enabled: &enabled,
+            l1_ports: &l1_ports,
+            wiring_config: &wiring_config,
+            l1_allowed: &l1_allowed,
+            strict_dirs: &config.analysis.lineage.strict_directories,
+            check_test_imports: config.check_test_imports.unwrap_or(false),
+            wildcard_exceptions: &config.wildcard_exceptions,
+            v21_config: &v21_config,
+            semantic_levels: &semantic_levels,
+            citation_freshness: &citation_freshness,
+        },
     );
 
     // ── --emit-resolution (instrumentação 0058, fora do selo de veredito) ──────
@@ -1028,16 +1028,18 @@ fn main() {
                 &re_files,
                 &re_errors,
                 &reparser,
-                &v5_only,
-                &l1_ports,
-                &wiring_config,
-                &l1_allowed,
-                &config.analysis.lineage.strict_directories,
-                config.check_test_imports.unwrap_or(false),
-                &config.wildcard_exceptions,
-                &v21_config,
-                &semantic_levels,
-                &UnknownCitationFreshness,
+                CheckContext {
+                    enabled: &v5_only,
+                    l1_ports: &l1_ports,
+                    wiring_config: &wiring_config,
+                    l1_allowed: &l1_allowed,
+                    strict_dirs: &config.analysis.lineage.strict_directories,
+                    check_test_imports: config.check_test_imports.unwrap_or(false),
+                    wildcard_exceptions: &config.wildcard_exceptions,
+                    v21_config: &v21_config,
+                    semantic_levels: &semantic_levels,
+                    citation_freshness: &UnknownCitationFreshness,
+                },
             );
             violations.iter().filter(|v| v.rule_id == "V5").count()
         };
@@ -1164,16 +1166,18 @@ fn main() {
                 &re_files,
                 &re_errors,
                 &reparser,
-                &v6_only,
-                &l1_ports,
-                &wiring_config,
-                &l1_allowed,
-                &config.analysis.lineage.strict_directories,
-                config.check_test_imports.unwrap_or(false),
-                &config.wildcard_exceptions,
-                &v21_config,
-                &semantic_levels,
-                &UnknownCitationFreshness,
+                CheckContext {
+                    enabled: &v6_only,
+                    l1_ports: &l1_ports,
+                    wiring_config: &wiring_config,
+                    l1_allowed: &l1_allowed,
+                    strict_dirs: &config.analysis.lineage.strict_directories,
+                    check_test_imports: config.check_test_imports.unwrap_or(false),
+                    wildcard_exceptions: &config.wildcard_exceptions,
+                    v21_config: &v21_config,
+                    semantic_levels: &semantic_levels,
+                    citation_freshness: &UnknownCitationFreshness,
+                },
             );
             violations.iter().filter(|v| v.rule_id == "V6").count()
         };
@@ -1447,16 +1451,7 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
     source_files: &'a [SourceFile],
     source_errors: &'a [SourceError],
     parser: &P,
-    enabled: &EnabledChecks,
-    l1_ports: &L1Ports,
-    wiring_config: &WiringConfig,
-    l1_allowed: &L1AllowedExternalSet,
-    strict_dirs: &[String],
-    check_test_imports: bool,
-    wildcard_exceptions: &HashMap<String, String>,
-    v21_config: &crystalline_lint::rules::unsourced_constant::V21RuleConfig,
-    semantic_levels: &[ViolationLevel; 3],
-    citation_freshness: &(dyn CitationFreshnessResolver + Sync),
+    checks: CheckContext<'_>,
 ) -> (
     Vec<Violation<'a>>,
     Vec<ParsedFile<'a>>,
@@ -1492,19 +1487,7 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
         ) {
             match parser.parse(source_file) {
                 Ok(parsed) => {
-                    let violations = run_checks(
-                        &parsed,
-                        enabled,
-                        l1_ports,
-                        wiring_config,
-                        l1_allowed,
-                        strict_dirs,
-                        check_test_imports,
-                        wildcard_exceptions,
-                        v21_config,
-                        semantic_levels,
-                        citation_freshness,
-                    );
+                    let violations = run_checks(&parsed, checks);
                     let local = LocalIndex::from_parsed(&parsed);
                     (violations, Some(parsed), local, ParseCounts::default())
                 }
@@ -1596,19 +1579,19 @@ fn prompt_ownerships(files: &[ParsedFile<'_>]) -> Vec<PromptOwnership> {
 
 // ── Rule dispatcher ───────────────────────────────────────────────────────────
 
-fn run_checks<'a>(
-    file: &ParsedFile<'a>,
-    enabled: &EnabledChecks,
-    l1_ports: &L1Ports,
-    wiring_config: &WiringConfig,
-    l1_allowed: &L1AllowedExternalSet,
-    strict_dirs: &[String],
-    check_test_imports: bool,
-    wildcard_exceptions: &HashMap<String, String>,
-    v21_config: &crystalline_lint::rules::unsourced_constant::V21RuleConfig,
-    semantic_levels: &[ViolationLevel; 3],
-    citation_freshness: &(dyn CitationFreshnessResolver + Sync),
-) -> Vec<Violation<'a>> {
+fn run_checks<'a>(file: &ParsedFile<'a>, checks: CheckContext<'_>) -> Vec<Violation<'a>> {
+    let CheckContext {
+        enabled,
+        l1_ports,
+        wiring_config,
+        l1_allowed,
+        strict_dirs,
+        check_test_imports,
+        wildcard_exceptions,
+        v21_config,
+        semantic_levels,
+        citation_freshness,
+    } = checks;
     let mut violations = Vec::new();
     if let Some(violation) = prompt_access_violation(file) {
         violations.push(violation);

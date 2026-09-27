@@ -1,5 +1,5 @@
 # Prompt: regra V17 CompoundGuard
-Hash do Código: fd52db4c
+Hash do Código: 8adb5b03
 
 Owner exclusivo: `01_core/rules/compound_guard.rs`.
 

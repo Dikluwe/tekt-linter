@@ -1,5 +1,5 @@
 # Prompt: Rule V13 — Mutable State In Core (mutable-state-core)
-Hash do Código: f98a9919
+Hash do Código: 1c89ffb7
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V13

@@ -1,5 +1,5 @@
 # Prompt: resumo N16
-Hash do Código: 36f8a812
+Hash do Código: b7ce4776
 
 Owner exclusivo: `02_shell/n16_summary.rs`.
 

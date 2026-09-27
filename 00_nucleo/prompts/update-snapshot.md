@@ -1,5 +1,5 @@
 # Prompt: planejamento de update-snapshot
-Hash do Código: b4c3ef22
+Hash do Código: daea64cc
 
 Owner exclusivo: `02_shell/update_snapshot.rs`.
 

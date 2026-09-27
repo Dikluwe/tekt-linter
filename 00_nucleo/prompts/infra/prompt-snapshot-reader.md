@@ -1,5 +1,5 @@
 # Prompt: FsPromptSnapshotReader
-Hash do Código: c402154e
+Hash do Código: 7c26a8b7
 
 ## Owner
 
@@ -20,3 +20,7 @@ desserializar/serializar `PublicInterface` em JSON determinístico.
 
 Snapshots válidos fazem round-trip; marcador malformado e path fora da raiz não vazam
 I/O nem produzem interface parcial.
+
+## Revisão 2026-09-26 — fechamento de qualidade
+
+Eliminar avisos do Clippy preservando resultados, ordem, localizações, interfaces públicas e invariantes acima. Manter compatibilidade das APIs utilizadas com Rust 1.75; simplificar expressões e remover parâmetros/auxiliares redundantes. Agrupar contexto interno de travessia quando necessário, sem reclassificar entradas. Validar com a suíte existente e autoverificação, e sincronizar hashes nos dois sentidos.

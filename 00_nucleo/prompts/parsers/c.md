@@ -1,5 +1,5 @@
 # Prompt: C Parser (parsers/c)
-Hash do Código: fb7f6d53
+Hash do Código: 9fc7c2b0
 
 **Camada**: L3 (Infra)
 **Padrão**: Adapter over `tree-sitter-c`
@@ -164,3 +164,7 @@ impl<R, S> LanguageParser for CParser<R, S> { fn parse<'a>(&self, file: &'a Sour
 |------------|---------------------------------------------|---------------------------|
 | 2026-03-30 | Criação inicial — suporte a C no linter     | `03_infra/c_parser.rs`    |
 | 2026-04-03 | Criação deste prompt (faltava em L0)        | `00_nucleo/prompts/parsers/c.md` |
+
+## Revisão 2026-09-26 — fechamento de qualidade
+
+Eliminar avisos do Clippy preservando resultados, ordem, localizações, interfaces públicas e invariantes acima. Manter compatibilidade das APIs utilizadas com Rust 1.75; simplificar expressões e remover parâmetros/auxiliares redundantes. Agrupar contexto interno de travessia quando necessário, sem reclassificar entradas. Validar com a suíte existente e autoverificação, e sincronizar hashes nos dois sentidos.

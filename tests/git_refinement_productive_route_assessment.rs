@@ -97,7 +97,7 @@ case " $* " in
   *) exit 43 ;;
 esac
 "#,
-            source_len = SOURCE.as_bytes().len(),
+            source_len = SOURCE.len(),
             source = SOURCE,
         );
         fs::write(&git, script).unwrap();

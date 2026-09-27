@@ -1,5 +1,5 @@
 # Prompt: Rule V3 - Forbidden Import (forbidden-import)
-Hash do Código: 495a930c
+Hash do Código: 5342be3f
 
 **Camada**: L1 (Core - Rules)
 **Regra**: V3

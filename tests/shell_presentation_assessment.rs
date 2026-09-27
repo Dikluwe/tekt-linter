@@ -47,7 +47,7 @@ fn permutations(values: &[usize]) -> Vec<Vec<usize>> {
 
 #[test]
 fn total_sort_is_independent_of_input_permutation_under_all_ties() {
-    let source = vec![
+    let source = [
         violation("V2", ViolationLevel::Error, "z", Path::new("same.rs"), 4, 2),
         violation("V2", ViolationLevel::Error, "a", Path::new("same.rs"), 4, 2),
         violation("V1", ViolationLevel::Error, "m", Path::new("same.rs"), 4, 2),

@@ -1,5 +1,5 @@
 # Prompt: carregamento estrito de configuração
-Hash do Código: 7f931c6b
+Hash do Código: fa13501f
 
 Owner exclusivo: `03_infra/config.rs`.
 
@@ -18,3 +18,7 @@ Rejeitar chaves desconhecidas em tabelas tipadas, IDs de regra fora de V0–V27,
 ## Revisão 2026-09-26 — ausência versus erro de configuração
 
 Expor load_optional: somente ausência confirmada da entrada de configuração retorna None. Inspecionar com symlink_metadata para distinguir link quebrado de ausência; erros de inspeção, leitura ou parsing retornam Err. Entrada existente deve passar pelo carregamento estrito; link válido mantém o comportamento de leitura existente. Nenhum erro de filesystem vira default.
+
+## Revisão 2026-09-26 — fechamento de qualidade
+
+Eliminar avisos do Clippy preservando resultados, ordem, localizações, interfaces públicas e invariantes acima. Manter compatibilidade das APIs utilizadas com Rust 1.75; simplificar expressões e remover parâmetros/auxiliares redundantes. Agrupar contexto interno de travessia quando necessário, sem reclassificar entradas. Validar com a suíte existente e autoverificação, e sincronizar hashes nos dois sentidos.

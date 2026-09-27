@@ -1,5 +1,5 @@
 # Prompt: TypeScript Parser (parsers/typescript)
-Hash do Código: e327c37f
+Hash do Código: 6c9c57b4
 
 **Camada**: L3 (Infra)
 **Padrão**: Adapter over `tree-sitter-typescript`
@@ -764,3 +764,7 @@ Então nenhum Box::leak foi produzido
 | 2026-03-18 | ADR-0009 correcção: ImportKind semântico — tabela de mapeamento TS→Direct/Glob/Alias/Named; EsImport removido; nota sobre V4 usar file.language(); restrição de agnósticidade adicionada; critérios de ImportKind adicionados | ts_parser.rs |
 | 2026-03-20 | ADR-0005 conformidade: Box::leak removido de resolve_ts_subdir; substituído por buffer interno intern_subdir() com mesmo padrão de FsPromptWalker; subdirs_buffer adicionado à struct; restrição explícita contra Box::leak adicionada; critério de memória adicionado; classify_export_statement corrigido: export* detectado por ausência de export_clause, não por nó "*" | ts_parser.rs |
 | 2026-03-20 | export default: function e class com e sem nome capturados em public_interface; name = "default" para formas anónimas | ts_parser.rs |
+
+## Revisão 2026-09-26 — fechamento de qualidade
+
+Eliminar avisos do Clippy preservando resultados, ordem, localizações, interfaces públicas e invariantes acima. Manter compatibilidade das APIs utilizadas com Rust 1.75; simplificar expressões e remover parâmetros/auxiliares redundantes. Agrupar contexto interno de travessia quando necessário, sem reclassificar entradas. Validar com a suíte existente e autoverificação, e sincronizar hashes nos dois sentidos.

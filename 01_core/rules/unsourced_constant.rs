@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/unsourced-constant.md
-//! @prompt-hash 1d9e80b8
+//! @prompt-hash c6400753
 //! @layer L1
-//! @updated 2026-08-24
+//! @updated 2026-09-26
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -258,7 +258,7 @@ fn is_trivial_literal(snippet: &str, trivial_set: &HashSet<String>) -> bool {
 
 fn identifier_has_segment(value: &str, configured: &str) -> bool {
     value
-        .split(|c: char| c == '.' || c == '_')
+        .split(['.', '_'])
         .any(|segment| segment.eq_ignore_ascii_case(configured))
 }
 

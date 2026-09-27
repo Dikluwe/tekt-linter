@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/infra/config.md
-//! @prompt-hash 224d2204
+//! @prompt-hash afb8f8cd
 //! @layer L3
 //! @updated 2026-09-26
 
@@ -624,11 +624,12 @@ impl Default for CrystallineConfig {
         l1_ports.insert("contracts".to_string(), "01_core/contracts".to_string());
         l1_ports.insert("rules".to_string(), "01_core/rules".to_string());
 
-        let mut strict_directories = Vec::new();
-        strict_directories.push("01_core".to_string());
-        strict_directories.push("02_shell".to_string());
-        strict_directories.push("03_infra".to_string());
-        strict_directories.push("04_wiring".to_string());
+        let strict_directories = vec![
+            "01_core".to_string(),
+            "02_shell".to_string(),
+            "03_infra".to_string(),
+            "04_wiring".to_string(),
+        ];
 
         Self {
             layers,
@@ -942,11 +943,13 @@ sinks = ["draw"]
             vec![("L1", "same"), ("L2", "same")],
         ];
         for entries in invalid {
-            let mut config = CrystallineConfig::default();
-            config.layers = entries
-                .into_iter()
-                .map(|(key, value)| (key.to_string(), value.to_string()))
-                .collect();
+            let config = CrystallineConfig {
+                layers: entries
+                    .into_iter()
+                    .map(|(key, value)| (key.to_string(), value.to_string()))
+                    .collect(),
+                ..CrystallineConfig::default()
+            };
             assert!(config.validate_layers().is_err());
         }
         let mut alias = CrystallineConfig::default();

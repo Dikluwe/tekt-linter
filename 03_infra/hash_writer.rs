@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/infra/hash-writer.md
-//! @prompt-hash 18d11314
+//! @prompt-hash 322ec9ed
 //! @layer L3
 //! @updated 2026-09-26
 
@@ -128,9 +128,7 @@ pub fn write_pair(
         .map_err(|error| error.to_string())?
         .permissions();
     atomic_replace(source_path, &snapshot.source_bytes, source_permissions)?;
-    if let Err(reason) = atomic_replace(prompt_path, &snapshot.prompt_bytes, prompt_permissions) {
-        return Err(reason);
-    }
+    atomic_replace(prompt_path, &snapshot.prompt_bytes, prompt_permissions)?;
     Ok(())
 }
 

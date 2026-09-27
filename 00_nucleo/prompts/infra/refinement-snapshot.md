@@ -1,5 +1,5 @@
 # Prompt: carregamento de snapshots de refinamento
-Hash do Código: 11485d85
+Hash do Código: 812eae63
 
 Owner exclusivo: `03_infra/refinement_snapshot.rs`.
 

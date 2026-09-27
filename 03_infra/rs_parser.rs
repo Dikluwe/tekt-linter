@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/rust.md
-//! @prompt-hash 5b49feef
+//! @prompt-hash 18b46557
 //! @layer L3
-//! @updated 2026-06-09
+//! @updated 2026-09-26
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -281,9 +281,11 @@ fn extract_imports<'a>(
     collect_path_refs(
         root,
         source,
-        config,
-        registry,
-        owner,
+        ImportResolution {
+            config,
+            registry,
+            owner,
+        },
         false,
         &mut seen,
         &mut imports,
@@ -328,6 +330,13 @@ fn for_each_child_in_test_scope(
     }
 }
 
+#[derive(Clone, Copy)]
+struct ImportResolution<'a> {
+    config: &'a CrystallineConfig,
+    registry: &'a CrateRegistry,
+    owner: Option<&'a MemberCrate>,
+}
+
 /// Coleta referências cross-crate por caminho qualificado fora do `use`/`extern
 /// crate` — `scoped_identifier` (expressão), `scoped_type_identifier` (tipo),
 /// caminhos em tipos genéricos, e qualificações de chamada (todas `scoped_*`),
@@ -338,9 +347,7 @@ fn for_each_child_in_test_scope(
 fn collect_path_refs<'a>(
     node: Node,
     source: &'a [u8],
-    config: &CrystallineConfig,
-    registry: &CrateRegistry,
-    owner: Option<&MemberCrate>,
+    resolution: ImportResolution<'_>,
     cfg_test: bool,
     seen: &mut HashSet<String>,
     imports: &mut Vec<Import<'a>>,
@@ -359,9 +366,7 @@ fn collect_path_refs<'a>(
             try_emit_path_ref(
                 node_text(node, source),
                 line,
-                config,
-                registry,
-                owner,
+                resolution,
                 cfg_test,
                 seen,
                 imports,
@@ -371,9 +376,7 @@ fn collect_path_refs<'a>(
         // sequências `ident :: ident`. Limite honesto: caminhos gerados DENTRO do
         // corpo de uma macro que a grammar não estrutura ficam invisíveis (residual).
         "token_tree" => {
-            scan_token_tree(
-                node, source, config, registry, owner, cfg_test, seen, imports,
-            );
+            scan_token_tree(node, source, resolution, cfg_test, seen, imports);
         }
         _ => {}
     }
@@ -381,9 +384,7 @@ fn collect_path_refs<'a>(
     // O escopo de teste de cada filho é decidido pelos atributos `#[cfg(test)]`
     // irmãos (0061), não herdado em bloco — ver `for_each_child_in_test_scope`.
     for_each_child_in_test_scope(node, source, cfg_test, |child, child_cfg| {
-        collect_path_refs(
-            child, source, config, registry, owner, child_cfg, seen, imports,
-        );
+        collect_path_refs(child, source, resolution, child_cfg, seen, imports);
     });
 }
 
@@ -402,13 +403,16 @@ fn is_local_or_std_first_segment(path: &str) -> bool {
 fn try_emit_path_ref<'a>(
     path: &'a str,
     line: usize,
-    config: &CrystallineConfig,
-    registry: &CrateRegistry,
-    owner: Option<&MemberCrate>,
+    resolution: ImportResolution<'_>,
     cfg_test: bool,
     seen: &mut HashSet<String>,
     imports: &mut Vec<Import<'a>>,
 ) {
+    let ImportResolution {
+        config,
+        registry,
+        owner,
+    } = resolution;
     if is_local_or_std_first_segment(path) {
         return;
     }
@@ -444,9 +448,7 @@ fn try_emit_path_ref<'a>(
 fn scan_token_tree<'a>(
     node: Node,
     source: &'a [u8],
-    config: &CrystallineConfig,
-    registry: &CrateRegistry,
-    owner: Option<&MemberCrate>,
+    resolution: ImportResolution<'_>,
     cfg_test: bool,
     seen: &mut HashSet<String>,
     imports: &mut Vec<Import<'a>>,
@@ -467,9 +469,7 @@ fn scan_token_tree<'a>(
             try_emit_path_ref(
                 node_text(child, source),
                 line,
-                config,
-                registry,
-                owner,
+                resolution,
                 cfg_test,
                 seen,
                 imports,
@@ -1037,9 +1037,7 @@ fn extract_blanket_impls<'a>(root: Node, source: &'a [u8]) -> Vec<&'a str> {
             let for_type = node
                 .child_by_field_name("type")
                 .map(|n| node_text(n, source));
-            let is_blanket = for_type
-                .map(|t| type_params.iter().any(|p| *p == t))
-                .unwrap_or(false);
+            let is_blanket = for_type.map(|t| type_params.contains(&t)).unwrap_or(false);
             if !is_blanket {
                 continue; // impl<T> Trait for ConcreteType — não é blanket
             }
@@ -1398,12 +1396,12 @@ fn parse_match_arm<'a>(node: Node, source: &'a [u8]) -> Option<DecisionArm<'a>> 
 
     let has_guard = has_if;
     let guard_is_compound = if let Some(g) = guard_node {
-        check_compound_guard(g, source)
+        check_compound_guard(g)
     } else {
         false
     };
 
-    let pattern_is_range = check_pattern_is_range(match_pattern, pattern_end_byte, source);
+    let pattern_is_range = check_pattern_is_range(match_pattern, pattern_end_byte);
     let pattern_depth = measure_pattern_depth(match_pattern, pattern_end_byte);
     let or_alternatives = count_or_alternatives(match_pattern, pattern_end_byte);
 
@@ -1694,7 +1692,7 @@ fn extract_prefixes_from_pattern<'a>(
     }
 }
 
-fn check_compound_guard(node: Node, source: &[u8]) -> bool {
+fn check_compound_guard(node: Node) -> bool {
     if node.kind() == "binary_expression" {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -1705,14 +1703,14 @@ fn check_compound_guard(node: Node, source: &[u8]) -> bool {
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if check_compound_guard(child, source) {
+        if check_compound_guard(child) {
             return true;
         }
     }
     false
 }
 
-fn check_pattern_is_range(node: Node, limit_byte: usize, source: &[u8]) -> bool {
+fn check_pattern_is_range(node: Node, limit_byte: usize) -> bool {
     if node.start_byte() >= limit_byte {
         return false;
     }
@@ -1721,7 +1719,7 @@ fn check_pattern_is_range(node: Node, limit_byte: usize, source: &[u8]) -> bool 
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if check_pattern_is_range(child, limit_byte, source) {
+        if check_pattern_is_range(child, limit_byte) {
             return true;
         }
     }
@@ -2343,13 +2341,15 @@ fn extract_constants<'a>(root: Node, source: &'a [u8]) -> Vec<SourceConstant<'a>
         root,
         source,
         &citations,
-        false,
-        None,
-        false,
-        false,
-        false,
-        None,
-        None,
+        ConstantContext {
+            cfg_test: false,
+            fn_return_type: None,
+            in_fn_body: false,
+            in_pattern: false,
+            in_data_table: false,
+            active_sink: None,
+            scaling_context_var: None,
+        },
         &mut constants,
     );
     constants
@@ -2572,10 +2572,7 @@ fn extract_sink_from_node(node: Node, source: &[u8]) -> Option<String> {
     None
 }
 
-fn collect_constants<'a>(
-    node: Node,
-    source: &'a [u8],
-    citations: &std::collections::HashMap<usize, Citation<'a>>,
+struct ConstantContext<'a> {
     cfg_test: bool,
     fn_return_type: Option<&'a str>,
     in_fn_body: bool,
@@ -2583,8 +2580,24 @@ fn collect_constants<'a>(
     in_data_table: bool,
     active_sink: Option<String>,
     scaling_context_var: Option<String>,
+}
+
+fn collect_constants<'a>(
+    node: Node,
+    source: &'a [u8],
+    citations: &std::collections::HashMap<usize, Citation<'a>>,
+    context: ConstantContext<'a>,
     acc: &mut Vec<SourceConstant<'a>>,
 ) {
+    let ConstantContext {
+        cfg_test,
+        fn_return_type,
+        in_fn_body,
+        in_pattern,
+        in_data_table,
+        active_sink,
+        scaling_context_var,
+    } = context;
     let kind = node.kind();
     let pos = node.start_position();
     let line_num = pos.row + 1;
@@ -2592,7 +2605,7 @@ fn collect_constants<'a>(
 
     let get_citation = || -> Option<Citation<'a>> {
         for offset in 0..=3 {
-            if line_num >= offset + 1 {
+            if line_num > offset {
                 if let Some(c) = citations.get(&(line_num - offset)) {
                     return Some(c.clone());
                 }
@@ -2650,26 +2663,30 @@ fn collect_constants<'a>(
                         l_node,
                         source,
                         citations,
-                        cfg_test,
-                        fn_return_type,
-                        in_fn_body,
-                        in_pattern,
-                        in_data_table,
-                        current_sink.clone(),
-                        Some(var_name),
+                        ConstantContext {
+                            cfg_test,
+                            fn_return_type,
+                            in_fn_body,
+                            in_pattern,
+                            in_data_table,
+                            active_sink: current_sink.clone(),
+                            scaling_context_var: Some(var_name),
+                        },
                         acc,
                     );
                     collect_constants(
                         r_node,
                         source,
                         citations,
-                        cfg_test,
-                        fn_return_type,
-                        in_fn_body,
-                        in_pattern,
-                        in_data_table,
-                        current_sink.clone(),
-                        None,
+                        ConstantContext {
+                            cfg_test,
+                            fn_return_type,
+                            in_fn_body,
+                            in_pattern,
+                            in_data_table,
+                            active_sink: current_sink.clone(),
+                            scaling_context_var: None,
+                        },
                         acc,
                     );
                     return;
@@ -2679,26 +2696,30 @@ fn collect_constants<'a>(
                         l_node,
                         source,
                         citations,
-                        cfg_test,
-                        fn_return_type,
-                        in_fn_body,
-                        in_pattern,
-                        in_data_table,
-                        current_sink.clone(),
-                        None,
+                        ConstantContext {
+                            cfg_test,
+                            fn_return_type,
+                            in_fn_body,
+                            in_pattern,
+                            in_data_table,
+                            active_sink: current_sink.clone(),
+                            scaling_context_var: None,
+                        },
                         acc,
                     );
                     collect_constants(
                         r_node,
                         source,
                         citations,
-                        cfg_test,
-                        fn_return_type,
-                        in_fn_body,
-                        in_pattern,
-                        in_data_table,
-                        current_sink.clone(),
-                        Some(var_name),
+                        ConstantContext {
+                            cfg_test,
+                            fn_return_type,
+                            in_fn_body,
+                            in_pattern,
+                            in_data_table,
+                            active_sink: current_sink.clone(),
+                            scaling_context_var: Some(var_name),
+                        },
                         acc,
                     );
                     return;
@@ -2808,13 +2829,15 @@ fn collect_constants<'a>(
                     child,
                     source,
                     citations,
-                    child_cfg,
-                    fn_return_type,
-                    in_fn_body,
-                    in_pattern,
-                    in_data_table || is_table,
-                    current_sink.clone(),
-                    scaling_context_var.clone(),
+                    ConstantContext {
+                        cfg_test: child_cfg,
+                        fn_return_type,
+                        in_fn_body,
+                        in_pattern,
+                        in_data_table: in_data_table || is_table,
+                        active_sink: current_sink.clone(),
+                        scaling_context_var: scaling_context_var.clone(),
+                    },
                     acc,
                 );
             });
@@ -2832,13 +2855,15 @@ fn collect_constants<'a>(
                     child,
                     source,
                     citations,
-                    child_cfg,
-                    ret_type,
-                    in_fn_body || is_body,
-                    in_pattern,
-                    in_data_table,
-                    current_sink.clone(),
-                    scaling_context_var.clone(),
+                    ConstantContext {
+                        cfg_test: child_cfg,
+                        fn_return_type: ret_type,
+                        in_fn_body: in_fn_body || is_body,
+                        in_pattern,
+                        in_data_table,
+                        active_sink: current_sink.clone(),
+                        scaling_context_var: scaling_context_var.clone(),
+                    },
                     acc,
                 );
             });
@@ -2850,13 +2875,15 @@ fn collect_constants<'a>(
                     child,
                     source,
                     citations,
-                    child_cfg,
-                    fn_return_type,
-                    true,
-                    in_pattern,
-                    in_data_table,
-                    current_sink.clone(),
-                    scaling_context_var.clone(),
+                    ConstantContext {
+                        cfg_test: child_cfg,
+                        fn_return_type,
+                        in_fn_body: true,
+                        in_pattern,
+                        in_data_table,
+                        active_sink: current_sink.clone(),
+                        scaling_context_var: scaling_context_var.clone(),
+                    },
                     acc,
                 );
             });
@@ -2873,13 +2900,15 @@ fn collect_constants<'a>(
                         child,
                         source,
                         citations,
-                        cfg_test,
-                        fn_return_type,
-                        in_fn_body,
-                        true,
-                        in_data_table,
-                        current_sink.clone(),
-                        scaling_context_var.clone(),
+                        ConstantContext {
+                            cfg_test,
+                            fn_return_type,
+                            in_fn_body,
+                            in_pattern: true,
+                            in_data_table,
+                            active_sink: current_sink.clone(),
+                            scaling_context_var: scaling_context_var.clone(),
+                        },
                         acc,
                     );
                 } else if seen_arrow {
@@ -2887,13 +2916,15 @@ fn collect_constants<'a>(
                         child,
                         source,
                         citations,
-                        cfg_test,
-                        fn_return_type,
-                        true,
-                        false,
-                        in_data_table,
-                        current_sink.clone(),
-                        scaling_context_var.clone(),
+                        ConstantContext {
+                            cfg_test,
+                            fn_return_type,
+                            in_fn_body: true,
+                            in_pattern: false,
+                            in_data_table,
+                            active_sink: current_sink.clone(),
+                            scaling_context_var: scaling_context_var.clone(),
+                        },
                         acc,
                     );
                 }
@@ -2908,13 +2939,15 @@ fn collect_constants<'a>(
             child,
             source,
             citations,
-            child_cfg,
-            fn_return_type,
-            in_fn_body,
-            in_pattern,
-            in_data_table,
-            current_sink.clone(),
-            scaling_context_var.clone(),
+            ConstantContext {
+                cfg_test: child_cfg,
+                fn_return_type,
+                in_fn_body,
+                in_pattern,
+                in_data_table,
+                active_sink: current_sink.clone(),
+                scaling_context_var: scaling_context_var.clone(),
+            },
             acc,
         );
     });
@@ -2962,8 +2995,10 @@ mod tests {
     fn make_semantic_parser(
         semantic: crate::infra::config::SemanticContractsConfig,
     ) -> RustParser<NullPromptReader, NullSnapshotReader> {
-        let mut config = CrystallineConfig::default();
-        config.semantic = semantic;
+        let config = CrystallineConfig {
+            semantic,
+            ..CrystallineConfig::default()
+        };
         RustParser::new(
             NullPromptReader,
             NullSnapshotReader,

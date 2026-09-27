@@ -1,5 +1,5 @@
 # Prompt: ProjectIndex (project-index)
-Hash do Código: dfa926a7
+Hash do Código: e8f5fb36
 
 **Camada**: L1 (Core — Entities)
 **Criado em**: 2026-03-14 (ADR-0006)

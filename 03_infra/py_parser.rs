@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/python.md
-//! @prompt-hash 5c948ca7
+//! @prompt-hash b5784c06
 //! @layer L3
-//! @updated 2026-03-20
+//! @updated 2026-09-26
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -270,10 +270,11 @@ fn normalize(path: &Path, project_root: &Path) -> Option<PathBuf> {
         }
     }
     let result: PathBuf = components.iter().collect();
-    if project_root != Path::new(".") && !project_root.as_os_str().is_empty() {
-        if !result.starts_with(project_root) {
-            return None;
-        }
+    if project_root != Path::new(".")
+        && !project_root.as_os_str().is_empty()
+        && !result.starts_with(project_root)
+    {
+        return None;
     }
     Some(result)
 }
@@ -426,6 +427,14 @@ fn resolve_absolute_subdir(
 
 // ── Import extraction ─────────────────────────────────────────────────────────
 
+type ImportNameMap<'a> = HashMap<&'a str, (Layer, Option<&'static str>)>;
+#[derive(Clone, Copy)]
+struct PythonImportContext<'a> {
+    project_root: &'a Path,
+    config: &'a CrystallineConfig,
+    intern: &'a dyn Fn(String) -> &'static str,
+}
+
 /// Extrai imports e constrói o import_name_map interno.
 /// `import_name_map` mapeia nome local importado → (Layer, Option<subdir>).
 /// Usado para resolver bases de classes em implemented_traits e declarations.
@@ -436,21 +445,20 @@ fn extract_imports<'a>(
     project_root: &Path,
     config: &CrystallineConfig,
     intern: &dyn Fn(String) -> &'static str,
-) -> (
-    Vec<Import<'a>>,
-    HashMap<&'a str, (Layer, Option<&'static str>)>,
-) {
+) -> (Vec<Import<'a>>, ImportNameMap<'a>) {
     let mut imports = Vec::new();
-    let mut name_map: HashMap<&'a str, (Layer, Option<&'static str>)> = HashMap::new();
+    let mut name_map: ImportNameMap<'a> = HashMap::new();
     collect_imports(
         root,
         source,
         file_path,
-        project_root,
-        config,
+        PythonImportContext {
+            project_root,
+            config,
+            intern,
+        },
         &mut imports,
         &mut name_map,
-        intern,
     );
     (imports, name_map)
 }
@@ -459,52 +467,23 @@ fn collect_imports<'a>(
     node: Node,
     source: &'a [u8],
     file_path: &Path,
-    project_root: &Path,
-    config: &CrystallineConfig,
+    context: PythonImportContext<'_>,
     imports: &mut Vec<Import<'a>>,
-    name_map: &mut HashMap<&'a str, (Layer, Option<&'static str>)>,
-    intern: &dyn Fn(String) -> &'static str,
+    name_map: &mut ImportNameMap<'a>,
 ) {
     match node.kind() {
         "import_statement" => {
-            process_import_statement(
-                node,
-                source,
-                file_path,
-                project_root,
-                config,
-                imports,
-                name_map,
-                intern,
-            );
+            process_import_statement(node, source, file_path, context, imports, name_map);
         }
         "import_from_statement" => {
-            process_import_from_statement(
-                node,
-                source,
-                file_path,
-                project_root,
-                config,
-                imports,
-                name_map,
-                intern,
-            );
+            process_import_from_statement(node, source, file_path, context, imports, name_map);
         }
         _ => {}
     }
 
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
-            collect_imports(
-                child,
-                source,
-                file_path,
-                project_root,
-                config,
-                imports,
-                name_map,
-                intern,
-            );
+            collect_imports(child, source, file_path, context, imports, name_map);
         }
     }
 }
@@ -514,12 +493,15 @@ fn process_import_statement<'a>(
     node: Node,
     source: &'a [u8],
     _file_path: &Path,
-    project_root: &Path,
-    config: &CrystallineConfig,
+    context: PythonImportContext<'_>,
     imports: &mut Vec<Import<'a>>,
-    name_map: &mut HashMap<&'a str, (Layer, Option<&'static str>)>,
-    intern: &dyn Fn(String) -> &'static str,
+    name_map: &mut ImportNameMap<'a>,
 ) {
+    let PythonImportContext {
+        project_root,
+        config,
+        intern,
+    } = context;
     let line = node.start_position().row + 1;
     // Children: "import", then dotted_name or aliased_import (comma-separated)
     for i in 0..node.child_count() {
@@ -590,12 +572,15 @@ fn process_import_from_statement<'a>(
     node: Node,
     source: &'a [u8],
     file_path: &Path,
-    project_root: &Path,
-    config: &CrystallineConfig,
+    context: PythonImportContext<'_>,
     imports: &mut Vec<Import<'a>>,
-    name_map: &mut HashMap<&'a str, (Layer, Option<&'static str>)>,
-    intern: &dyn Fn(String) -> &'static str,
+    name_map: &mut ImportNameMap<'a>,
 ) {
+    let PythonImportContext {
+        project_root,
+        config,
+        intern,
+    } = context;
     let line = node.start_position().row + 1;
 
     // Find module_name child (relative_import or dotted_name)
@@ -1087,13 +1072,11 @@ fn extract_declared_traits<'a>(root: Node, source: &'a [u8]) -> Vec<&'a str> {
     let mut traits = Vec::new();
     for i in 0..root.child_count() {
         if let Some(child) = root.child(i) {
-            if child.kind() == "class_definition" {
-                if is_protocol_abc_class(child, source) {
-                    if let Some(name_node) = child.child_by_field_name("name") {
-                        let name = node_text(name_node, source);
-                        if !name.starts_with('_') {
-                            traits.push(name);
-                        }
+            if child.kind() == "class_definition" && is_protocol_abc_class(child, source) {
+                if let Some(name_node) = child.child_by_field_name("name") {
+                    let name = node_text(name_node, source);
+                    if !name.starts_with('_') {
+                        traits.push(name);
                     }
                 }
             }
@@ -1108,7 +1091,7 @@ fn extract_declared_traits<'a>(root: Node, source: &'a [u8]) -> Vec<&'a str> {
 fn extract_implemented_traits<'a>(
     root: Node,
     source: &'a [u8],
-    import_name_map: &HashMap<&'a str, (Layer, Option<&'static str>)>,
+    import_name_map: &ImportNameMap<'a>,
 ) -> Vec<&'a str> {
     let mut traits = Vec::new();
     for i in 0..root.child_count() {
@@ -1122,7 +1105,7 @@ fn extract_implemented_traits<'a>(
 fn collect_implemented_from_class<'a>(
     node: Node,
     source: &'a [u8],
-    import_name_map: &HashMap<&'a str, (Layer, Option<&'static str>)>,
+    import_name_map: &ImportNameMap<'a>,
     traits: &mut Vec<&'a str>,
 ) {
     if node.kind() == "class_definition" {
@@ -1143,7 +1126,7 @@ fn collect_implemented_from_class<'a>(
 fn collect_contract_bases<'a>(
     class_node: Node,
     source: &'a [u8],
-    import_name_map: &HashMap<&'a str, (Layer, Option<&'static str>)>,
+    import_name_map: &ImportNameMap<'a>,
     traits: &mut Vec<&'a str>,
 ) {
     let bases = match class_node.child_by_field_name("superclasses") {
@@ -1174,7 +1157,7 @@ fn collect_contract_bases<'a>(
 fn extract_declarations<'a>(
     root: Node,
     source: &'a [u8],
-    import_name_map: &HashMap<&'a str, (Layer, Option<&'static str>)>,
+    import_name_map: &ImportNameMap<'a>,
 ) -> Vec<Declaration<'a>> {
     let mut decls = Vec::new();
     for i in 0..root.child_count() {
@@ -1208,7 +1191,7 @@ fn extract_declarations<'a>(
 fn maybe_declaration<'a>(
     class_node: Node,
     source: &'a [u8],
-    import_name_map: &HashMap<&'a str, (Layer, Option<&'static str>)>,
+    import_name_map: &ImportNameMap<'a>,
 ) -> Option<Declaration<'a>> {
     // Exclude Protocol/ABC contracts
     if is_protocol_abc_class(class_node, source) {

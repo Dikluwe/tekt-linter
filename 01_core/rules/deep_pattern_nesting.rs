@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/deep-pattern-nesting.md
-//! @prompt-hash 3305ec0b
+//! @prompt-hash 241ba743
 //! @layer L1
-//! @updated 2026-08-14
+//! @updated 2026-09-26
 
 use std::borrow::Cow;
 
@@ -64,7 +64,7 @@ fn is_regular_table_context(expr: &crate::entities::rule_traits::DecisionExpr) -
     catchalls.len() <= 1
         && catchalls
             .first()
-            .is_none_or(|(index, _)| *index == expr.arms.len() - 1)
+            .map_or(true, |(index, _)| *index == expr.arms.len() - 1)
         && expr
             .arms
             .iter()

@@ -1,5 +1,5 @@
 # Prompt: Python Parser (parsers/python)
-Hash do Código: 6373b906
+Hash do Código: 29770927
 
 **Camada**: L3 (Infra)
 **Padrão**: Adapter over `tree-sitter-python`
@@ -731,3 +731,7 @@ Então nenhum Box::leak foi produzido
 | 2026-03-19 | Implementação completa: find_child_by_kind com lifetime explícito, return_type sem move-while-borrowed, mock NullSnapshotReader corrigido para 'static, test file_with_implementation_is_not_declaration_only reescrito; wiring em mod.rs e main.rs; 334/334 testes, zero violations | py_parser.rs, 03_infra/mod.rs, 04_wiring/main.rs |
 | 2026-03-19 | ADR-0009 correcção: ImportKind::PyImport removido; tabela de mapeamento Python→Direct/Glob/Alias/Named adicionada; nota sobre V4 usar file.language() na secção de tokens; restrições de agnósticidade adicionadas; critério de lab corrigido para sintaxe Python; critérios de ImportKind adicionados | py_parser.rs |
 | 2026-03-20 | ADR-0005 conformidade: Box::leak removido de resolve_py_subdir; substituído por buffer interno intern_subdir() com mesmo padrão de FsPromptWalker; subdirs_buffer adicionado à struct; restrição explícita contra Box::leak adicionada; critério de memória adicionado; critério de detecção de classe unittest corrigido: nome *Test requer também herança de TestCase | py_parser.rs |
+
+## Revisão 2026-09-26 — fechamento de qualidade
+
+Eliminar avisos do Clippy preservando resultados, ordem, localizações, interfaces públicas e invariantes acima. Manter compatibilidade das APIs utilizadas com Rust 1.75; simplificar expressões e remover parâmetros/auxiliares redundantes. Agrupar contexto interno de travessia quando necessário, sem reclassificar entradas. Validar com a suíte existente e autoverificação, e sincronizar hashes nos dois sentidos.

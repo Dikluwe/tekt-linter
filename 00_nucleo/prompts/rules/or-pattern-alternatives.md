@@ -1,5 +1,5 @@
 # Prompt: regra V19 OrPatternAlternatives
-Hash do Código: 5588686f
+Hash do Código: 3bef2b15
 
 Owner exclusivo: `01_core/rules/or_pattern_alternatives.rs`.
 

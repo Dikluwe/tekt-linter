@@ -1,5 +1,5 @@
 # Prompt: C++ Parser (parsers/cpp)
-Hash do Código: 25e24b08
+Hash do Código: 149683da
 
 **Camada**: L3 (Infra)
 **Padrão**: Adapter over `tree-sitter-cpp`
@@ -168,3 +168,7 @@ impl<R, S> LanguageParser for CppParser<R, S> { fn parse<'a>(&self, file: &'a So
 |------------|----------------------------------------------|--------------------------------|
 | 2026-03-30 | Criação inicial — suporte a C++ no linter    | `03_infra/cpp_parser.rs`       |
 | 2026-04-03 | Criação deste prompt (faltava em L0)         | `00_nucleo/prompts/parsers/cpp.md` |
+
+## Revisão 2026-09-26 — fechamento de qualidade
+
+Eliminar avisos do Clippy preservando resultados, ordem, localizações, interfaces públicas e invariantes acima. Manter compatibilidade das APIs utilizadas com Rust 1.75; simplificar expressões e remover parâmetros/auxiliares redundantes. Agrupar contexto interno de travessia quando necessário, sem reclassificar entradas. Validar com a suíte existente e autoverificação, e sincronizar hashes nos dois sentidos.

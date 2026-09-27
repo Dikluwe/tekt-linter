@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/typescript.md
-//! @prompt-hash 92d3a5de
+//! @prompt-hash b11ed695
 //! @layer L3
-//! @updated 2026-03-20
+//! @updated 2026-09-26
 
 use std::borrow::Cow;
 use std::path::{Component, Path, PathBuf};
@@ -278,10 +278,11 @@ fn normalize(path: &Path, project_root: &Path) -> Option<PathBuf> {
     let result: PathBuf = components.iter().collect();
     // Garantia adicional: resultado dentro da raiz do projecto.
     // Skipped for trivial roots like "." where starts_with is unreliable.
-    if project_root != Path::new(".") && !project_root.as_os_str().is_empty() {
-        if !result.starts_with(project_root) {
-            return None;
-        }
+    if project_root != Path::new(".")
+        && !project_root.as_os_str().is_empty()
+        && !result.starts_with(project_root)
+    {
+        return None;
     }
     Some(result)
 }
@@ -741,17 +742,8 @@ fn extract_public_interface<'a>(root: Node, source: &'a [u8]) -> PublicInterface
 
     for i in 0..root.child_count() {
         if let Some(child) = root.child(i) {
-            match child.kind() {
-                "export_statement" => {
-                    process_export_statement(
-                        child,
-                        source,
-                        &mut functions,
-                        &mut types,
-                        &mut reexports,
-                    );
-                }
-                _ => {}
+            if child.kind() == "export_statement" {
+                process_export_statement(child, source, &mut functions, &mut types, &mut reexports);
             }
         }
     }
@@ -1685,25 +1677,6 @@ mod tests {
         let parsed = parser.parse(&file).unwrap();
         assert_eq!(parsed.imports.len(), 1);
         assert_eq!(parsed.imports[0].kind, ImportKind::Named);
-    }
-
-    // ── AST debug ─────────────────────────────────────────────────────────────
-
-    fn print_tree(node: Node, source: &[u8], depth: usize) {
-        let indent = "  ".repeat(depth);
-        let text = std::str::from_utf8(&source[node.start_byte()..node.end_byte()]).unwrap_or("?");
-        let short = if text.len() > 40 { &text[..40] } else { text };
-        println!(
-            "{}[{}] {:?}",
-            indent,
-            node.kind(),
-            short.replace('\n', "\\n")
-        );
-        for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
-                print_tree(child, source, depth + 1);
-            }
-        }
     }
 
     // ── normalize unit tests ──────────────────────────────────────────────────

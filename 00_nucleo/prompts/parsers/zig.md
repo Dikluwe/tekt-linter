@@ -1,5 +1,5 @@
 # Prompt: Zig Parser (parsers/zig)
-Hash do Código: cb35ad80
+Hash do Código: af772931
 
 **Camada**: L3 (Infra)
 **Padrão**: Adapter over `tree-sitter-zig`
@@ -109,3 +109,7 @@ O campo `declarations` deve capturar structs, enums e unions que não represente
 | Data | Motivo | Arquivos Afetados |
 |------|--------|-------------------|
 | 2026-04-03 | Criação inicial (ADR-0009): suporte ao Zig | — |
+
+## Revisão 2026-09-26 — fechamento de qualidade
+
+Eliminar avisos do Clippy preservando resultados, ordem, localizações, interfaces públicas e invariantes acima. Manter compatibilidade das APIs utilizadas com Rust 1.75; simplificar expressões e remover parâmetros/auxiliares redundantes. Agrupar contexto interno de travessia quando necessário, sem reclassificar entradas. Validar com a suíte existente e autoverificação, e sincronizar hashes nos dois sentidos.

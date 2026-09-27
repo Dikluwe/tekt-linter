@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/cpp.md
-//! @prompt-hash 3a75f59a
+//! @prompt-hash f79cd905
 //! @layer L3
-//! @updated 2026-03-30
+//! @updated 2026-09-26
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
@@ -302,10 +302,11 @@ fn normalize(path: &Path, project_root: &Path) -> Option<PathBuf> {
         }
     }
     let result: PathBuf = components.iter().collect();
-    if project_root != Path::new(".") && !project_root.as_os_str().is_empty() {
-        if !result.starts_with(project_root) {
-            return None;
-        }
+    if project_root != Path::new(".")
+        && !project_root.as_os_str().is_empty()
+        && !result.starts_with(project_root)
+    {
+        return None;
     }
     Some(result)
 }
@@ -354,7 +355,7 @@ fn extract_public_interface<'a>(
                 "function_definition" | "declaration" => {
                     let is_static = child
                         .child(0)
-                        .map_or(false, |n| node_text(n, source) == "static");
+                        .is_some_and(|n| node_text(n, source) == "static");
 
                     if !is_static || is_header {
                         if child.kind() == "function_definition" {
@@ -553,7 +554,7 @@ fn extract_static_declarations<'a>(root: Node, source: &'a [u8]) -> Vec<StaticDe
             if node.kind() == "declaration" {
                 let is_static = node
                     .child(0)
-                    .map_or(false, |n| node_text(n, source) == "static");
+                    .is_some_and(|n| node_text(n, source) == "static");
                 if is_static {
                     if let Some(decl) = node.child_by_field_name("declarator") {
                         let name = node_text(decl, source); // simplified

@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/prompt-walker.md
-//! @prompt-hash 1dad4edb
+//! @prompt-hash 5b215f4b
 //! @layer L3
-//! @updated 2026-03-20
+//! @updated 2026-09-26
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashSet};
@@ -55,7 +55,7 @@ impl FsPromptWalker {
     /// SAFETY: O dado heap do Box<str> sobrevive enquanto o Box existir dentro de
     /// self.paths_buffer (lifetime 'a). Realoções do Vec movem o Box (o fat pointer),
     /// não o dado heap apontado — portanto o raw pointer permanece válido.
-    fn intern<'a>(&'a self, path: String) -> &'a str {
+    fn intern(&self, path: String) -> &str {
         let mut buf = self.paths_buffer.borrow_mut();
         let boxed: Box<str> = path.into_boxed_str();
         let raw: *const str = &*boxed as *const str;
@@ -78,10 +78,7 @@ impl PromptProvider for FsPromptWalker {
         if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
             return Err(PromptScanError::NucleoUnreadable {
                 path: self.project_root.clone(),
-                source: std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "project root must be a local non-symlink directory",
-                ),
+                source: std::io::Error::other("project root must be a local non-symlink directory"),
             });
         }
         let canonical_root = self.project_root.canonicalize().map_err(|source| {
@@ -101,8 +98,7 @@ impl PromptProvider for FsPromptWalker {
             if metadata.file_type().is_symlink() || !metadata.is_dir() {
                 return Err(PromptScanError::NucleoUnreadable {
                     path: ancestor.to_path_buf(),
-                    source: std::io::Error::new(
-                        std::io::ErrorKind::Other,
+                    source: std::io::Error::other(
                         "prompt directory must be local and must not be a symlink",
                     ),
                 });
@@ -118,10 +114,7 @@ impl PromptProvider for FsPromptWalker {
         if !canonical_prompts.starts_with(&canonical_root) {
             return Err(PromptScanError::NucleoUnreadable {
                 path: prompts_dir.clone(),
-                source: std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "prompt directory escapes project root",
-                ),
+                source: std::io::Error::other("prompt directory escapes project root"),
             });
         }
 
@@ -146,7 +139,7 @@ impl PromptProvider for FsPromptWalker {
         for result in WalkDir::new(&prompts_dir).follow_links(false) {
             let entry = result.map_err(|error| PromptScanError::NucleoUnreadable {
                 path: error.path().unwrap_or(&prompts_dir).to_path_buf(),
-                source: std::io::Error::new(std::io::ErrorKind::Other, error.to_string()),
+                source: std::io::Error::other(error.to_string()),
             })?;
 
             if !entry.file_type().is_file() {
@@ -163,13 +156,10 @@ impl PromptProvider for FsPromptWalker {
                 .strip_prefix(&self.project_root)
                 .map_err(|_| PromptScanError::NucleoUnreadable {
                     path: entry.path().to_path_buf(),
-                    source: std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!(
-                            "não foi possível calcular path relativo de {}",
-                            entry.path().display()
-                        ),
-                    ),
+                    source: std::io::Error::other(format!(
+                        "não foi possível calcular path relativo de {}",
+                        entry.path().display()
+                    )),
                 })?
                 .to_str()
                 .ok_or_else(|| PromptScanError::InvalidUtf8 {

@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/infra/refinement-extractor.md
-//! @prompt-hash 53626742
+//! @prompt-hash b84bf089
 //! @layer L3
-//! @updated 2026-08-24
+//! @updated 2026-09-26
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
@@ -170,9 +170,9 @@ fn extract_source(source: &str, spec: &ObservableSpec) -> Result<ObservableValue
             )
         })? as u32;
     let mut cursor = QueryCursor::new();
-    let mut matches = cursor.matches(&query, tree.root_node(), source.as_bytes());
+    let matches = cursor.matches(&query, tree.root_node(), source.as_bytes());
     let mut captures = Vec::new();
-    while let Some(query_match) = matches.next() {
+    for query_match in matches {
         for capture in query_match.captures {
             if capture.index == capture_index {
                 let text = &source[capture.node.byte_range()];

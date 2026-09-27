@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/infra/prompt-io.md
-//! @prompt-hash 0128ce25
+//! @prompt-hash fa2effaf
 //! @layer L3
-//! @updated 2026-08-24
+//! @updated 2026-09-26
 
 use std::fs::{self, OpenOptions, Permissions};
 use std::io::Write;
@@ -161,6 +161,14 @@ pub fn replace_meta_line(
     rewrite_meta_line(bytes, marker, Some(hash), required)
 }
 
+fn trim_ascii_start(bytes: &[u8]) -> &[u8] {
+    let start = bytes
+        .iter()
+        .position(|byte| !byte.is_ascii_whitespace())
+        .unwrap_or(bytes.len());
+    &bytes[start..]
+}
+
 fn rewrite_meta_line(
     bytes: &[u8],
     marker: &[u8],
@@ -183,8 +191,8 @@ fn rewrite_meta_line(
         };
         let authorized = if prompt_meta {
             prompt_preamble
-                && !inspected.trim_ascii_start().starts_with(b"```")
-                && !inspected.trim_ascii_start().starts_with(b"~~~")
+                && !trim_ascii_start(inspected).starts_with(b"```")
+                && !trim_ascii_start(inspected).starts_with(b"~~~")
         } else {
             source_header && inspected.starts_with(b"//!")
         };
@@ -218,8 +226,8 @@ fn rewrite_meta_line(
         }
         if prompt_meta {
             if inspected.is_empty()
-                || inspected.trim_ascii_start().starts_with(b"```")
-                || inspected.trim_ascii_start().starts_with(b"~~~")
+                || trim_ascii_start(inspected).starts_with(b"```")
+                || trim_ascii_start(inspected).starts_with(b"~~~")
             {
                 prompt_preamble = false;
             }
@@ -236,6 +244,20 @@ fn rewrite_meta_line(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ascii_trim_preserves_non_ascii_and_trailing_bytes() {
+        assert_eq!(
+            trim_ascii_start(b" \t\r\n\x0c```` trailing "),
+            b"```` trailing "
+        );
+        assert_eq!(trim_ascii_start(b" \t"), b"");
+        assert_eq!(trim_ascii_start(b""), b"");
+        assert_eq!(
+            trim_ascii_start("\u{a0}```".as_bytes()),
+            "\u{a0}```".as_bytes()
+        );
+    }
 
     #[test]
     fn byte_filter_preserves_crlf_and_rejects_duplicate_metadata() {

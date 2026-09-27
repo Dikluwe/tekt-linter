@@ -1,5 +1,5 @@
 # Prompt: Prompt Walker (prompt-walker)
-Hash do Código: adc676e9
+Hash do Código: 33a19ef5
 
 **Camada**: L3 (Infra)
 **Padrão**: Filesystem Scanner
@@ -188,3 +188,7 @@ após construção
 |------|--------|-------------------|
 | 2026-03-14 | Criação inicial (ADR-0006) | prompt_walker.rs |
 | 2026-03-20 | Propagação de erros granular: entradas individuais inacessíveis são saltadas em vez de abortar; apenas falha do directório raiz retorna Err; critério adicionado | prompt_walker.rs |
+
+## Revisão 2026-09-26 — fechamento de qualidade
+
+Eliminar avisos do Clippy preservando resultados, ordem, localizações, interfaces públicas e invariantes acima. Manter compatibilidade das APIs utilizadas com Rust 1.75; simplificar expressões e remover parâmetros/auxiliares redundantes. Agrupar contexto interno de travessia quando necessário, sem reclassificar entradas. Validar com a suíte existente e autoverificação, e sincronizar hashes nos dois sentidos.

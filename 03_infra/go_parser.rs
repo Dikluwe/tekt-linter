@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/go.md
-//! @prompt-hash 1d922266
+//! @prompt-hash f86294d3
 //! @layer L3
-//! @updated 2026-08-11
+//! @updated 2026-09-26
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -105,13 +105,13 @@ impl<R: PromptReader, S: PromptSnapshotReader> LanguageParser for GoParser<R, S>
             .path
             .file_name()
             .and_then(|n| n.to_str())
-            .map_or(false, |name| name.ends_with("_test.go"));
+            .is_some_and(|name| name.ends_with("_test.go"));
 
         let is_decl_only = file
             .path
             .file_name()
             .and_then(|n| n.to_str())
-            .map_or(false, |name| name == "interfaces.go" || name == "types.go");
+            .is_some_and(|name| name == "interfaces.go" || name == "types.go");
 
         let has_test_coverage = is_test_file || file.has_adjacent_test || is_decl_only;
 
@@ -230,7 +230,7 @@ fn collect_nodes<'a>(
             "function_declaration" | "method_declaration" => {
                 if let Some(name_node) = child.child_by_field_name("name") {
                     if let Ok(name) = name_node.utf8_text(source) {
-                        if name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                        if name.chars().next().is_some_and(|c| c.is_uppercase()) {
                             declarations.push(Declaration {
                                 name,
                                 kind: DeclarationKind::Impl,
@@ -246,7 +246,7 @@ fn collect_nodes<'a>(
                     if type_child.kind() == "type_spec" {
                         if let Some(name_node) = type_child.child_by_field_name("name") {
                             if let Ok(name) = name_node.utf8_text(source) {
-                                if name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                                if name.chars().next().is_some_and(|c| c.is_uppercase()) {
                                     declarations.push(Declaration {
                                         name,
                                         kind: DeclarationKind::Struct,

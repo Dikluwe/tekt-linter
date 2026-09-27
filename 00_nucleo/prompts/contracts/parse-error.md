@@ -1,5 +1,5 @@
 # Prompt: ParseError (parse-error)
-Hash do Código: fad0617d
+Hash do Código: 99caef68
 
 **Camada**: L1 (Core — Contracts)
 **Criado em**: 2025-03-13

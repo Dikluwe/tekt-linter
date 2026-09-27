@@ -26,7 +26,7 @@ fn unreadable_is_exactly_one_owned_fatal_v0_and_preserves_hostile_evidence() {
     };
     let unchanged = error.clone();
 
-    let projected = vec![source_error_to_violation(&error)];
+    let projected = [source_error_to_violation(&error)];
 
     assert_eq!(projected.len(), 1);
     let violation = &projected[0];
@@ -105,7 +105,7 @@ fn unsupported_language_is_exactly_one_owned_parse_warning_at_unavailable_positi
         language: Language::Unknown,
     };
 
-    let projected = vec![parse_error_to_violation(error.clone())];
+    let projected = [parse_error_to_violation(error.clone())];
 
     assert_eq!(projected.len(), 1);
     let violation = &projected[0];
@@ -125,7 +125,7 @@ fn empty_source_is_exactly_one_owned_parse_warning_at_unavailable_position() {
     let path = PathBuf::from("🫙/empty\n\t\0.rs");
     let error = ParseError::EmptySource { path: path.clone() };
 
-    let projected = vec![parse_error_to_violation(error.clone())];
+    let projected = [parse_error_to_violation(error.clone())];
 
     assert_eq!(projected.len(), 1);
     let violation = &projected[0];
@@ -142,7 +142,7 @@ fn empty_source_is_exactly_one_owned_parse_warning_at_unavailable_position() {
 
 #[test]
 fn four_modalities_do_not_silence_or_exchange_ids_levels_or_cardinality() {
-    let violations = vec![
+    let violations = [
         source_error_to_violation(&SourceError::Unreadable {
             path: PathBuf::from("a"),
             reason: "r".to_owned(),

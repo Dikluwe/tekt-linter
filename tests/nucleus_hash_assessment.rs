@@ -42,7 +42,7 @@ fn nucleus_hash_is_deterministic_and_transitive() {
         digest: leaf,
     };
     assert_eq!(
-        effective_nucleus_hash(b"root", &[dep.clone()]),
+        effective_nucleus_hash(b"root", std::slice::from_ref(&dep)),
         effective_nucleus_hash(b"root", &[dep])
     );
     assert_ne!(

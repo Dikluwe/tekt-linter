@@ -1,5 +1,5 @@
 # Prompt: entidade L1AllowedExternal
-Hash do Código: ad28d2c5
+Hash do Código: e3dfece8
 
 ## Owner
 
