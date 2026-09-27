@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/infra/config.md
-//! @prompt-hash 0e5507de
+//! @prompt-hash 224d2204
 //! @layer L3
 //! @updated 2026-09-26
 
@@ -309,6 +309,15 @@ pub struct N16SummaryConfig {
 }
 
 impl CrystallineConfig {
+    /// Missing configuration is optional; an existing but unreadable entry is an error.
+    pub fn load_optional(path: &Path) -> Result<Option<Self>, String> {
+        match std::fs::symlink_metadata(path) {
+            Ok(_) => Self::load(path).map(Some),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(format!("Cannot inspect {}: {error}", path.display())),
+        }
+    }
+
     pub fn load(path: &Path) -> Result<Self, String> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("Cannot read {}: {}", path.display(), e))?;

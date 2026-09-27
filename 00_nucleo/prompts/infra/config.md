@@ -1,5 +1,5 @@
 # Prompt: carregamento estrito de configuração
-Hash do Código: 34fcf88d
+Hash do Código: 7f931c6b
 
 Owner exclusivo: `03_infra/config.rs`.
 
@@ -14,3 +14,7 @@ falham, enquanto projeções por regra preservam o valor declarado.
 ## Revisão 2026-09-26
 
 Rejeitar chaves desconhecidas em tabelas tipadas, IDs de regra fora de V0–V27, níveis e linguagens inválidos. V0/V8/V10 não admitem rebaixamento nem filtro de linguagem. Regras globais V7/V11/V15/V26 não aceitam filtro de linguagem. Tabelas legadas project/languages aceitam apenas root=".", gramática embutida correspondente e enabled=true; opções não implementadas falham explicitamente. Projetar política para L1, sem executar regras.
+
+## Revisão 2026-09-26 — ausência versus erro de configuração
+
+Expor load_optional: somente ausência confirmada da entrada de configuração retorna None. Inspecionar com symlink_metadata para distinguir link quebrado de ausência; erros de inspeção, leitura ou parsing retornam Err. Entrada existente deve passar pelo carregamento estrito; link válido mantém o comportamento de leitura existente. Nenhum erro de filesystem vira default.

@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash d72c7026
+//! @prompt-hash 50e1f4e9
 //! @layer L4
 //! @updated 2026-09-26
 
@@ -501,23 +501,25 @@ fn main() {
     } else {
         cli.config.clone()
     };
-    if !config_path.exists()
-        && matches.value_source("config") == Some(clap::parser::ValueSource::CommandLine)
-    {
-        eprintln!(
-            "crystalline-lint: explicit config does not exist: {}",
-            config_path.display()
-        );
-        process::exit(2);
-    }
-    let config = if config_path.exists() {
-        CrystallineConfig::load(&config_path).unwrap_or_else(|e| {
-            eprintln!("crystalline-lint: config error: {e}");
+    let config = CrystallineConfig::load_optional(&config_path)
+        .unwrap_or_else(|error| {
+            if !cli.quiet {
+                eprintln!("crystalline-lint: config error: {error}");
+            }
             process::exit(1);
         })
-    } else {
-        CrystallineConfig::default()
-    };
+        .unwrap_or_else(|| {
+            if matches.value_source("config") == Some(clap::parser::ValueSource::CommandLine) {
+                if !cli.quiet {
+                    eprintln!(
+                        "crystalline-lint: explicit config does not exist: {}",
+                        config_path.display()
+                    );
+                }
+                process::exit(2);
+            }
+            CrystallineConfig::default()
+        });
 
     // ── Phase 0: scan all prompts (sequential, before pipeline) ───────────────
     let nucleo_root = cli.path.clone();

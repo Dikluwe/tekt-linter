@@ -1,5 +1,5 @@
 # Prompt: composição do linter
-Hash do Código: c156bb1c
+Hash do Código: 1186a2d4
 
 Owner exclusivo: `04_wiring/main.rs`.
 
@@ -33,3 +33,7 @@ Validar a raiz local antes de carregar configuração ou criar adapters, para qu
 ## Revisão 2026-09-26 — completude do resumo N16
 
 Antes de publicar n16-summary, exigir leitura e parsing completos das fontes selecionadas. Se houver erro de leitura ou fonte não parseada, sair com código 2, não publicar estatísticas em stdout e apresentar os diagnósticos em stderr; quiet suprime ambos os canais. Falhas não são inferidas da severidade configurada. Diretório vazio válido continua produzindo resumo vazio com sucesso.
+
+## Revisão 2026-09-26 — ausência versus erro de configuração
+
+Carregar configuração via porta L3 load_optional, sem Path::exists que suprime erros de inspeção. Config padrão realmente ausente permite defaults; config explícita ausente sai 2; configuração existente inválida ou ilegível sai 1. Erros de carregamento e ausência explícita respeitam --quiet, sem alterar o exit code.
