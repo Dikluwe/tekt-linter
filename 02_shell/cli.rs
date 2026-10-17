@@ -1,10 +1,11 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/sarif-formatter.md
-//! @prompt-hash d2ef3464
+//! @prompt-hash 82391e4c
 //! @layer L2
-//! @updated 2026-09-26
+//! @updated 2026-10-16
 
-use std::path::PathBuf;
+use std::collections::{BTreeMap, VecDeque};
+use std::path::{Path, PathBuf};
 
 use clap::{parser::ValueSource, ArgMatches, Parser, ValueEnum};
 use colored::Colorize;
@@ -13,6 +14,7 @@ use serde_json::json;
 use crate::entities::layer::Layer;
 use crate::entities::parsed_file::{ImportKind, ParsedFile};
 use crate::entities::violation::{Violation, ViolationLevel};
+use crate::rules::or_pattern_alternatives::REVIEW_NOTE;
 use crate::shell::path_encoding::{human_path, machine_path_uri};
 
 // ── CLI args ──────────────────────────────────────────────────────────────────
@@ -82,11 +84,27 @@ pub struct Cli {
     /// Include analysis scope and limitations in text or SARIF output
     #[arg(long)]
     pub analysis_scope: bool,
+
+    /// Highlight informational V19 changes against a previously saved SARIF report
+    #[arg(long)]
+    pub v19_reference: Option<PathBuf>,
 }
 
 /// Returns Err with a user-facing message if the arg combination is invalid.
 pub fn validate_args(cli: &Cli) -> Result<(), String> {
     parse_checks(&cli.checks)?;
+    if cli.v19_reference.is_some()
+        && (cli.command.is_some()
+            || cli.fix_hashes
+            || cli.update_snapshot
+            || cli.emit_resolution
+            || cli.format == OutputFormat::N16Summary
+            || !EnabledChecks::from_cli(&cli.checks, cli.no_drift, cli.no_stale).v19)
+    {
+        return Err(
+            "--v19-reference requires normal text or SARIF lint output with V19 selected".into(),
+        );
+    }
     if cli.analysis_scope
         && (cli.fix_hashes
             || cli.update_snapshot
@@ -127,7 +145,7 @@ pub enum FailLevel {
 }
 
 pub fn init_options_are_clean(matches: &ArgMatches) -> bool {
-    const LINT_OPTION_IDS: [&str; 13] = [
+    const LINT_OPTION_IDS: [&str; 14] = [
         "path",
         "format",
         "fail_on",
@@ -141,6 +159,7 @@ pub fn init_options_are_clean(matches: &ArgMatches) -> bool {
         "dry_run",
         "emit_resolution",
         "analysis_scope",
+        "v19_reference",
     ];
     LINT_OPTION_IDS
         .iter()
@@ -256,12 +275,31 @@ impl EnabledChecks {
 // ── Formatters ────────────────────────────────────────────────────────────────
 
 pub fn format_text(violations: &[Violation<'_>]) -> String {
+    format_text_with_v19(violations, None)
+}
+
+pub fn format_text_with_v19(
+    violations: &[Violation<'_>],
+    comparison: Option<&V19Comparison>,
+) -> String {
     if violations.is_empty() {
-        return format!("{}\n", "✓ No violations found".green().bold());
+        let mut out = format!("{}\n", "✓ No violations found".green().bold());
+        if let Some(comparison) = comparison {
+            out.push_str(&comparison.text_summary());
+        }
+        return out;
     }
 
     let mut out = String::new();
-    for v in violations {
+    let mut v19_notes = BTreeMap::new();
+    for (index, v) in violations.iter().enumerate() {
+        if v.rule_id == "V19" && v.level == ViolationLevel::Info {
+            v19_notes
+                .entry(v.location.path.as_ref())
+                .or_insert_with(Vec::new)
+                .push(index);
+            continue;
+        }
         let level_str = match v.level {
             ViolationLevel::Fatal => "fatal".red().bold().to_string(),
             ViolationLevel::Error => "error".red().bold().to_string(),
@@ -277,7 +315,306 @@ pub fn format_text(violations: &[Violation<'_>]) -> String {
             v.location.line,
         ));
     }
+    if let Some(comparison) = comparison {
+        out.push_str(&comparison.text_summary());
+    }
+    append_v19_notes(&mut out, violations, &v19_notes, comparison);
     out
+}
+
+fn append_v19_notes(
+    out: &mut String,
+    violations: &[Violation<'_>],
+    notes: &BTreeMap<&Path, Vec<usize>>,
+    comparison: Option<&V19Comparison>,
+) {
+    if notes.is_empty() {
+        return;
+    }
+    let arms: usize = notes.values().map(Vec::len).sum();
+    out.push_str(&format!(
+        "{} — braços: {}; arquivos: {}\n{}\nAgrupamentos legítimos não são defeitos nem exigem separar corpos iguais.\n\n",
+        "Notas informativas V19".blue().bold(),
+        arms,
+        notes.len(),
+        REVIEW_NOTE,
+    ));
+    for (path, entries) in notes {
+        out.push_str(&format!(
+            "  {} — notas: {}\n",
+            human_path(path),
+            entries.len()
+        ));
+        for index in entries {
+            let v = &violations[*index];
+            let change = comparison
+                .and_then(|c| c.changes.get(*index).copied().flatten())
+                .map(|change| format!("[{}] ", change.label()))
+                .unwrap_or_default();
+            let position = if v.location.line == 0 {
+                "linha desconhecida".to_string()
+            } else if let Some(column) = v.location.column.checked_add(1) {
+                format!("linha {}, coluna {}", v.location.line, column)
+            } else {
+                format!("linha {}", v.location.line)
+            };
+            let detail = v
+                .message
+                .strip_prefix(REVIEW_NOTE)
+                .and_then(|suffix| suffix.strip_prefix(' '))
+                .unwrap_or(&v.message);
+            out.push_str(&format!(
+                "    - {}{}: {}\n",
+                change,
+                position,
+                detail.replace('\n', "\n      "),
+            ));
+        }
+        out.push('\n');
+    }
+}
+
+/// Orçamento de leitura definido no contrato L0 do relatório V19.
+pub const V19_REFERENCE_MAX_BYTES: usize = 10 * 1024 * 1024;
+const V19_REFERENCE_SCHEMA: &str = "tekt-v19-reference-v1";
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct V19Reference {
+    schema: String,
+    selected: bool,
+    complete: bool,
+    notes: Vec<V19ReferenceNote>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct V19ReferenceNote {
+    path: String,
+    message: String,
+    line: usize,
+    column: usize,
+}
+
+impl V19ReferenceNote {
+    fn from_violation(v: &Violation<'_>, root: &Path) -> Self {
+        let relative: PathBuf = v
+            .location
+            .path
+            .strip_prefix(root)
+            .unwrap_or(&v.location.path)
+            .components()
+            .filter(|part| *part != std::path::Component::CurDir)
+            .collect();
+        Self {
+            path: machine_path_uri(&relative),
+            message: v.message.clone(),
+            line: v.location.line,
+            column: v.location.column,
+        }
+    }
+
+    fn location(&self) -> (&str, usize, usize) {
+        (&self.path, self.line, self.column)
+    }
+}
+
+pub fn parse_v19_reference(bytes: &[u8]) -> Result<V19Reference, String> {
+    let document: serde_json::Value =
+        serde_json::from_slice(bytes).map_err(|error| format!("JSON inválido: {error}"))?;
+    let runs = document["runs"]
+        .as_array()
+        .filter(|runs| runs.len() == 1)
+        .ok_or("A referência deve conter exatamente um run SARIF")?;
+    if document["version"] != "2.1.0" {
+        return Err("A referência deve ser SARIF 2.1.0".into());
+    }
+    let reference: V19Reference =
+        serde_json::from_value(runs[0]["properties"]["v19Reference"].clone()).map_err(|_| {
+            "Referência V19 ausente ou inválida; gere novamente o SARIF com V19 selecionado"
+        })?;
+    if reference.schema != V19_REFERENCE_SCHEMA || !reference.selected || !reference.complete {
+        return Err(
+            "A referência V19 deve ter versão compatível, V19 selecionado e análise completa"
+                .into(),
+        );
+    }
+    for note in &reference.notes {
+        if note.path.is_empty()
+            || Path::new(&note.path).is_absolute()
+            || note.path.contains('\\')
+            || note
+                .path
+                .split('/')
+                .any(|part| part.is_empty() || part == "." || part == "..")
+        {
+            return Err("A referência V19 contém path não relativo/canônico".into());
+        }
+    }
+    Ok(reference)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+enum V19Change {
+    New,
+    Updated,
+    NewOrUpdated,
+    Unchanged,
+}
+
+impl V19Change {
+    fn label(self) -> &'static str {
+        match self {
+            Self::New => "nova",
+            Self::Updated => "alterada",
+            Self::NewOrUpdated => "nova ou alterada",
+            Self::Unchanged => "sem alteração",
+        }
+    }
+}
+
+pub struct V19Comparison {
+    changes: Vec<Option<V19Change>>,
+}
+
+impl V19Comparison {
+    fn counts(&self) -> [usize; 4] {
+        let count = |kind| {
+            self.changes
+                .iter()
+                .filter(|value| **value == Some(kind))
+                .count()
+        };
+        [
+            count(V19Change::New),
+            count(V19Change::Updated),
+            count(V19Change::NewOrUpdated),
+            count(V19Change::Unchanged),
+        ]
+    }
+
+    fn text_summary(&self) -> String {
+        let [new, updated, ambiguous, unchanged] = self.counts();
+        format!("Comparação informativa V19 — novas: {new}; alteradas: {updated}; novas ou alteradas: {ambiguous}; sem alteração: {unchanged}.\nDiferenças de observação; não indicam defeitos nem cobertura de testes.\n\n")
+    }
+
+    fn summary(&self) -> serde_json::Value {
+        let [new, updated, ambiguous, unchanged] = self.counts();
+        json!({"new": new, "updated": updated, "newOrUpdated": ambiguous, "unchanged": unchanged})
+    }
+}
+
+pub fn compare_v19_reference(
+    violations: &[Violation<'_>],
+    root: &Path,
+    reference: &V19Reference,
+) -> V19Comparison {
+    let current: Vec<_> = violations
+        .iter()
+        .enumerate()
+        .filter(|(_, v)| v.rule_id == "V19" && v.level == ViolationLevel::Info)
+        .map(|(index, v)| (index, V19ReferenceNote::from_violation(v, root)))
+        .collect();
+    let mut changes = vec![None; violations.len()];
+    let mut used = vec![false; reference.notes.len()];
+    let mut exact = BTreeMap::<_, VecDeque<usize>>::new();
+    for (index, note) in reference.notes.iter().enumerate() {
+        exact
+            .entry((note.path.as_str(), note.message.as_str()))
+            .or_default()
+            .push_back(index);
+    }
+    // Match all unchanged occurrences before attempting location-based matches.
+    for (index, note) in &current {
+        if let Some(old) = exact
+            .get_mut(&(note.path.as_str(), note.message.as_str()))
+            .and_then(VecDeque::pop_front)
+        {
+            used[old] = true;
+            changes[*index] = Some(V19Change::Unchanged);
+        }
+    }
+    let mut old_locations = BTreeMap::<_, Vec<usize>>::new();
+    let mut new_locations = BTreeMap::<_, Vec<usize>>::new();
+    for (index, note) in reference.notes.iter().enumerate() {
+        if !used[index] && note.line > 0 && note.column.checked_add(1).is_some() {
+            old_locations
+                .entry(note.location())
+                .or_default()
+                .push(index);
+        }
+    }
+    for (index, note) in &current {
+        if changes[*index].is_none() && note.line > 0 && note.column.checked_add(1).is_some() {
+            new_locations
+                .entry(note.location())
+                .or_default()
+                .push(*index);
+        }
+    }
+    for (location, indices) in new_locations {
+        if let Some(old) = old_locations.get(&location) {
+            if indices.len() == 1 && old.len() == 1 {
+                changes[indices[0]] = Some(V19Change::Updated);
+                used[old[0]] = true;
+            }
+        }
+    }
+    let remaining_paths: std::collections::BTreeSet<_> = reference
+        .notes
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !used[*index])
+        .map(|(_, note)| note.path.as_str())
+        .collect();
+    for (index, note) in &current {
+        if changes[*index].is_none() {
+            changes[*index] = Some(if remaining_paths.contains(note.path.as_str()) {
+                V19Change::NewOrUpdated
+            } else {
+                V19Change::New
+            });
+        }
+    }
+    V19Comparison { changes }
+}
+
+pub fn format_sarif_with_v19(
+    violations: &[Violation<'_>],
+    root: &Path,
+    selected: bool,
+    complete: bool,
+    comparison: Option<&V19Comparison>,
+) -> String {
+    let reference = V19Reference {
+        schema: V19_REFERENCE_SCHEMA.into(),
+        selected,
+        complete,
+        notes: violations
+            .iter()
+            .filter(|v| v.rule_id == "V19" && v.level == ViolationLevel::Info)
+            .map(|v| V19ReferenceNote::from_violation(v, root))
+            .collect(),
+    };
+    let mut document: serde_json::Value =
+        serde_json::from_str(&format_sarif(violations)).expect("formatter produced valid SARIF");
+    let run = &mut document["runs"][0];
+    run["properties"]["v19Reference"] = json!(reference);
+    if let Some(comparison) = comparison {
+        run["properties"]["v19Comparison"] = comparison.summary();
+        for (result, change) in run["results"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .zip(&comparison.changes)
+        {
+            if let Some(change) = change {
+                result["properties"]["v19Change"] = json!(change);
+            }
+        }
+    }
+    serde_json::to_string_pretty(&document).expect("serializable V19 report")
 }
 
 pub fn format_sarif(violations: &[Violation<'_>]) -> String {
@@ -813,6 +1150,190 @@ mod tests {
     }
 
     #[test]
+    fn text_consolidates_v19_by_file_without_losing_occurrences_or_other_diagnostics() {
+        let note = |path, line, detail| {
+            let mut v = make_violation_at("V19", ViolationLevel::Info, path, line);
+            v.message = format!("{REVIEW_NOTE} {detail}");
+            v
+        };
+        let violations = vec![
+            note("z.rs", 8, "guard: presente; padrão: `A | B`"),
+            make_violation("V3", ViolationLevel::Error),
+            note("a.rs", 10, "guard: ausente; padrão: `C |\nD`"),
+            make_violation("V20", ViolationLevel::Info),
+            note("a.rs", 3, "guard: presente; padrão: `E | F`"),
+            note("z.rs", 8, "guard: presente; padrão: `A | B`"),
+        ];
+        let before = violations.clone();
+        let out = format_text(&violations);
+        assert_eq!(violations, before);
+        assert_eq!(out, format_text(&violations));
+        assert_eq!(out.matches(REVIEW_NOTE).count(), 1);
+        assert!(out.contains("braços: 4; arquivos: 2"));
+        assert!(out.contains("Agrupamentos legítimos não são defeitos"));
+        assert!(out.find("[V3]").unwrap() < out.find("[V20]").unwrap());
+        assert!(out.find("[V20]").unwrap() < out.find("Notas informativas V19").unwrap());
+        assert!(out.find("a.rs — notas: 2").unwrap() < out.find("z.rs — notas: 2").unwrap());
+        assert!(out.find("linha 10, coluna 1").unwrap() < out.find("linha 3, coluna 1").unwrap());
+        assert_eq!(out.matches("linha 8, coluna 1").count(), 2);
+        assert!(out.contains("`C |\n      D`"));
+        assert!(!out.contains("No violations found"));
+    }
+
+    #[test]
+    fn text_v19_preserves_custom_messages_and_unknown_locations() {
+        let mut unknown = make_violation_at("V19", ViolationLevel::Info, "ação.rs", 0);
+        unknown.message = "Mensagem alternativa com guard: desconhecido".into();
+        let mut overflow = make_violation_at("V19", ViolationLevel::Info, "ação.rs", 2);
+        overflow.location.column = usize::MAX;
+        // A similar prefix without the exact separator must not be removed.
+        overflow.message = format!("{REVIEW_NOTE}Outra mensagem");
+        let out = format_text(&[unknown, overflow]);
+        assert!(out.contains("ação.rs — notas: 2"));
+        assert!(out.contains("linha desconhecida: Mensagem alternativa com guard: desconhecido"));
+        assert!(out.contains(&format!("linha 2: {REVIEW_NOTE}Outra mensagem")));
+        assert!(!out.contains("coluna"));
+    }
+
+    #[test]
+    fn text_v19_consolidation_respects_configured_severity() {
+        for level in [
+            ViolationLevel::Warning,
+            ViolationLevel::Error,
+            ViolationLevel::Fatal,
+        ] {
+            let violations = vec![make_violation("V19", level)];
+            let out = format_text(&violations);
+            assert!(!out.contains("Notas informativas V19"));
+            assert!(out.contains("test message ["));
+            assert!(out.contains("V19"));
+            assert!(out.contains("01_core/foo.rs:5"));
+            assert!(should_fail(&violations, &FailLevel::Warning));
+        }
+        let out = format_text(&[make_violation("V20", ViolationLevel::Info)]);
+        assert!(!out.contains("Notas informativas V19"));
+        assert!(out.contains("V20"));
+    }
+
+    fn reference_for(violations: &[Violation<'_>]) -> V19Reference {
+        parse_v19_reference(
+            format_sarif_with_v19(violations, Path::new("."), true, true, None).as_bytes(),
+        )
+        .unwrap()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn v19_reference_roundtrips_native_paths_without_lossy_identity() {
+        use std::os::unix::ffi::OsStrExt;
+        for path in [b"src:/name.rs".as_slice(), b"src/\xff.rs".as_slice()] {
+            let mut note = make_violation("V19", ViolationLevel::Info);
+            note.location.path = Cow::Owned(PathBuf::from(std::ffi::OsStr::from_bytes(path)));
+            let reference = reference_for(&[note.clone()]);
+            let comparison = compare_v19_reference(&[note], Path::new("."), &reference);
+            assert_eq!(comparison.changes, vec![Some(V19Change::Unchanged)]);
+        }
+    }
+
+    #[test]
+    fn v19_reference_preserves_multiplicity_and_literal_whitespace() {
+        let mut first = make_violation_at("V19", ViolationLevel::Info, "ação%/a.rs", 10);
+        first.message = "pattern: `\"a b\" | \"c\"`".into();
+        let mut second = first.clone();
+        second.location.line = 20;
+        second.message = "pattern: `\"other\" | \"c\"`".into();
+        let reference = reference_for(&[first.clone(), second.clone()]);
+        assert_eq!(reference.notes[0].path, "a%C3%A7%C3%A3o%25/a.rs");
+        first.location.line = 99;
+        first.location.column = 8;
+        second.message = "pattern: `\"other \" | \"c\"`".into();
+        let current = vec![
+            first.clone(),
+            second,
+            first,
+            make_violation("V20", ViolationLevel::Info),
+        ];
+        let comparison = compare_v19_reference(&current, Path::new("."), &reference);
+        assert_eq!(
+            comparison.changes,
+            vec![
+                Some(V19Change::Unchanged),
+                Some(V19Change::Updated),
+                Some(V19Change::New),
+                None
+            ]
+        );
+        // Removal does not create a defect, a coverage claim or a synthetic result.
+        let removed = compare_v19_reference(&[], Path::new("."), &reference);
+        assert_eq!(removed.counts(), [0; 4]);
+    }
+
+    #[test]
+    fn v19_reference_never_pairs_ambiguous_or_unknown_locations() {
+        let first = make_violation_at("V19", ViolationLevel::Info, "a.rs", 2);
+        let reference = reference_for(&[first.clone(), first.clone()]);
+        let mut changed = first.clone();
+        changed.message = "changed".into();
+        let comparison = compare_v19_reference(&[changed.clone()], Path::new("."), &reference);
+        assert_eq!(comparison.changes, vec![Some(V19Change::NewOrUpdated)]);
+        let reference = reference_for(&[first]);
+        let comparison = compare_v19_reference(
+            &[changed.clone(), changed.clone()],
+            Path::new("."),
+            &reference,
+        );
+        assert_eq!(comparison.changes, vec![Some(V19Change::NewOrUpdated); 2]);
+        for (line, column) in [(0, 0), (3, usize::MAX)] {
+            changed.location.line = line;
+            changed.location.column = column;
+            let reference = reference_for(&[changed.clone()]);
+            changed.message.push('!');
+            let comparison = compare_v19_reference(&[changed.clone()], Path::new("."), &reference);
+            assert_eq!(comparison.changes, vec![Some(V19Change::NewOrUpdated)]);
+        }
+    }
+
+    #[test]
+    fn v19_reference_requires_compatible_lint_arguments() {
+        for extra in [
+            vec!["--fix-hashes"],
+            vec!["--update-snapshot"],
+            vec!["--emit-resolution"],
+            vec!["--format", "n16-summary"],
+            vec!["init"],
+        ] {
+            let mut args = vec!["crystalline-lint", "--v19-reference", "reference.sarif"];
+            args.extend(extra);
+            let cli = Cli::try_parse_from(args).unwrap();
+            assert!(validate_args(&cli).is_err());
+        }
+        let cli = Cli::try_parse_from([
+            "crystalline-lint",
+            "--v19-reference",
+            "ref",
+            "--checks",
+            "v20",
+        ])
+        .unwrap();
+        assert!(validate_args(&cli).is_err());
+        for format in ["text", "sarif"] {
+            let cli = Cli::try_parse_from([
+                "crystalline-lint",
+                "--v19-reference",
+                "ref",
+                "--checks",
+                "v19",
+                "--format",
+                format,
+                "--quiet",
+                "--analysis-scope",
+            ])
+            .unwrap();
+            assert!(validate_args(&cli).is_ok());
+        }
+    }
+
+    #[test]
     fn format_sarif_is_valid_json() {
         let violations = vec![make_violation("V3", ViolationLevel::Error)];
         let out = format_sarif(&violations);
@@ -870,6 +1391,7 @@ mod tests {
             dry_run: false,
             emit_resolution: false,
             analysis_scope: false,
+            v19_reference: None,
         }
     }
 

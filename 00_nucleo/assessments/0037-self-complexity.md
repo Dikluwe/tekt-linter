@@ -1,5 +1,16 @@
 # Assessment 0037 — complexidade histórica do próprio linter
 
+## Revisão V19 — 2026-10-16
+
+As 73 identidades V19 aceitas no manifesto vigente foram migradas para a mensagem
+observacional, com contagem de alternativas escritas e contexto de guard. A comparação
+antes/depois preservou o multiconjunto de regra, arquivo e padrão normalizado das
+90 notas atuais (73 V19 e 17 V20). Dois braços de `git_refinement.rs` com grupos
+internos e externos passaram de 2 para 4 alternativas escritas, sem novos achados.
+Classificações, justificativas e agrupamentos de produção foram preservados.
+Os hashes e totais históricos abaixo documentam o
+baseline original, anterior a esta migração; não são evidência de cobertura de testes.
+
 **Estado:** READY WITH EXPLICIT METRIC BASELINE — zero RED/SPEC-GAP aberto
 **Data:** 2026-08-25  
 **Passo:** P0109  

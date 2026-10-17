@@ -268,6 +268,13 @@ ou um alias configurado é tratado como pacote externo (`Layer::Unknown`).
 
 ## Comandos CLI
 
+As notas V19 de nível `info` são consolidadas ao final da saída `text`, por arquivo,
+sem repetir a explicação comum. Os totais contam braços e arquivos observados;
+não indicam defeitos ou déficit de cobertura. Linha, coluna, contagem de alternativas,
+guard e padrão continuam disponíveis em cada entrada. O formato `sarif` mantém
+notas individuais completas. `--quiet` silencia ambos e `info` não reprova
+`--fail-on warning`. Uma elevação explícita de severidade segue a política configurada.
+
 A sinopse raiz abaixo descreve o lint. Os fluxos também incluem nominalmente os
 subcomandos `snapshot`, `refine` e `refine-revisions`; a gramática CLI global será
 reconciliada em F09.
@@ -285,6 +292,7 @@ OPTIONS:
   --no-drift             desactiva V5 (prompt drift)
   --no-stale             desactiva V6 (prompt stale)
   --quiet                apenas exit code, sem output
+  --v19-reference <path> destaca mudanças informativas contra um SARIF anterior
   --config <path>        path para crystalline.toml [padrão: ./crystalline.toml]
   --fix-hashes           corrige @prompt-hash divergentes (V5)
   --fix-hashes --dry-run preview sem escrever
@@ -310,6 +318,12 @@ crystalline-lint --fix-hashes .
 
 # Verificar apenas regras de importação
 crystalline-lint --checks v3,v9,v14 .
+
+# Salvar as notas V19 atuais como referência (não mede cobertura)
+crystalline-lint . --checks v19 --format sarif > v19-reference.sarif
+
+# Comparar notas V19 sem mudar severidade ou reprovar por diferenças
+crystalline-lint . --checks v19 --v19-reference v19-reference.sarif
 
 # Não falhar em warnings — apenas errors e fatals
 crystalline-lint --fail-on error .

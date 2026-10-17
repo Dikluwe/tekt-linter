@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/rule-traits.md
-//! @prompt-hash cacc9141
+//! @prompt-hash 3b7b527d
 //! @layer L1
-//! @updated 2026-03-22
+//! @updated 2026-10-16
 
 use std::path::Path;
 
@@ -167,6 +167,9 @@ pub struct DecisionArm<'a> {
     pub guard_is_compound: bool,
     pub pattern_is_range: bool,
     pub pattern_depth: u8,
+    /// Soma das alternativas escritas em todos os grupos de or-patterns.
+    /// Cadeias diretas são achatadas; grupos aninhados também são contados.
+    /// Sem grupo: 1. Saturação: u16::MAX. Não mede combinações nem cobertura.
     pub or_alternatives: u16,
     pub body_form: BodyForm,
     pub body_snippet: &'a str,

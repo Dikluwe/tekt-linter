@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/rust.md
-//! @prompt-hash 18b46557
+//! @prompt-hash 7712e37f
 //! @layer L3
-//! @updated 2026-09-26
+//! @updated 2026-10-16
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -1403,7 +1403,7 @@ fn parse_match_arm<'a>(node: Node, source: &'a [u8]) -> Option<DecisionArm<'a>> 
 
     let pattern_is_range = check_pattern_is_range(match_pattern, pattern_end_byte);
     let pattern_depth = measure_pattern_depth(match_pattern, pattern_end_byte);
-    let or_alternatives = count_or_alternatives(match_pattern, pattern_end_byte);
+    let or_alternatives = count_or_alternatives(match_pattern, pattern_end_byte).max(1);
 
     let body_form = classify_body(body, source);
 
@@ -1773,31 +1773,27 @@ fn measure_pattern_depth(node: Node, limit_byte: usize) -> u8 {
 }
 
 fn count_or_alternatives(node: Node, limit_byte: usize) -> u16 {
-    if node.start_byte() >= limit_byte {
+    if node.start_byte() >= limit_byte || node.is_extra() {
         return 0;
     }
-    if node.kind() == "or_pattern" {
-        let mut count = 0;
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.is_named() {
-                if child.kind() == "or_pattern" {
-                    count += count_or_alternatives(child, limit_byte);
-                } else {
-                    count += 1;
-                }
-            }
-        }
-        return count.max(2);
-    }
+    let mut count = 0u16;
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        let c = count_or_alternatives(child, limit_byte);
-        if c > 1 {
-            return c;
+        if child.start_byte() >= limit_byte || child.is_extra() {
+            continue;
         }
+        // Wildcard is an anonymous pattern node; punctuation is not an alternative.
+        if !child.is_named() && child.kind() != "_" {
+            continue;
+        }
+        // A | B | C has nested or_pattern nodes in tree-sitter. Count only
+        // their alternatives, then also visit groups inside each alternative.
+        if node.kind() == "or_pattern" && child.kind() != "or_pattern" {
+            count = count.saturating_add(1);
+        }
+        count = count.saturating_add(count_or_alternatives(child, limit_byte));
     }
-    1
+    count
 }
 
 fn classify_body(node: Node, source: &[u8]) -> BodyForm {
@@ -4201,6 +4197,121 @@ fn main() {}
     }
 
     // ── V16–V20 Decision Expressions Unit Tests (Phase B) ──────────────────
+
+    #[test]
+    fn v19_counts_written_alternatives_across_all_pattern_groups() {
+        let parser = make_parser();
+        for (pattern, expected) in [
+            ("A", 1),
+            ("(A, B)", 1),
+            ("| A", 1),
+            ("_", 1),
+            ("| _", 1),
+            ("_ | A", 2),
+            ("A | B | _", 3),
+            ("(_ | A, B | _)", 4),
+            ("A | B | C", 3),
+            ("| A | B | C", 3),
+            ("(A | B, C | D)", 4),
+            ("(A | B, C | D | E)", 5),
+            ("(C | D | E, A | B)", 5),
+            ("Some(A | B) | None", 4),
+            ("(A | B) | C", 4),
+            ("Some((A | B, C | D | E)) | None", 7),
+            ("S { x: A | B, y: C | D | E }", 5),
+            ("[A | B, C | D | E]", 5),
+            ("&(A | B, C | D)", 4),
+            ("binding @ (A | B)", 2),
+            ("A /* | fake */ | B // | fake\n | C", 3),
+            (r#""yaml" | "yml""#, 2),
+            (r#""a|b""#, 1),
+            ("A | A", 2),
+            ("0..=5 | 3..=9", 2),
+        ] {
+            let code = format!("fn f(x: X) {{ match x {{ {pattern} => 0 }} }}");
+            let file = source_file(&code);
+            let parsed = parser.parse(&file).unwrap();
+            let arm = &parsed.decision_exprs[0].arms[0];
+            assert_eq!(arm.or_alternatives, expected, "{pattern}");
+            assert_eq!(arm.pattern_snippet, pattern);
+        }
+    }
+
+    #[test]
+    fn v19_excludes_guard_and_body_and_reports_guard_context() {
+        use crate::rules::or_pattern_alternatives;
+
+        let parser = make_parser();
+        for (pattern, count) in [("A", 1), ("(A | B, C | D | E)", 5)] {
+            for (guard, context) in [
+                ("", "ausente"),
+                (" if ready || matches!(y, C | D)", "presente"),
+                (" if let Some(C | D) = y", "presente"),
+            ] {
+                let code = format!(
+                    "fn f(x: X) {{ match x {{ {pattern}{guard} => {{ let z = a | b; call(z) }} }} }}"
+                );
+                let file = source_file(&code);
+                let parsed = parser.parse(&file).unwrap();
+                let arm = &parsed.decision_exprs[0].arms[0];
+                assert_eq!(arm.or_alternatives, count, "{code}");
+                assert_eq!(arm.pattern_snippet, pattern);
+                let notes = or_pattern_alternatives::check(&parsed);
+                if count == 1 {
+                    assert!(notes.is_empty());
+                } else {
+                    assert_eq!(notes.len(), 1);
+                    assert_eq!(
+                        notes[0].level,
+                        crate::entities::violation::ViolationLevel::Info
+                    );
+                    assert!(notes[0].message.contains(&format!("guard: {context}")));
+                    assert!(notes[0].message.contains("nos grupos: 5"));
+                    assert!(!notes[0].message.contains("subestima"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn v19_preserves_aliases_and_nominal_v16_complements_as_information() {
+        use crate::rules::{or_pattern_alternatives, wildcard_saturation};
+
+        let parser = make_parser();
+        for code in [
+            r#"fn f(ext: &str) { match ext { "yaml" | "yml" => parse_yaml(), _ => Err(Unknown) } }"#,
+            "fn f(x: Mode) { match x { Mode::A => 1, Mode::B | Mode::C => 0 } }",
+        ] {
+            let file = source_file(code);
+            let parsed = parser.parse(&file).unwrap();
+            let notes = or_pattern_alternatives::check(&parsed);
+            assert_eq!(notes.len(), 1);
+            assert_eq!(
+                notes[0].level,
+                crate::entities::violation::ViolationLevel::Info
+            );
+            assert!(wildcard_saturation::check(&parsed, &Default::default()).is_empty());
+        }
+    }
+
+    #[test]
+    fn v19_count_saturates_without_overflow() {
+        // Sibling groups exercise the u16 boundary without a deeply recursive AST.
+        let code = format!(
+            "fn f(x: X) {{ match x {{ ({}) => 0 }} }}",
+            vec!["A | B"; 32_768].join(",")
+        );
+        let mut parser = TsParser::new();
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(&code, None).unwrap();
+        assert!(!tree.root_node().has_error());
+        assert_eq!(
+            count_or_alternatives(tree.root_node(), code.len()),
+            u16::MAX
+        );
+    }
 
     #[test]
     fn extract_decision_exprs_classifies_all_forms() {

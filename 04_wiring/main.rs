@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash f0c96ee3
+//! @prompt-hash 93634380
 //! @layer L4
-//! @updated 2026-09-26
+//! @updated 2026-10-16
 
 use crystalline_lint::entities::analysis_policy::ParseCounts;
 use crystalline_lint::shell::cli::CheckContext;
@@ -109,6 +109,13 @@ fn main() {
     let matches = Cli::command().get_matches();
     let init_options_clean = init_options_are_clean(&matches);
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|error| error.exit());
+
+    if cli.v19_reference.is_some() && cli.command.is_some() {
+        if !cli.quiet {
+            eprintln!("crystalline-lint: --v19-reference cannot be used with subcommands");
+        }
+        process::exit(2);
+    }
 
     if let Some(ShellCommand::Init(args)) = &cli.command {
         use crystalline_lint::entities::config_init::{
@@ -450,7 +457,9 @@ fn main() {
 
     // ── Arg validation ────────────────────────────────────────────────────────
     if let Err(e) = validate_args(&cli) {
-        eprintln!("crystalline-lint: {e}");
+        if !cli.quiet {
+            eprintln!("crystalline-lint: {e}");
+        }
         process::exit(1);
     }
 
@@ -492,6 +501,32 @@ fn main() {
         }
         process::exit(1);
     }
+
+    let v19_reference = cli
+        .v19_reference
+        .as_ref()
+        .map(|path| {
+            let parent = path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(Path::new("."));
+            let name = path
+                .file_name()
+                .ok_or("reference must name a file".to_string())?;
+            let bytes = crystalline_lint::infra::prompt_io::read_confined(
+                parent,
+                Path::new(name),
+                crystalline_lint::shell::cli::V19_REFERENCE_MAX_BYTES,
+            )?;
+            crystalline_lint::shell::cli::parse_v19_reference(&bytes)
+        })
+        .transpose()
+        .unwrap_or_else(|error| {
+            if !cli.quiet {
+                eprintln!("crystalline-lint: referência V19: {error}");
+            }
+            process::exit(2);
+        });
 
     // ── Config ────────────────────────────────────────────────────────────────
     let config_path = if cli.config.is_relative() {
@@ -785,6 +820,18 @@ fn main() {
     // Sort before deduplication so the retained witness is deterministic even
     // though the parser map runs in parallel.
     crystalline_lint::shell::cli::sort_violations(&mut all_violations);
+
+    let analysis_complete = source_errors.is_empty() && all_parsed.len() == source_files.len();
+    if v19_reference.is_some() && !analysis_complete {
+        if !cli.quiet {
+            eprintln!("crystalline-lint: comparação V19 indisponível: análise incompleta");
+            eprint!(
+                "{}",
+                crystalline_lint::shell::cli::format_text(&all_violations)
+            );
+        }
+        process::exit(2);
+    }
     let mut prompt_failures = HashSet::new();
     all_violations.retain(|violation| {
         if violation.rule_id == "V0" && violation.message.starts_with("Falha ao resolver prompt") {
@@ -1215,10 +1262,22 @@ fn main() {
     crystalline_lint::shell::cli::sort_violations(&mut all_violations);
 
     // ── Normal output ─────────────────────────────────────────────────────────
+    let v19_comparison = v19_reference.as_ref().map(|reference| {
+        crystalline_lint::shell::cli::compare_v19_reference(&all_violations, &cli.path, reference)
+    });
     if !cli.quiet {
         let output = match cli.format {
-            OutputFormat::Text => crystalline_lint::shell::cli::format_text(&all_violations),
-            OutputFormat::Sarif => crystalline_lint::shell::cli::format_sarif(&all_violations),
+            OutputFormat::Text => crystalline_lint::shell::cli::format_text_with_v19(
+                &all_violations,
+                v19_comparison.as_ref(),
+            ),
+            OutputFormat::Sarif => crystalline_lint::shell::cli::format_sarif_with_v19(
+                &all_violations,
+                &cli.path,
+                enabled.v19,
+                analysis_complete,
+                v19_comparison.as_ref(),
+            ),
             OutputFormat::N16Summary => {
                 let stats = crystalline_lint::shell::n16_summary::collect_n16_stats(
                     &source_files,

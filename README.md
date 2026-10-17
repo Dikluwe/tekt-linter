@@ -85,7 +85,7 @@ futuro modo selado/certificador, ainda não implementado.
 | V16 | `WildcardSaturation` | **warning** | Braço catch-all descarta informação de enum fechado de domínio sem erro de compilação. Saturação arbitrária (DENY-class) ou default neutro (WARN-class) |
 | V17 | `CompoundGuard` | **warning** | Guard de braço de decisão com operadores booleanos compostos (`&&`, `||`) |
 | V18 | `RangePatternInMatch` | **warning** | Padrão de range numérico em match de domínio fora de módulo de lexing/numeração |
-| V19 | `OrPatternAlternatives` | **info** | Braço de decisão condensa múltiplas alternativas or-pattern (métrica: informa subdimensionamento de cobertura de braços) |
+| V19 | `OrPatternAlternatives` | **info** | Informa alternativas escritas em todos os grupos do padrão e presença de guard; não mede cobertura de testes nem exige separar corpos iguais |
 | V20 | `DeepPatternNesting` | **info** | Aninhamento de padrão > 2 fora de contexto de tabela de tuplas regulares (métrica de complexidade) |
 | V21 | `HardcodedContextualValue` | **warning** | Literal numérico escala variável de fonte contextual e alimenta sumidouro geométrico sem proveniência declarada |
 | V22 | `ProvenanceInventory` | **info** | Métrica agregada por módulo: rácio `(literais citados) / (total de literais)` para vigilância de tendência (opt-in) |
@@ -420,6 +420,44 @@ V6 detecta mudanças de assinatura além de adições e remoções —
 e dispara V6 mesmo com o nome da função inalterado.
 
 ---
+
+## Notas informativas V19 no relatório
+
+No formato `text`, V19 aparece em um bloco final por arquivo, com totais de braços
+e arquivos. A explicação comum aparece uma vez; cada ocorrência conserva linha,
+coluna, alternativas escritas, presença de guard e padrão. Esses totais não
+representam defeitos nem testes pendentes. Agrupamentos como `"yaml" | "yml"`
+continuam legítimos e não precisam ser separados para eliminar a nota.
+
+O SARIF preserva cada ocorrência como `note`, com sua mensagem completa e
+localização. Notas `Info` não reprovam `--fail-on warning`; se a configuração
+elevar V19, ele segue a apresentação e o código de saída da severidade escolhida.
+
+Para destacar notas novas ou alteradas, salve uma referência e compare depois:
+
+```bash
+crystalline-lint . --checks v19 --format sarif > v19-reference.sarif
+crystalline-lint . --checks v19 --v19-reference v19-reference.sarif
+```
+
+Os rótulos são `nova`, `alterada`, `nova ou alterada` e `sem alteração`. A comparação
+primeiro reconhece a mesma mensagem no mesmo arquivo, mesmo após deslocamentos de
+linha; depois reconhece alterações em localizações com correspondência única.
+Mudanças simultâneas de texto e posição podem ficar como `nova ou alterada`.
+Duplicatas são contadas separadamente; renomear um arquivo cria identidade nova.
+Espaços dentro de literais não são normalizados. Todas as notas continuam visíveis.
+
+Use a mesma raiz lógica e o mesmo escopo de análise. Os caminhos salvos são relativos
+à raiz, permitindo comparar checkouts em diretórios diferentes. O path passado a
+`--v19-reference` é relativo ao diretório de execução. A referência não é modificada;
+um novo SARIF pode ser salvo explicitamente quando se desejar mudar a referência.
+Relatórios SARIF antigos sem o envelope V19 precisam ser gerados novamente.
+
+Diferenças não indicam defeitos, testes pendentes ou cobertura insuficiente e não
+alteram o exit code. Ausência de uma nota não comprova correção nem cobertura.
+Referência ilegível, inválida, maior que 10 MiB ou análise incompleta impedem a
+comparação com saída 2 (erro operacional). `--quiet` mantém silêncio. A opção exige
+V19 e é incompatível com subcomandos, reparos, `--emit-resolution` e `n16-summary`.
 
 ## Auto-validação
 

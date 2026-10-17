@@ -178,6 +178,7 @@ fn v19_threshold_max_count() {
         let v = or_pattern_alternatives::check(&f("src/o.rs", vec![e(vec![x])]));
         one(&v, "V19", ViolationLevel::Info, s, "src/o.rs", 31, 5);
         assert!(v[0].message.contains(&n.to_string()));
+        assert_eq!(v[0].message.contains("pelo menos"), n == u16::MAX);
     }
 }
 fn deep(ps: &[&'static str]) -> Vec<DecisionArm<'static>> {
@@ -427,7 +428,8 @@ fn v19_systematic_irrelevant_field_mutation_preserves_entire_diagnostic() {
     changed.is_catchall = true;
     changed.bound_ident_used_in_body = true;
     changed.qualified_prefixes = vec!["Other", "Noise"];
-    changed.has_guard = true;
+    // Guard presence is diagnostic context; compoundness remains irrelevant.
+    changed.has_guard = false;
     changed.guard_is_compound = true;
     changed.pattern_is_range = true;
     changed.pattern_depth = u8::MAX;

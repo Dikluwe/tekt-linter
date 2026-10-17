@@ -1,5 +1,5 @@
 # Prompt: Rule Traits (rule-traits)
-Hash do Código: 6539efde
+Hash do Código: e4fdf304
 
 **Camada**: L1 (Core — Contracts)
 **Criado em**: 2026-03-15 (ADR-0006 refactor)
@@ -288,6 +288,25 @@ impl HasTokens<'static> for MockFile {
 }
 ```
 
+## Contagem sintática de alternativas V19
+
+`DecisionArm.or_alternatives` é a soma das alternativas escritas em cada grupo
+de or-patterns, saturada em `u16::MAX`; sem grupo, preserva o sentinela histórico 1.
+Uma cadeia `A | B | C` é um grupo com 3 alternativas, independentemente da
+associatividade dos nós AST. Grupos dentro de construtores ou parênteses são
+contados também: `Some(A | B) | None` soma 2 alternativas externas e 2 internas.
+Comentários, guard e corpo não participam da contagem.
+
+| Padrão | Alternativas escritas nos grupos | Combinações sintáticas (não armazenadas) |
+|--------|---------------------------------|-----------------------------------------|
+| `(A | B, C | D)` | 4 | 4 |
+| `(A | B, C | D | E)` | 5 | 6 |
+| `Some(A | B) | None` | 4 | 3 |
+
+Combinações sintáticas são expansões por soma nas escolhas e produto nas
+composições; podem se sobrepor ou ser inalcançáveis. Nenhuma dessas métricas
+estabelece casos efetivamente cobertos por testes, que exigem evidência de execução.
+
 ## Contrato de observações semânticas V23–V25
 
 V23–V25 preservam a direção cristalina `rules → entities`: as regras L1 não importam
@@ -453,6 +472,7 @@ Então retorna Violation V3
 
 | Data | Motivo | Arquivos afetados |
 |------|--------|-------------------|
+| 2026-10-16 | Define alternativas escritas de V19, grupos aninhados, sentinela e saturação; distingue combinações e cobertura | rule_traits.rs |
 | 2026-03-15 | Criação (ADR-0006 refactor): traits movidas de rules/ para contracts/ para corrigir inversão entities→rules em parsed_file.rs | rule_traits.rs |
 | 2026-03-16 | ADR-0007: HasWiringPurity adicionada para V12; nota sobre V3/V9/V10 partilhando HasImports | rule_traits.rs |
 | 2026-03-16 | ADR-0007 fecho: rule_traits.rs movido de contracts/ para entities/ | rule_traits.rs |

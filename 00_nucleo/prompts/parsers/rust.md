@@ -1,5 +1,5 @@
 # Prompt: Rust Parser (parsers/rust)
-Hash do Código: c3f78c77
+Hash do Código: 2a5794fd
 
 > **Nota de localização:** Este prompt foi movido de `prompts/rs-parser.md`
 > para `prompts/parsers/rust.md` pelo ADR-0009. É a implementação de
@@ -391,6 +391,21 @@ where
 }
 ```
 
+## Extração de alternativas V19
+
+Percorrer todos os grupos de or-patterns do braço, inclusive irmãos em tuplas,
+structs e slices e grupos aninhados em construtores. Preencher `or_alternatives`
+conforme `contracts/rule-traits.md`: somar alternativas escritas por grupo,
+achatando apenas nós `or_pattern` diretamente encadeados pela gramática.
+Ignorar nós extras (comentários), guard e corpo. Usar soma saturada em `u16::MAX`
+e sentinela 1 para padrão sem or-pattern. Preservar snippet e `has_guard`.
+
+Regressões obrigatórias: cadeia simples, dois grupos irmãos com aridades
+diferentes, grupo dentro de alternativa externa, structs/slices, comentários,
+`|` inicial, guard com `||`/`matches!`, corpo com `|`, aliases `yaml/yml`,
+complemento nominal de V16, wildcard `_` como alternativa (nó anônimo na AST)
+e limite numérico sem overflow.
+
 ## Contrato de extração estrutural `SourceConstant` — saneamento P0097
 
 O oráculo P0097 é deliberadamente mínimo. Ele projeta somente ocorrências de kind
@@ -647,6 +662,7 @@ limite permanecem não analisáveis.
 
 | Data | Motivo | Arquivos afetados |
 |------|--------|-------------------|
+| 2026-10-16 | V19 percorre todos os grupos; distingue alternativas escritas, combinações e cobertura; regressões e saturação | rs_parser.rs |
 | 2025-03-13 | Criação inicial | rs_parser.rs |
 | 2025-03-13 | Gap 4: responsabilidades explícitas, LayerResolver, FsPromptReader | rs_parser.rs |
 | 2025-03-13 | V6: PublicInterface, PromptSnapshotReader, pipeline explícito | rs_parser.rs |
