@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/prompt-provider.md
-//! @prompt-hash 56c1e27b
+//! @prompt-hash e0d13848
 //! @layer L1
-//! @updated 2026-03-15
+//! @updated 2026-10-16
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -25,7 +25,7 @@ pub struct PromptEntry<'a> {
 // ── AllPrompts ────────────────────────────────────────────────────────────────
 
 /// Conjunto de todos os prompts existentes em 00_nucleo/prompts/,
-/// excluindo as exceções declaradas em [orphan_exceptions].
+/// excluindo as exceções declaradas em `[orphan_exceptions]`.
 /// Construído por L3 (FsPromptWalker) antes do pipeline paralelo.
 /// Imutável durante toda a execução — seguro para acesso concorrente.
 #[derive(Debug)]

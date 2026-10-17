@@ -1,5 +1,5 @@
 # Prompt: Rule V9 - Pub Leak (pub-leak)
-Hash do Código: eff86053
+Hash do Código: 3a8b09d7
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V9
@@ -165,3 +165,7 @@ Então retorna vec![] — crate externa, target_subdir = None
 | 2026-03-14 | Criação inicial (ADR-0006) | pub_leak.rs |
 | 2026-06-09 | 0061: param `check_test_imports` (default false) — guard pula imports test-origin (`#[cfg(test)]`) antes do filtro de subdir | pub_leak.rs |
 | 2026-08-24 | Mensagem V9 passa a preservar literalmente o target_subdir rejeitado junto ao import path | pub_leak.rs |
+
+## Rustdoc estrito — 2026-10-16
+
+Medição anterior à correção: cargo doc --offline --locked --no-deps com RUSTDOCFLAGS="-D warnings" falhou neste consumer nas linhas 17, 38. O diagnóstico tekt-v16-none-parser-2026-10-16 em typst-crystalline conserva attempt-doc-green-doc.log, hashes base e53de6f e UTC em docs-before-code.json. Corrigir somente a apresentação dos comentários Rustdoc: representar como código literal `[l1_ports]`. Não alterar tokens executáveis, tipos, campos, assinaturas, mensagens de execução, ordem ou comportamento. É manutenção documental interna em fluxo contínuo; o RED é a compilação Rustdoc estrita registrada e o GREEN exige cargo doc sem advertências, mais suíte, Clippy e linhagem existentes. Resselar os dois sentidos somente dos owners editados.

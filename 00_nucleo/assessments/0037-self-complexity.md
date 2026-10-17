@@ -114,3 +114,7 @@ destino final: 5 `REFACTORED`, 68 `ACCEPT-EQUIVALENT` e 17 `ACCEPT-BOUNDARY`. N�
 
 P0109 está fechado no branch. O merge em `master` continua fora do escopo e requer passo
 posterior.
+
+## Revisão None/prelude — 2026-10-16
+
+Medição do candidato sobre e53de6fd2bff9f3a87a3e8a076f5e470ce4bb7a0: ratchet-delta.json no diagnóstico tekt-v16-none-parser-2026-10-16 do consumidor typst-crystalline registra um V19 novo e nenhuma remoção. C0096 aceita line_comment | block_comment somente como trivia entre atributo externo e módulo: ambos preservam a procura do atributo. N5 exercita as duas alternativas. O ratchet continua exigindo o multiconjunto exato, zero V16/V17, e as aceitações históricas permanecem. O L0 parsers/rust.md prescreve esta decisão; não há isenção de regra nem alegação de cobertura geral pelo fato de executar o corpo.

@@ -1,5 +1,5 @@
 # Prompt: Rust Parser (parsers/rust)
-Hash do Código: 2a5794fd
+Hash do Código: b487deca
 
 > **Nota de localização:** Este prompt foi movido de `prompts/rs-parser.md`
 > para `prompts/parsers/rust.md` pelo ADR-0009. É a implementação de
@@ -662,6 +662,7 @@ limite permanecem não analisáveis.
 
 | Data | Motivo | Arquivos afetados |
 |------|--------|-------------------|
+| 2026-10-16 | V16 distingue None do prelude de bindings; escopos no_implicit_prelude e controles negativos | rs_parser.rs |
 | 2026-10-16 | V19 percorre todos os grupos; distingue alternativas escritas, combinações e cobertura; regressões e saturação | rs_parser.rs |
 | 2025-03-13 | Criação inicial | rs_parser.rs |
 | 2025-03-13 | Gap 4: responsabilidades explícitas, LayerResolver, FsPromptReader | rs_parser.rs |
@@ -680,3 +681,34 @@ limite permanecem não analisáveis.
 ## Revisão 2026-09-26 — fechamento de qualidade
 
 Eliminar avisos do Clippy preservando resultados, ordem, localizações, interfaces públicas e invariantes acima. Manter compatibilidade das APIs utilizadas com Rust 1.75; simplificar expressões e remover parâmetros/auxiliares redundantes. Agrupar contexto interno de travessia quando necessário, sem reclassificar entradas. Validar com a suíte existente e autoverificação, e sincronizar hashes nos dois sentidos.
+
+
+## V16 — construtor None e bindings, correção interna 2026-10-16
+
+### Medição anterior à decisão
+
+No commit e53de6fd2bff9f3a87a3e8a076f5e470ce4bb7a0, rs_parser.rs:1605–1648 trata qualquer identifier não vazio como catchall/binding. A fixture Option<Mode> com Some(A), Some(B) e None é exaustiva, compila e exige E0004 se Mode cresce, mas V16 denuncia None. syntax-measurement.json em typst-crystalline/00_nucleo/diagnosticos/tekt-v16-none-parser-2026-10-16 registra fontes, rustc e AST: None/r#None são constructors no prelude; None também é binding válido em escopos no_implicit_prelude. Atributos internos ficam em source_file/declaration_list, externos decoram mod_item como irmãos precedentes, e cfg_attr transporta tokens. before.json.gz conserva commit/árvore/archive SHA-256, fontes/hashes, UTC e estado do projeto-alvo. Nenhum marcador no_implicit_prelude existe nas fontes produtivas desse snapshot Typst. É correção da observação sintática, sem mudança de contrato público da IR ou da severidade V16.
+
+### Contrato local
+
+Extrair o binding uma única vez e derivar is_catchall de sua presença, eliminando a duplicação privada divergente check_is_catchall/get_catchall_ident. Wildcard _ continua catchall. Identificadores não vazios continuam candidatos a binding, inclusive maiúsculos desconhecidos; não usar capitalização como isenção geral.
+
+None e r#None nus são constructor conhecido do prelude Rust e não são binding/catchall quando não há desativação visível nesse escopo do arquivo. Então bound_ident_used_in_body também fica false, mesmo se o corpo usa o constructor None. Caminhos qualificados permanecem como antes. Preservar snippets, localizações, guard, formas de corpo e demais propriedades.
+
+Percorrer ancestrais do padrão. Desativação visível por no_implicit_prelude interno em source_file/declaration_list ou atributos externos que decoram mod_item impede a inferência de constructor, conservando o candidato binding. cfg_attr que menciona o marcador em tokens identificadores é conservador: não resolver cfg nem assumir prelude habilitado. Atributos de módulos irmãos não vazam; comentários e literais com o nome não desativam o prelude. Reconhecer a grafia raw de nomes de atributo sem alocar strings. Helpers privados de leitura de AST permanecem neste owner L3, sem novo I/O, global, dependência ou tipo público.
+
+Limite honesto: este contrato usa o SourceFile recebido, não resolve aliases de constructors em geral nem ancestrais de módulos em arquivos externos, não expande macros e não faz resolução de tipos Rust. A desativação herdada de outro arquivo não é inferível desta IR; não alegar prova geral de bindings para esses casos. O snapshot do consumidor Typst foi conferido sem tal desativação. Esse limite não autoriza silenciar wildcards ou tratar todos os nomes maiúsculos como variantes.
+
+### Testes e aceitação
+
+N1 constructor None; N2 raw constructor; N3 constructor None no corpo não é reincorporação de binding; N4 wildcard/bindings comuns, raw e maiúsculos mantêm V16; N5 no_implicit_prelude interno, externo e herdado localmente conserva None binding; N6 cfg_attr é conservador; N7 fronteiras entre módulos; N8 comentários/literais não alteram classificação; N9 guard de None preserva contexto e wildcard posterior continua V16.
+
+Escrever testes no próprio módulo antes da implementação e confirmar RED nos constructors. GREEN nos testes novos, suíte completa, Clippy estrito, fmt, docs e autoverificação. Gate diferencial no Typst congelado deve remover somente os nove V16 sobre None, conservar demais diagnósticos, níveis e posições, e manter V19 como Info. Não editar consumers Typst nem regras/severidade para ocultar emissões. Selar hashes diretos/reversos apenas deste owner após cada edição; publicar/alterar pin somente com revisão concreta e autorização. Recursos de execução limitados a 12 GiB, swap zero e um job Cargo.
+
+### Empacotamento das fixtures, medição 2026-10-16
+
+O primeiro cargo test no arquivo Git exportado passou os 680 testes unitários, mas falhou em quatro fixtures (v01_fail, v01b_fail, vexcl_pass, vnest_fail): o arquivo não preserva seus diretórios 00_nucleo/prompts vazios. O binário base e53de6f reproduz NucleoUnreadable nelas; fixture-packaging-before.json registra os comandos e resultados antes da correção. Preservar esses diretórios com .gitkeep vazio, sem editar harness, expectativas, políticas ou fontes produtivas. A suíte completa deve passar a partir da árvore exportada, sem depender de diretórios locais não versionados.
+
+### Aceitação V19 local
+
+ratchet-delta.json mediu somente um V19 novo, para line_comment | block_comment na procura do atributo externo de módulo; nenhum V16/V17 novo e nenhuma nota antiga removida. Os dois tipos de comentário são trivia com o mesmo efeito: prosseguir até o atributo, sem criar fronteira de item. Manter agrupados e informativos, registrar ACCEPT-EQUIVALENT no manifesto 0037 e exercitar as duas alternativas em N5. Preservar o teste exato do ratchet; não aceitar grupos indiscriminadamente nem diminuir a severidade de diagnósticos acionáveis.

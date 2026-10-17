@@ -1,5 +1,5 @@
 # Prompt: Rule Traits (rule-traits)
-Hash do Código: e4fdf304
+Hash do Código: c2200ab3
 
 **Camada**: L1 (Core — Contracts)
 **Criado em**: 2026-03-15 (ADR-0006 refactor)
@@ -480,3 +480,7 @@ Então retorna Violation V3
 | 2026-08-24 | HasPromptFilesystem ganha layer() como oráculo único do escopo L1–L4 de V1 | rule_traits.rs, parsed_file.rs, prompt_header.rs |
 | 2026-08-24 | Taxonomia pública V23–V25 documentada; DirectDecisionReimplementation fecha a quarta modalidade sem colapsá-la em proxy/canonicalizer | rule_traits.rs, decision_ownership.rs |
 | 2026-08-24 | IR V21 vinculada à porta pura de frescura; filesystem permanece fora de entities/rules | rule_traits.rs, citation_freshness.rs, unsourced_constant.rs |
+
+## Rustdoc estrito — 2026-10-16
+
+Medição anterior à correção: cargo doc --offline --locked --no-deps com RUSTDOCFLAGS="-D warnings" falhou neste consumer nas linhas 253, 253, 255, 257. O diagnóstico tekt-v16-none-parser-2026-10-16 em typst-crystalline conserva attempt-doc-green-doc.log, hashes base e53de6f e UTC em docs-before-code.json. Corrigir somente a apresentação dos comentários Rustdoc: representar como código literal `// ref: <caminho>:<linha>`, `// spec: <norma> §<secção>`, `// rationale: <frase>`. Não alterar tokens executáveis, tipos, campos, assinaturas, mensagens de execução, ordem ou comportamento. É manutenção documental interna em fluxo contínuo; o RED é a compilação Rustdoc estrita registrada e o GREEN exige cargo doc sem advertências, mais suíte, Clippy e linhagem existentes. Resselar os dois sentidos somente dos owners editados.

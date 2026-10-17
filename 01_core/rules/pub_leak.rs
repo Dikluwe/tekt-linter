@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/pub-leak.md
-//! @prompt-hash 4253c633
+//! @prompt-hash 55058d14
 //! @layer L1
-//! @updated 2026-06-09
+//! @updated 2026-10-16
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -14,7 +14,7 @@ use crate::entities::violation::{Location, Violation, ViolationLevel};
 // ── L1Ports ───────────────────────────────────────────────────────────────────
 
 /// Conjunto de subdiretórios de L1 acessíveis externamente.
-/// Declarados em crystalline.toml [l1_ports], construídos por L3 (config),
+/// Declarados em crystalline.toml `[l1_ports]`, construídos por L3 (config),
 /// injetados em V9 via L4. V9 nunca lê o toml diretamente.
 pub struct L1Ports {
     ports: HashSet<String>,
@@ -35,7 +35,7 @@ impl L1Ports {
 /// V9 — Pub Leak (Solução Preguiçosa).
 ///
 /// Imports de L2 ou L3 apontando para subdiretório interno de L1
-/// não listado em [l1_ports] geram violação Error.
+/// não listado em `[l1_ports]` geram violação Error.
 ///
 /// Aplica-se apenas a L2 e L3 importando L1.
 /// L1 importando L1 não é V9 (é V3 se inválido).

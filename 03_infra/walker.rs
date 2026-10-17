@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/file-walker.md
-//! @prompt-hash f820e89e
+//! @prompt-hash 3e23e47d
 //! @layer L3
-//! @updated 2026-03-20
+//! @updated 2026-10-16
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -154,7 +154,7 @@ fn language_for_path(path: &Path) -> Option<Language> {
 }
 
 /// Determine the layer of a file from its path relative to the project root.
-/// Uses the [layers] table in crystalline.toml to match path prefixes.
+/// Uses the `[layers]` table in crystalline.toml to match path prefixes.
 pub fn resolve_file_layer(path: &Path, root: &Path, config: &CrystallineConfig) -> Layer {
     let relative = path.strip_prefix(root).unwrap_or(path);
     let first_component = relative

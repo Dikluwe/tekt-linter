@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/rules/wiring-logic-leak.md
-//! @prompt-hash 013d74d0
+//! @prompt-hash 2a8c88e6
 //! @layer L1
-//! @updated 2026-03-16
+//! @updated 2026-10-16
 
 use std::borrow::Cow;
 
@@ -18,7 +18,7 @@ use crate::entities::violation::{Location, Violation, ViolationLevel};
 /// quando `allow_adapter_structs = true` (padrão). Enums e impl sem
 /// trait são sempre proibidos em L4 — indicam lógica embutida no fio.
 ///
-/// Warning — não bloqueia CI por padrão (configurável via [rules]).
+/// Warning — não bloqueia CI por padrão (configurável via `[rules]`).
 /// Aplica-se apenas a arquivos com `layer == L4`.
 pub fn check<'a, T: HasWiringPurity<'a>>(file: &T, config: &WiringConfig) -> Vec<Violation<'a>> {
     if *file.layer() != Layer::L4 {

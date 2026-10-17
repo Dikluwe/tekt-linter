@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/fix-hashes.md
-//! @prompt-hash d6f27e44
+//! @prompt-hash 31a78c14
 //! @layer L2
-//! @updated 2026-09-26
+//! @updated 2026-10-16
 
 use std::path::{Path, PathBuf};
 use std::{collections::BTreeMap, fmt};
@@ -38,7 +38,7 @@ pub trait HashRewriter {
     /// Atomically replace `@prompt-hash <old>` with `@prompt-hash <new>` in source file.
     fn write_hash(&self, source_path: &Path, new_hash: &str) -> Result<(), String>;
 
-    /// Inject "Hash do Código: <hash>" into the prompt file.
+    /// Inject `Hash do Código: <hash>` into the prompt file.
     fn write_prompt_meta(&self, prompt_path: &str, code_hash: &str) -> Result<(), String>;
 }
 

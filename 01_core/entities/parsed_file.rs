@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/entities/parsed-file.md
-//! @prompt-hash 64ca7e92
+//! @prompt-hash 0fc91196
 //! @layer L1
-//! @updated 2026-06-09
+//! @updated 2026-10-16
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -25,11 +25,11 @@ pub struct Import<'a> {
     pub path: &'a str, // sempre presente no buffer — &'a str puro
     pub line: usize,
     pub kind: ImportKind,
-    /// Resolvido por L3 via crystalline.toml [layers].
+    /// Resolvido por L3 via crystalline.toml `[layers]`.
     /// Layer::Unknown para crates externas — não gera violação V3.
     pub target_layer: Layer,
     /// Subdiretório de destino dentro da camada alvo.
-    /// Resolvido por L3 via crystalline.toml [l1_ports].
+    /// Resolvido por L3 via crystalline.toml `[l1_ports]`.
     /// None se target_layer == Unknown (crate externa).
     /// Some("entities") se import aponta para 01_core/entities/.
     /// Some("internal") se import aponta para subdir não-porta.
@@ -141,7 +141,7 @@ pub struct StaticDeclaration<'a> {
 // ── WiringConfig (V12) ────────────────────────────────────────────────────────
 
 /// Configuração de exceções para V12, injetada por L4 a partir de
-/// crystalline.toml [wiring_exceptions]. V12 nunca lê o toml diretamente.
+/// crystalline.toml `[wiring_exceptions]`. V12 nunca lê o toml diretamente.
 #[derive(Debug, Clone)]
 pub struct WiringConfig {
     /// Se true, struct_item (Rust) e class_declaration (linguagens OO)

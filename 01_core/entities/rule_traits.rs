@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/contracts/rule-traits.md
-//! @prompt-hash 3b7b527d
+//! @prompt-hash d9907ece
 //! @layer L1
 //! @updated 2026-10-16
 
@@ -250,11 +250,11 @@ pub enum ConstantKind {
 /// Forma de citação declarada em comentário.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CitationKind<'a> {
-    /// // ref: <caminho>:<linha>
+    /// `// ref: <caminho>:<linha>`
     Ref { path: &'a str, line: usize },
-    /// // spec: <norma> §<secção>
+    /// `// spec: <norma> §<secção>`
     Spec(&'a str),
-    /// // rationale: <frase>
+    /// `// rationale: <frase>`
     Rationale(&'a str),
 }
 

@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/infra/hash-writer.md
-//! @prompt-hash 322ec9ed
+//! @prompt-hash f00e7fc6
 //! @layer L3
-//! @updated 2026-09-26
+//! @updated 2026-10-16
 
 use crate::entities::hash_pair::{BijectivePair, PairSnapshot};
 use crate::infra::prompt_io::{atomic_replace, eight_hex, replace_meta_line, without_meta_line};
@@ -43,7 +43,7 @@ pub fn write_hash(path: &Path, new_hash: &str) -> Result<(), String> {
     atomic_replace(path, &replaced, permissions)
 }
 
-/// Atomically replace the authorized "Hash do Código: <hash>" prompt metadata.
+/// Atomically replace the authorized `Hash do Código: <hash>` prompt metadata.
 pub fn write_prompt_meta(path: &Path, code_hash: &str) -> Result<(), String> {
     if !eight_hex(code_hash) {
         return Err("hash must be exactly eight lowercase hex digits".to_string());

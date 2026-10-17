@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/prompt-walker.md
-//! @prompt-hash 5b215f4b
+//! @prompt-hash 032d6380
 //! @layer L3
-//! @updated 2026-09-26
+//! @updated 2026-10-16
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashSet};
@@ -17,7 +17,7 @@ use crate::contracts::prompt_provider::{AllPrompts, PromptEntry, PromptProvider,
 /// Implementação L3 de PromptProvider.
 ///
 /// Varre 00_nucleo/prompts/ recursivamente, constrói AllPrompts excluindo
-/// as exceções declaradas em crystalline.toml [orphan_exceptions].
+/// as exceções declaradas em crystalline.toml `[orphan_exceptions]`.
 ///
 /// Timing: invocado sequencialmente em L4 antes do pipeline paralelo.
 /// Não participa do Map-Reduce — AllPrompts é imutável após construção.
@@ -33,7 +33,7 @@ pub struct FsPromptWalker {
     /// Exemplo: "00_nucleo/prompts/template.md"
     pub orphan_exceptions: HashSet<String>,
     /// Buffer interno para paths internados.
-    /// Usa Box<str> para que o dado heap não se mova durante realocações do Vec.
+    /// Usa `Box<str>` para que o dado heap não se mova durante realocações do Vec.
     /// Garante que &'a str retornado vive no walker.
     paths_buffer: RefCell<Vec<Box<str>>>,
 }
@@ -49,10 +49,10 @@ impl FsPromptWalker {
 
     /// Interna um String no buffer e retorna &'a str vinculado ao lifetime do walker.
     ///
-    /// Usa Box<str> para que os dados no heap não se movam quando o Vec realoca.
+    /// Usa `Box<str>` para que os dados no heap não se movam quando o Vec realoca.
     /// A referência retornada aponta para o dado heap do Box, não para o Box em si.
     ///
-    /// SAFETY: O dado heap do Box<str> sobrevive enquanto o Box existir dentro de
+    /// SAFETY: O dado heap do `Box<str>` sobrevive enquanto o Box existir dentro de
     /// self.paths_buffer (lifetime 'a). Realoções do Vec movem o Box (o fat pointer),
     /// não o dado heap apontado — portanto o raw pointer permanece válido.
     fn intern(&self, path: String) -> &str {

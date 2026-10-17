@@ -1,5 +1,5 @@
 # Prompt: walker do projeto
-Hash do Código: d4ba8ee0
+Hash do Código: 9c48719c
 
 Owner exclusivo: `03_infra/walker.rs`.
 
@@ -18,3 +18,7 @@ classificação e artefatos `Test` não consultam adjacência própria.
 
 O mesmo conjunto de arquivos produz ordem idêntica; symlink/inacessível vira erro separado
 e nunca desaparece como sucesso parcial.
+
+## Rustdoc estrito — 2026-10-16
+
+Medição anterior à correção: cargo doc --offline --locked --no-deps com RUSTDOCFLAGS="-D warnings" falhou neste consumer nas linhas 157. O diagnóstico tekt-v16-none-parser-2026-10-16 em typst-crystalline conserva attempt-doc-green-doc.log, hashes base e53de6f e UTC em docs-before-code.json. Corrigir somente a apresentação dos comentários Rustdoc: representar como código literal `[layers]`. Não alterar tokens executáveis, tipos, campos, assinaturas, mensagens de execução, ordem ou comportamento. É manutenção documental interna em fluxo contínuo; o RED é a compilação Rustdoc estrita registrada e o GREEN exige cargo doc sem advertências, mais suíte, Clippy e linhagem existentes. Resselar os dois sentidos somente dos owners editados.

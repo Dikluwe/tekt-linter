@@ -1,5 +1,5 @@
 # Prompt: PromptProvider (prompt-provider)
-Hash do Código: b86132db
+Hash do Código: 65096d65
 
 **Camada**: L1 (Core — Contracts)
 **Criado em**: 2026-03-14 (ADR-0006)
@@ -130,3 +130,7 @@ Então linter falha com mensagem explicativa antes de iniciar pipeline
 | Data | Motivo | Arquivos afetados |
 |------|--------|-------------------|
 | 2026-03-14 | Criação inicial (ADR-0006) | prompt_provider.rs |
+
+## Rustdoc estrito — 2026-10-16
+
+Medição anterior à correção: cargo doc --offline --locked --no-deps com RUSTDOCFLAGS="-D warnings" falhou neste consumer nas linhas 28. O diagnóstico tekt-v16-none-parser-2026-10-16 em typst-crystalline conserva attempt-doc-green-doc.log, hashes base e53de6f e UTC em docs-before-code.json. Corrigir somente a apresentação dos comentários Rustdoc: representar como código literal `[orphan_exceptions]`. Não alterar tokens executáveis, tipos, campos, assinaturas, mensagens de execução, ordem ou comportamento. É manutenção documental interna em fluxo contínuo; o RED é a compilação Rustdoc estrita registrada e o GREEN exige cargo doc sem advertências, mais suíte, Clippy e linhagem existentes. Resselar os dois sentidos somente dos owners editados.

@@ -1,6 +1,6 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/parsers/rust.md
-//! @prompt-hash 7712e37f
+//! @prompt-hash 4a38c73a
 //! @layer L3
 //! @updated 2026-10-16
 
@@ -1373,8 +1373,8 @@ fn parse_match_arm<'a>(node: Node, source: &'a [u8]) -> Option<DecisionArm<'a>> 
     let pattern_bytes = &source[match_pattern.start_byte()..pattern_end_byte];
     let pattern_snippet = std::str::from_utf8(pattern_bytes).ok()?.trim();
 
-    let is_catchall = check_is_catchall(match_pattern, pattern_end_byte, source);
     let bound_ident = get_catchall_ident(match_pattern, pattern_end_byte, source);
+    let is_catchall = bound_ident.is_some();
 
     let bound_ident_used_in_body = if let Some(ident) = bound_ident {
         if ident != "_" {
@@ -1602,26 +1602,61 @@ fn contains_conditional_attribute(node: Node, source: &[u8]) -> bool {
     found
 }
 
-fn check_is_catchall(match_pattern: Node, limit_byte: usize, source: &[u8]) -> bool {
-    let mut cursor = match_pattern.walk();
-    for child in match_pattern.children(&mut cursor) {
-        if child.end_byte() > limit_byte {
-            continue;
-        }
-        match child.kind() {
-            "_" => return true,
-            "identifier" => {
-                let name = std::str::from_utf8(&source[child.start_byte()..child.end_byte()])
-                    .unwrap_or("");
-                // In Rust, uppercase identifiers are likely unit struct patterns; lowercase/single ident are catchalls
-                if !name.is_empty() {
-                    return true;
-                }
+// SourceFile-local inference: module ancestry in other files is not available here.
+fn prelude_is_locally_disabled(mut node: Node, source: &[u8]) -> bool {
+    loop {
+        if matches!(node.kind(), "source_file" | "declaration_list") {
+            let mut cursor = node.walk();
+            if node.named_children(&mut cursor).any(|child| {
+                child.kind() == "inner_attribute_item" && attribute_disables_prelude(child, source)
+            }) {
+                return true;
             }
-            _ => {}
+        }
+        if node.kind() == "mod_item" {
+            let mut previous = node.prev_named_sibling();
+            while let Some(sibling) = previous {
+                match sibling.kind() {
+                    "attribute_item" => {
+                        if attribute_disables_prelude(sibling, source) {
+                            return true;
+                        }
+                    }
+                    "line_comment" | "block_comment" => {}
+                    _ => break,
+                }
+                previous = sibling.prev_named_sibling();
+            }
+        }
+        match node.parent() {
+            Some(parent) => node = parent,
+            None => return false,
         }
     }
-    false
+}
+
+fn attribute_disables_prelude(node: Node, source: &[u8]) -> bool {
+    let Some(attribute) = node.named_child(0) else {
+        return false;
+    };
+    let Some(name) = attribute.named_child(0) else {
+        return false;
+    };
+    if name.kind() != "identifier" {
+        return false;
+    }
+    let text = std::str::from_utf8(&source[name.start_byte()..name.end_byte()]).unwrap_or("");
+    match text.strip_prefix("r#").unwrap_or(text) {
+        "no_implicit_prelude" => true,
+        // cfg evaluation is outside this parser: retain the possible binding.
+        "cfg_attr" => attribute
+            .child_by_field_name("arguments")
+            .is_some_and(|args| {
+                has_ident_in_node(args, "no_implicit_prelude", source)
+                    || has_ident_in_node(args, "r#no_implicit_prelude", source)
+            }),
+        _ => false,
+    }
 }
 
 fn get_catchall_ident<'a>(
@@ -1639,6 +1674,12 @@ fn get_catchall_ident<'a>(
         }
         if child.kind() == "identifier" {
             let name = std::str::from_utf8(&source[child.start_byte()..child.end_byte()]).ok()?;
+            if name.is_empty()
+                || (name.strip_prefix("r#").unwrap_or(name) == "None"
+                    && !prelude_is_locally_disabled(match_pattern, source))
+            {
+                return None;
+            }
             return Some(name);
         }
     }
@@ -4194,6 +4235,162 @@ fn main() {}
         // FileProvider aparece em implemented_traits, não em blanket_impl_traits
         assert!(parsed.implemented_traits.contains(&"FileProvider"));
         assert!(!parsed.blanket_impl_traits.contains(&"FileProvider"));
+    }
+
+    #[test]
+    fn v16_none_constructor_is_not_a_binding() {
+        let parser = make_parser();
+        let file = source_file("enum Mode { A, B } fn f(v: Option<Mode>) -> u8 { match v { Some(Mode::A) => 0, Some(Mode::B) => 1, None => 2 } }");
+        let parsed = parser.parse(&file).unwrap();
+        assert!(!parsed.decision_exprs[0].arms[2].is_catchall);
+        assert!(!parsed.decision_exprs[0].arms[2].bound_ident_used_in_body);
+        assert!(crate::rules::wildcard_saturation::check(
+            &parsed,
+            &std::collections::HashMap::new()
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn v16_none_raw_constructor_is_not_a_binding() {
+        let parser = make_parser();
+        let file = source_file("enum Mode { A, B } fn f(v: Option<Mode>) -> u8 { match v { Some(Mode::A) => 0, Some(Mode::B) => 1, r#None => 2 } }");
+        let parsed = parser.parse(&file).unwrap();
+        let arm = &parsed.decision_exprs[0].arms[2];
+        assert_eq!(arm.pattern_snippet, "r#None");
+        assert!(!arm.is_catchall);
+        assert!(crate::rules::wildcard_saturation::check(
+            &parsed,
+            &std::collections::HashMap::new()
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn v16_none_constructor_in_body_is_not_binding_reincorporation() {
+        let parser = make_parser();
+        let file = source_file("enum Mode { A, B } fn f(v: Option<Mode>) -> Option<u8> { match v { Some(Mode::A) => Some(0), Some(Mode::B) => Some(1), None => None } }");
+        let parsed = parser.parse(&file).unwrap();
+        let arm = &parsed.decision_exprs[0].arms[2];
+        assert!(!arm.is_catchall);
+        assert!(!arm.bound_ident_used_in_body);
+    }
+
+    #[test]
+    fn v16_none_fix_keeps_real_wildcards_and_unusual_bindings() {
+        for pattern in ["_", "other", "_other", "Other", "NoneValue", "r#other"] {
+            let code = format!("enum Mode {{ A, B, C }} fn f(v: Mode) -> u8 {{ match v {{ Mode::A => 0, Mode::B => 1, {pattern} => 2 }} }}");
+            let parser = make_parser();
+            let file = source_file(&code);
+            let parsed = parser.parse(&file).unwrap();
+            assert!(parsed.decision_exprs[0].arms[2].is_catchall, "{pattern}");
+            let violations = crate::rules::wildcard_saturation::check(
+                &parsed,
+                &std::collections::HashMap::new(),
+            );
+            assert_eq!(violations.len(), 1, "{pattern}");
+            assert_eq!(violations[0].rule_id, "V16");
+        }
+    }
+
+    #[test]
+    fn v16_none_binding_remains_detected_when_prelude_is_locally_disabled() {
+        let body = "enum Mode { A, B, C } fn f(v: Mode) -> u8 { match v { Mode::A => 0, Mode::B => 1, None => 2 } }";
+        for code in [
+            format!("#![no_implicit_prelude]\n{body}"),
+            format!("mod inner {{ #![no_implicit_prelude]\n{body} }}"),
+            format!("#[no_implicit_prelude]\nmod inner {{ {body} }}"),
+            format!("#[no_implicit_prelude]\n// trivia\nmod inner {{ {body} }}"),
+            format!("#[no_implicit_prelude]\n/* trivia */\nmod inner {{ {body} }}"),
+            format!("#[r#no_implicit_prelude]\nmod inner {{ {body} }}"),
+            format!("#![no_implicit_prelude]\nmod inner {{ {body} }}"),
+        ] {
+            let parser = make_parser();
+            let file = source_file(&code);
+            let parsed = parser.parse(&file).unwrap();
+            assert!(parsed.decision_exprs[0].arms[2].is_catchall, "{code}");
+            assert_eq!(
+                crate::rules::wildcard_saturation::check(
+                    &parsed,
+                    &std::collections::HashMap::new()
+                )
+                .len(),
+                1,
+                "{code}"
+            );
+        }
+    }
+
+    #[test]
+    fn v16_none_conditional_prelude_disabling_is_conservative() {
+        for attribute in [
+            "#![cfg_attr(disable, no_implicit_prelude)]",
+            "#![cfg_attr(disable, cfg_attr(nested, no_implicit_prelude))]",
+        ] {
+            let code = format!("{attribute}\nenum Mode {{ A, B, C }} fn f(v: Mode) -> u8 {{ match v {{ Mode::A => 0, Mode::B => 1, None => 2 }} }}");
+            let parser = make_parser();
+            let file = source_file(&code);
+            let parsed = parser.parse(&file).unwrap();
+            assert!(parsed.decision_exprs[0].arms[2].is_catchall, "{attribute}");
+            assert_eq!(
+                crate::rules::wildcard_saturation::check(
+                    &parsed,
+                    &std::collections::HashMap::new()
+                )
+                .len(),
+                1
+            );
+        }
+    }
+
+    #[test]
+    fn v16_none_prelude_disabling_does_not_escape_module_boundary() {
+        let constructor = "enum Mode { A, B } fn f(v: Option<Mode>) -> u8 { match v { Some(Mode::A) => 0, Some(Mode::B) => 1, None => 2 } }";
+        let code = format!("#[no_implicit_prelude] mod off {{ enum Mode {{ A, B, C }} fn f(v: Mode) -> u8 {{ match v {{ Mode::A => 0, Mode::B => 1, None => 2 }} }} }} {constructor} mod on {{ {constructor} }}");
+        let parser = make_parser();
+        let file = source_file(&code);
+        let parsed = parser.parse(&file).unwrap();
+        let flags: Vec<_> = parsed
+            .decision_exprs
+            .iter()
+            .map(|expr| expr.arms[2].is_catchall)
+            .collect();
+        assert_eq!(flags, [true, false, false]);
+        assert_eq!(
+            crate::rules::wildcard_saturation::check(&parsed, &std::collections::HashMap::new())
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn v16_none_prelude_marker_in_comments_and_literals_is_neutral() {
+        let parser = make_parser();
+        let file = source_file("#![doc = \"no_implicit_prelude\"]\n// no_implicit_prelude\nconst NOTE: &str = \"no_implicit_prelude\"; enum Mode { A, B } fn f(v: Option<Mode>) -> u8 { match v { Some(Mode::A) => 0, Some(Mode::B) => 1, None => 2 } }");
+        let parsed = parser.parse(&file).unwrap();
+        assert!(!parsed.decision_exprs[0].arms[2].is_catchall);
+        assert!(crate::rules::wildcard_saturation::check(
+            &parsed,
+            &std::collections::HashMap::new()
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn v16_none_guard_preserves_metadata_and_real_fallback() {
+        let parser = make_parser();
+        let file = source_file("enum Mode { A, B } fn f(v: Option<Mode>, flag: bool) -> u8 { match v { Some(Mode::A) => 0, Some(Mode::B) => 1, None if flag => 2, _ => 3 } }");
+        let parsed = parser.parse(&file).unwrap();
+        let arms = &parsed.decision_exprs[0].arms;
+        assert_eq!(arms[2].pattern_snippet, "None");
+        assert!(arms[2].has_guard);
+        assert!(!arms[2].is_catchall);
+        assert!(arms[3].is_catchall);
+        assert_eq!(
+            crate::rules::wildcard_saturation::check(&parsed, &std::collections::HashMap::new())
+                .len(),
+            1
+        );
     }
 
     // ── V16–V20 Decision Expressions Unit Tests (Phase B) ──────────────────

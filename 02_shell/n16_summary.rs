@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/shell/n16-summary.md
-//! @prompt-hash 1a0fa53f
+//! @prompt-hash 7c2704c4
 //! @layer L2
-//! @updated 2026-08-18
+//! @updated 2026-10-16
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
@@ -12,11 +12,11 @@ use crate::contracts::file_provider::SourceFile;
 /// Tag de classificação da taxonomia N16 (ADR-0017 / Passo 0068 / Passo 0069).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum N16Tag {
-    /// N16[α] — Impossibilidade estrutural / fechamento
+    /// `N16[α]` — Impossibilidade estrutural / fechamento
     Alpha,
-    /// N16[β] — Comportamento uniforme genuíno por contrato
+    /// `N16[β]` — Comportamento uniforme genuíno por contrato
     Beta,
-    /// N16[γ] — Fallback deliberado e aberto / vigilância ativa
+    /// `N16[γ]` — Fallback deliberado e aberto / vigilância ativa
     Gamma,
 }
 

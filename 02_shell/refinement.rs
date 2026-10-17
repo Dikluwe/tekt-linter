@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/shell/refinement.md
-//! @prompt-hash ddb650c3
+//! @prompt-hash 8d2cd832
 //! @layer L2
-//! @updated 2026-08-23
+//! @updated 2026-10-16
 
 use std::path::PathBuf;
 
@@ -47,7 +47,7 @@ pub struct SnapshotArgs {
     /// Project root whose files are queried
     #[arg(default_value = ".")]
     pub path: PathBuf,
-    /// Refinement contract containing [[observable]] declarations
+    /// Refinement contract containing `[[observable]]` declarations
     #[arg(long)]
     pub contract: PathBuf,
     /// Stable artifact identifier recorded in the snapshot

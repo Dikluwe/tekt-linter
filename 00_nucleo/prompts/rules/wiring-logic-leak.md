@@ -1,5 +1,5 @@
 # Prompt: Rule V12 - Wiring Logic Leak (wiring-logic-leak)
-Hash do Código: c35c246c
+Hash do Código: c423372d
 
 **Camada**: L1 (Core — Rules)
 **Regra**: V12
@@ -199,3 +199,7 @@ Então retorna vec![]
 |------|--------|-------------------|
 | 2026-03-16 | Criação inicial (ADR-0007) | wiring_logic_leak.rs |
 | 2026-03-16 | Materialização: check() com is_forbidden/declaration_kind_str, 8 testes; módulo registado em rules/mod.rs; EnabledChecks v10/v11/v12 em cli.rs; WiringExceptionsConfig em config.rs; run_checks/run_pipeline actualizados em main.rs; V10/V11 V12 wired; crystalline.toml actualizado | wiring_logic_leak.rs, cli.rs, config.rs, main.rs, crystalline.toml |
+
+## Rustdoc estrito — 2026-10-16
+
+Medição anterior à correção: cargo doc --offline --locked --no-deps com RUSTDOCFLAGS="-D warnings" falhou neste consumer nas linhas 21. O diagnóstico tekt-v16-none-parser-2026-10-16 em typst-crystalline conserva attempt-doc-green-doc.log, hashes base e53de6f e UTC em docs-before-code.json. Corrigir somente a apresentação dos comentários Rustdoc: representar como código literal `[rules]`. Não alterar tokens executáveis, tipos, campos, assinaturas, mensagens de execução, ordem ou comportamento. É manutenção documental interna em fluxo contínuo; o RED é a compilação Rustdoc estrita registrada e o GREEN exige cargo doc sem advertências, mais suíte, Clippy e linhagem existentes. Resselar os dois sentidos somente dos owners editados.
