@@ -1,5 +1,5 @@
 # Prompt: composição do linter
-Hash do Código: be084eb6
+Hash do Código: 386b6959
 
 Owner exclusivo: `04_wiring/main.rs`.
 
@@ -58,3 +58,21 @@ mas o envelope exportado no SARIF é marcado `complete: false`.
 SARIF normal recebe envelope V19 mesmo sem comparação, permitindo salvar uma
 referência com o comando existente `--checks v19 --format sarif . > referencia.sarif`.
 As diferenças V19 não entram no cálculo de exit code nem comprovam cobertura.
+
+## Revisão 2026-11-08 — seleção por projeto
+
+Aceitar `enabled = true/false` opcional para cada regra V0–V27 em `[rules]`.
+Ausência preserva a seleção atual. A seleção parte de --checks (ou seus defaults),
+a configuração por regra sobrescreve essa seleção e --no-drift/--no-stale têm
+precedência final. true também ativa regras opt-in. false desativa a regra mesmo
+se sua severidade for Fatal; severidade e seleção são conceitos distintos.
+IDs, tipos, níveis e filtros continuam validados mesmo em regras desativadas.
+V0/V8/V10 mantêm nível Fatal quando ativas, mas podem ser desativadas individualmente.
+
+O alcance informa regras efetivas, desativadas e configuração usada. Quando houver
+`enabled` explícito, incluir esse alcance automaticamente no lint text/SARIF;
+quiet permanece silencioso. Desativar V0 suprime seu diagnóstico de regra, mas
+leitura/resolução incompleta continua erro operacional (saída 2), sem declaração
+de análise completa. Raiz/configuração inválida não é uma propriedade opcional.
+Reparos continuam obedecendo bloqueios intrínsecos de integridade antes da política.
+A seleção não comprova supervisão humana, nem altera restrições Rust do consumidor.

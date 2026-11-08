@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/entities/analysis-policy.md
-//! @prompt-hash 75ba3076
+//! @prompt-hash d2042784
 //! @layer L1
-//! @updated 2026-09-26
+//! @updated 2026-11-08
 
 use crate::entities::layer::{Language, Layer};
 use crate::entities::parsed_file::ParsedFile;
@@ -37,9 +37,29 @@ pub fn level(value: &str) -> Option<ViolationLevel> {
 }
 #[derive(Debug, Default)]
 pub struct RulePolicy {
+    pub enabled: Option<bool>,
     pub level: Option<ViolationLevel>,
     pub languages: Option<Vec<String>>,
 }
+/// Project switches override the requested selection; absent switches preserve it.
+pub fn select_rules(
+    mut requested: std::collections::BTreeSet<String>,
+    policy: &BTreeMap<String, RulePolicy>,
+) -> std::collections::BTreeSet<String> {
+    for (id, entry) in policy {
+        match entry.enabled {
+            Some(true) => {
+                requested.insert(id.to_owned());
+            }
+            Some(false) => {
+                requested.remove(id);
+            }
+            None => {}
+        }
+    }
+    requested
+}
+
 pub fn apply_policy(
     violations: &mut Vec<Violation<'_>>,
     files: &[ParsedFile<'_>],
@@ -50,6 +70,9 @@ pub fn apply_policy(
         .map(|file| (file.path, &file.language))
         .collect();
     violations.retain_mut(|finding| {
+        if policy.get(&finding.rule_id).and_then(|entry| entry.enabled) == Some(false) {
+            return false;
+        }
         if finding.level == ViolationLevel::Fatal
             || matches!(finding.rule_id.as_str(), "V0" | "V8" | "V10")
         {
@@ -150,6 +173,7 @@ mod tests {
                 (
                     id.into(),
                     RulePolicy {
+                        enabled: None,
                         level: Some(ViolationLevel::Info),
                         languages: None,
                     },

@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/sarif-formatter.md
-//! @prompt-hash 82391e4c
+//! @prompt-hash 231fca4a
 //! @layer L2
-//! @updated 2026-10-16
+//! @updated 2026-11-08
 
 use std::collections::{BTreeMap, VecDeque};
 use std::path::{Path, PathBuf};
@@ -975,6 +975,32 @@ pub struct ScopeSettings<'a> {
     pub excluded_files: Vec<String>,
 }
 
+pub fn selected_rules(
+    checks: &str,
+    no_drift: bool,
+    no_stale: bool,
+    policy: &BTreeMap<String, crate::entities::analysis_policy::RulePolicy>,
+) -> std::collections::BTreeSet<String> {
+    let mut selected: std::collections::BTreeSet<String> = checks
+        .split(',')
+        .map(str::trim)
+        .filter(|id| *id != "all")
+        .map(|id| id.to_uppercase())
+        .collect();
+    if checks.split(',').any(|id| id.trim() == "all") {
+        selected.extend((1..=27).map(|n| format!("V{n}")));
+    }
+    selected.insert("V0".into());
+    selected = crate::entities::analysis_policy::select_rules(selected, policy);
+    if no_drift {
+        selected.remove("V5");
+    }
+    if no_stale {
+        selected.remove("V6");
+    }
+    selected
+}
+
 pub fn analysis_scope(
     read: usize,
     errors: usize,
@@ -991,23 +1017,12 @@ pub fn analysis_scope(
         excluded_dirs,
         excluded_files,
     } = settings;
-    let mut selected: std::collections::BTreeSet<String> = checks
-        .split(',')
-        .map(str::trim)
-        .filter(|id| *id != "all")
-        .map(|id| id.to_uppercase())
+    let selected = selected_rules(checks, no_drift, no_stale, policy);
+    let disabled: std::collections::BTreeSet<_> = (0..=27)
+        .map(|n| format!("V{n}"))
+        .filter(|id| !selected.contains(id))
         .collect();
-    if checks.split(',').any(|id| id.trim() == "all") {
-        selected.extend((1..=27).map(|n| format!("V{n}")));
-    }
-    selected.insert("V0".into());
-    if no_drift {
-        selected.remove("V5");
-    }
-    if no_stale {
-        selected.remove("V6");
-    }
-    let policy: std::collections::BTreeMap<_, _> = policy.iter().map(|(id, entry)| (id, json!({"level": entry.level.as_ref().map(|level| format!("{level:?}").to_lowercase()), "languages": entry.languages}))).collect();
+    let policy: std::collections::BTreeMap<_, _> = policy.iter().map(|(id, entry)| (id, json!({"enabled": entry.enabled, "level": entry.level.as_ref().map(|level| format!("{level:?}").to_lowercase()), "languages": entry.languages}))).collect();
     let excluded_dirs: std::collections::BTreeSet<_> = excluded_dirs.into_iter().collect();
     let excluded_files: std::collections::BTreeSet<_> = excluded_files.into_iter().collect();
     json!({
@@ -1017,7 +1032,8 @@ pub fn analysis_scope(
         "emptySourceFiles": parse_counts.empty_sources,
         "sourceFilesRead": read, "filesParsed": files.len(), "infrastructureDiagnostics": errors,
         "languagesObserved": crate::entities::analysis_policy::language_counts(files),
-        "selectedRules": selected, "configuredRulePolicy": policy,
+        "selectedRules": selected, "disabledRules": disabled, "configuredRulePolicy": policy,
+        "analysisComplete": errors == 0 && source_read_errors == 0 && files.len() == read,
         "configuredExcludedDirectories": excluded_dirs, "configuredExcludedFiles": excluded_files,
         "importsWithUnknownTarget": crate::entities::analysis_policy::unknown_imports(files),
         "limitations": [

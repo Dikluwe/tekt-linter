@@ -1,5 +1,5 @@
 # Prompt: CLI e formatadores do linter
-Hash do Código: b2cfe253
+Hash do Código: a22a58a8
 
 ## Owner
 
@@ -104,3 +104,21 @@ Nenhum estado muda a severidade, suprime achado ou altera `should_fail`; não h�
 meta de zerar notas nem cobrança de testes. Quiet preserva silêncio inclusive para
 erros da referência. Testar multiconjuntos, deslocamentos, alterações, ambiguidade,
 literais, paths, referência vazia/inválida/incompleta e integração text/SARIF/quiet.
+
+## Revisão 2026-11-08 — seleção por projeto
+
+Aceitar `enabled = true/false` opcional para cada regra V0–V27 em `[rules]`.
+Ausência preserva a seleção atual. A seleção parte de --checks (ou seus defaults),
+a configuração por regra sobrescreve essa seleção e --no-drift/--no-stale têm
+precedência final. true também ativa regras opt-in. false desativa a regra mesmo
+se sua severidade for Fatal; severidade e seleção são conceitos distintos.
+IDs, tipos, níveis e filtros continuam validados mesmo em regras desativadas.
+V0/V8/V10 mantêm nível Fatal quando ativas, mas podem ser desativadas individualmente.
+
+O alcance informa regras efetivas, desativadas e configuração usada. Quando houver
+`enabled` explícito, incluir esse alcance automaticamente no lint text/SARIF;
+quiet permanece silencioso. Desativar V0 suprime seu diagnóstico de regra, mas
+leitura/resolução incompleta continua erro operacional (saída 2), sem declaração
+de análise completa. Raiz/configuração inválida não é uma propriedade opcional.
+Reparos continuam obedecendo bloqueios intrínsecos de integridade antes da política.
+A seleção não comprova supervisão humana, nem altera restrições Rust do consumidor.

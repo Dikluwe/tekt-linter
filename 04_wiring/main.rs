@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/linter-core.md
-//! @prompt-hash 93634380
+//! @prompt-hash 92785d71
 //! @layer L4
-//! @updated 2026-10-16
+//! @updated 2026-11-08
 
 use crystalline_lint::entities::analysis_policy::ParseCounts;
 use crystalline_lint::shell::cli::CheckContext;
@@ -556,7 +556,32 @@ fn main() {
 
     // ── Phase 0: scan all prompts (sequential, before pipeline) ───────────────
     let nucleo_root = cli.path.clone();
-    let enabled = EnabledChecks::from_cli(&cli.checks, cli.no_drift, cli.no_stale);
+    let rule_policy = config.rule_policy();
+    let selected_rules = crystalline_lint::shell::cli::selected_rules(
+        &cli.checks,
+        cli.no_drift,
+        cli.no_stale,
+        &rule_policy,
+    );
+    let effective_checks = selected_rules
+        .iter()
+        .map(|id| id.to_lowercase())
+        .collect::<Vec<_>>()
+        .join(",");
+    let mut enabled = EnabledChecks::from_cli(&effective_checks, false, false);
+    if cli.fix_hashes || cli.update_snapshot {
+        // Explicit repairs require intrinsic lineage/integrity evidence even when normal lint omits it.
+        enabled.v5 = true;
+        enabled.v6 = true;
+        enabled.v15 = true;
+        enabled.v26 = true;
+    }
+    if v19_reference.is_some() && !enabled.v19 {
+        if !cli.quiet {
+            eprintln!("crystalline-lint: V19 reference requires V19 enabled in project policy");
+        }
+        process::exit(2);
+    }
 
     let orphan_exceptions: std::collections::HashSet<String> =
         config.orphan_exceptions.keys().cloned().collect();
@@ -1254,6 +1279,11 @@ fn main() {
         process::exit(2);
     }
 
+    let infrastructure_errors = all_violations
+        .iter()
+        .filter(|finding| finding.rule_id == "V0")
+        .count();
+    let suppressed_incomplete = infrastructure_errors > 0 && !selected_rules.contains("V0");
     crystalline_lint::entities::analysis_policy::apply_policy(
         &mut all_violations,
         &all_parsed,
@@ -1289,11 +1319,11 @@ fn main() {
                 )
             }
         };
-        let output = if cli.analysis_scope {
-            let errors = all_violations
-                .iter()
-                .filter(|finding| finding.rule_id == "V0")
-                .count();
+        let output = if cli.analysis_scope
+            || (rule_policy.values().any(|entry| entry.enabled.is_some())
+                && matches!(cli.format, OutputFormat::Text | OutputFormat::Sarif))
+        {
+            let errors = infrastructure_errors;
             let scope = crystalline_lint::shell::cli::analysis_scope(
                 source_files.len(),
                 errors,
@@ -1314,6 +1344,15 @@ fn main() {
             output
         };
         print!("{output}");
+    }
+
+    if suppressed_incomplete {
+        if !cli.quiet {
+            eprintln!(
+                "crystalline-lint: incomplete analysis; V0 diagnostics disabled by project policy"
+            );
+        }
+        process::exit(2);
     }
 
     // ── Exit code ─────────────────────────────────────────────────────────────
@@ -1519,7 +1558,7 @@ fn run_pipeline<'a, P: LanguageParser + Sync>(
 ) {
     // Fase Map ─────────────────────────────────────────────────────────────────
 
-    // V0: unreadable files — Fatal, never silenced
+    // Collect intrinsic V0 evidence before configurable reporting and repair checks.
     let error_map = source_errors.par_iter().map(
         |err| -> (
             Vec<Violation<'a>>,

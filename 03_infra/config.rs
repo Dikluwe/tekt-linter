@@ -1,8 +1,8 @@
 //! Crystalline Lineage
 //! @prompt 00_nucleo/prompts/infra/config.md
-//! @prompt-hash afb8f8cd
+//! @prompt-hash 634a1e1c
 //! @layer L3
-//! @updated 2026-09-26
+//! @updated 2026-11-08
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path};
@@ -32,6 +32,7 @@ fn is_language_key(key: &str) -> bool {
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct RuleEntry {
+    pub enabled: Option<bool>,
     pub level: Option<String>,
     pub languages: Option<Vec<String>>,
 }
@@ -372,6 +373,7 @@ impl CrystallineConfig {
                 (
                     id.clone(),
                     crate::entities::analysis_policy::RulePolicy {
+                        enabled: entry.enabled,
                         level: entry
                             .level
                             .as_deref()
@@ -793,6 +795,7 @@ types = ["EcoString", "EcoVec"]
         config.rules.insert(
             "V11".to_string(),
             RuleEntry {
+                enabled: None,
                 level: Some("warning".to_string()),
                 languages: None,
             },
@@ -817,6 +820,7 @@ types = ["EcoString", "EcoVec"]
         config.rules.insert(
             "V19".to_string(),
             RuleEntry {
+                enabled: None,
                 level: Some("info".to_string()),
                 languages: None,
             },
