@@ -66,7 +66,7 @@ futuro modo selado/certificador, ainda não implementado.
 
 | ID | Nome | Nível | Descrição |
 |----|------|-------|-----------|
-| V0 | `UnreadableSource` | **fatal** | Arquivo ilegível. Bloqueia CI incondicionalmente — não configurável |
+| V0 | `UnreadableSource` | **fatal** | Arquivo ilegível. Bloqueia enquanto ativa; `enabled` configurável |
 | V1 | `MissingPromptHeader` | **error** | Arquivo em L1–L4 sem `//! @prompt` ou com prompt referenciado inexistente |
 | V2 | `MissingTestFile` | **error** | Arquivo em L1 sem cobertura de teste detectável no AST nem ficheiro de teste adjacente. Arquivos apenas declarativos são isentos (Rust: `#[cfg(test)]` ou `_test.rs`; TypeScript: `.test.ts`/`.spec.ts`; Python: `_test.py`/`test_*.py`; Go: `*_test.go`; Zig: blocos `test` ou `*_test.zig`) |
 | V3 | `ForbiddenImport` | **error** | Import viola a direção do fluxo de dependência entre camadas |
@@ -74,9 +74,9 @@ futuro modo selado/certificador, ainda não implementado.
 | V5 | `PromptDrift` | **warning** | Hash em `@prompt-hash` diverge do hash real do prompt em `00_nucleo/` |
 | V6 | `PromptStale` | **warning** | Interface pública do código mudou desde o snapshot registrado no prompt de origem |
 | V7 | `OrphanPrompt` | **warning** | Prompt em `00_nucleo/prompts/` sem nenhum arquivo em L1–L4 referenciando-o |
-| V8 | `AlienFile` | **fatal** | Arquivo de código fora de todos os diretórios mapeados. Bloqueia CI incondicionalmente — não configurável |
+| V8 | `AlienFile` | **fatal** | Arquivo de código fora de todos os diretórios mapeados. Bloqueia enquanto ativa; `enabled` configurável |
 | V9 | `PubLeak` | **error** | Import de L2 ou L3 acessa subdiretório interno de L1 não listado em `[l1_ports]` |
-| V10 | `QuarantineLeak` | **fatal** | Arquivo de produção (L1–L4) importa de `lab/`. Bloqueia CI incondicionalmente — não configurável |
+| V10 | `QuarantineLeak` | **fatal** | Arquivo de produção (L1–L4) importa de `lab/`. Bloqueia enquanto ativa; `enabled` configurável |
 | V11 | `DanglingContract` | **error** | Trait em `L1/contracts/` sem `impl` correspondente em L2 ou L3. Verificado globalmente após análise completa |
 | V12 | `WiringLogicLeak` | **warning** | `struct`, `enum` ou `impl` sem trait declarado em L4. L4 não cria tipos — apenas liga os que existem |
 | V13 | `MutableStateInCore` | **error** | Estado global mutável (`static mut`, `Mutex`, `Atomic*`, etc.) declarado em L1 |
@@ -186,9 +186,11 @@ OPTIONS:
 - `--dry-run` sem `--fix-hashes` ou `--update-snapshot`
 - `--fix-hashes` e `--update-snapshot` simultaneamente
 
-**Nota sobre V0, V8 e V10:** `--checks` pode omitir estas regras
-para suprimir output, mas os três Fatal sempre bloqueiam CI
-independentemente de `--fail-on`.
+**Nota sobre V0, V8 e V10:** quando ativas, violações Fatal bloqueiam
+independentemente de `--fail-on`. Cada regra aceita `enabled = false` no projeto.
+V0 é ativa por padrão mesmo fora de `--checks`. Desativar seu diagnóstico não
+transforma erro de leitura/resolução em análise completa: o lint sai 2 nesse caso.
+Raiz e configuração inválidas continuam erros de execução.
 
 ---
 
@@ -689,7 +691,8 @@ cai em defaults.
 `languages = ["python"]` filtra achados dessa regra para Python. V0/V8/V10 exigem
 `fatal` quando o nível é declarado e não admitem filtro. V7/V11/V15/V26 são globais
 e rejeitam filtros de linguagem. V22 agrega somente evidência Rust. V0 permanece
-ativo independentemente de `--checks`; as demais regras seguem a seleção.
+ativa por padrão independentemente de `--checks`; a configuração `enabled` pode
+sobrescrever a seleção de qualquer regra.
 
 Os filtros e níveis da política normal não suprimem os achados intrínsecos usados
 pelos reparos. Estes mantêm seus próprios bloqueios de integridade.
@@ -698,3 +701,42 @@ Compatibilidade das tabelas legadas: `[project] root = "."` e `[languages]` com
 gramáticas embutidas e `enabled = true` são aceitos. Outra raiz, desabilitação ou
 gramática customizada eram ignoradas; agora são rejeitadas explicitamente. Use o
 argumento de raiz da CLI e filtros por regra.
+
+
+## Ligar e desligar verificações por projeto
+
+No `crystalline.toml` da raiz analisada (ou no arquivo indicado por `--config`):
+
+```toml
+[rules]
+V1  = { enabled = false } # cabeçalho de prompt
+V5  = { enabled = false } # hash do prompt
+V6  = { enabled = false } # snapshot vinculado ao prompt
+V7  = { enabled = false } # prompt sem consumidor
+V15 = { enabled = false } # exclusividade do vínculo com prompt
+V26 = { enabled = false } # grafo de núcleos
+V3  = { enabled = true, level = "error" } # fronteiras entre camadas
+```
+
+Todas as regras V0–V27 aceitam o booleano opcional separadamente. Sem `enabled`,
+o comportamento anterior é preservado. A seleção parte de `--checks` ou do seu
+valor padrão; `enabled` por regra sobrescreve essa seleção. Assim, `true` também
+ativa uma regra opt-in, e `false` a desativa mesmo com `--checks all`. Por último,
+`--no-drift` e `--no-stale` desativam V5/V6. Para experimentar outra seleção sem
+mudar a configuração aceita, use outro arquivo com `--config`.
+
+Severidade continua distinta de seleção: V0/V8/V10 permanecem Fatal quando ativas.
+Configurações inválidas são rejeitadas mesmo em regras desligadas. Não usar
+`level = "off"`: `enabled` controla seleção, `level` controla severidade.
+
+Quando há algum `enabled` explícito, text/SARIF incluem automaticamente o alcance:
+`selectedRules`, `disabledRules`, `configuredRulePolicy` e `analysisComplete`.
+Quiet continua silencioso e preserva o exit code. N16 mantém seu formato próprio;
+use text/SARIF para inspecionar o perfil. Seleção não é prova de cobertura,
+conformidade comportamental ou aprovação humana.
+
+Reparos explícitos de hashes/snapshots mantêm suas verificações intrínsecas de
+integridade e bloqueio por V0/PARSE antes da política normal; desligar uma regra
+não autoriza uma reescrita inconsistente. O arquivo de configuração deve entrar
+na revisão da mudança junto com código e contratos. Esta funcionalidade não
+instala proteção de branch e não altera as restrições Rust de projetos analisados.

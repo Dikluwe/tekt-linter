@@ -487,7 +487,7 @@ número `V*`.
 
 ## Violations — referência completa
 
-### Fatais — bloqueiam CI incondicionalmente
+### Fatais — bloqueiam quando a regra está ativa
 
 | ID | Nome | Causa | Resolução |
 |----|------|-------|-----------|
@@ -634,7 +634,8 @@ cai em defaults.
 `languages = ["python"]` filtra achados dessa regra para Python. V0/V8/V10 exigem
 `fatal` quando o nível é declarado e não admitem filtro. V7/V11/V15/V26 são globais
 e rejeitam filtros de linguagem. V22 agrega somente evidência Rust. V0 permanece
-ativo independentemente de `--checks`; as demais regras seguem a seleção.
+ativa por padrão independentemente de `--checks`; `enabled` pode sobrescrever a
+seleção de qualquer regra. Falha operacional continua impedindo análise completa.
 
 Os filtros e níveis da política normal não suprimem os achados intrínsecos usados
 pelos reparos. Estes mantêm seus próprios bloqueios de integridade.
@@ -643,3 +644,8 @@ Compatibilidade das tabelas legadas: `[project] root = "."` e `[languages]` com
 gramáticas embutidas e `enabled = true` são aceitos. Outra raiz, desabilitação ou
 gramática customizada eram ignoradas; agora são rejeitadas explicitamente. Use o
 argumento de raiz da CLI e filtros por regra.
+
+
+## Seleção persistente por regra
+
+Cada entrada de `[rules]` aceita `enabled = true` ou `enabled = false`, inclusive V0/V8/V10. A opção ausente preserva o comportamento anterior. A configuração sobrescreve `--checks`; `--no-drift` e `--no-stale` têm precedência final. Consulte [exemplos e alcance](README.md#ligar-e-desligar-verificações-por-projeto). A seleção efetiva aparece automaticamente em text/SARIF quando há `enabled` explícito.
